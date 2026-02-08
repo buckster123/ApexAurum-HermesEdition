@@ -186,7 +186,7 @@ Use to:
 
 Models: V3_5, V4, V4_5, V5 (newest/best)
 Generation takes 2-4 minutes.""",
-            category=ToolCategory.AGENT,  # Creative tool
+            category=ToolCategory.MUSIC,
             input_schema={
                 "type": "object",
                 "properties": {
@@ -322,7 +322,7 @@ class MusicStatusTool(BaseTool):
 
 Returns status (pending/generating/completed/failed) and progress info.
 If completed, includes audio URL and duration.""",
-            category=ToolCategory.AGENT,
+            category=ToolCategory.MUSIC,
             input_schema={
                 "type": "object",
                 "properties": {
@@ -494,7 +494,7 @@ class MusicListTool(BaseTool):
 
 Shows task ID, title, status, and audio URL for each.
 Useful to find previous generations.""",
-            category=ToolCategory.AGENT,
+            category=ToolCategory.MUSIC,
             input_schema={
                 "type": "object",
                 "properties": {
@@ -578,7 +578,7 @@ class MusicDownloadTool(BaseTool):
 
 Returns the direct URL to the audio file.
 Only works for completed tasks.""",
-            category=ToolCategory.AGENT,
+            category=ToolCategory.MUSIC,
             input_schema={
                 "type": "object",
                 "properties": {

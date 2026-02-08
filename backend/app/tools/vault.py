@@ -48,7 +48,9 @@ Use to:
 - Find specific files by name
 - Navigate folder hierarchy
 
-Returns file names, sizes, and types. Root folder is used if no folder_id specified.""",
+You can navigate by path (e.g., "code", "code/src") or by folder UUID.
+Root folder is used if neither is specified.
+Returns folder IDs, file names, sizes, and types.""",
             category=ToolCategory.FILES,
             input_schema={
                 "type": "object",
@@ -56,6 +58,10 @@ Returns file names, sizes, and types. Root folder is used if no folder_id specif
                     "folder_id": {
                         "type": "string",
                         "description": "Folder UUID to list (omit for root folder)",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Folder path to list, e.g. 'code' or 'code/src/utils'. Resolves from root.",
                     },
                 },
                 "required": [],
@@ -68,6 +74,7 @@ Returns file names, sizes, and types. Root folder is used if no folder_id specif
             return ToolResult(success=False, error="Authentication required to access vault")
 
         folder_id = params.get("folder_id")
+        path = params.get("path")
 
         try:
             from app.models.file import File, Folder
@@ -76,7 +83,7 @@ Returns file names, sizes, and types. Root folder is used if no folder_id specif
             async with async_session() as db:
                 user_uuid = UUID(context.user_id) if isinstance(context.user_id, str) else context.user_id
 
-                # Get folder (root if not specified)
+                # Get folder by ID, path, or root
                 if folder_id:
                     folder_uuid = UUID(folder_id)
                     folder_result = await db.execute(
@@ -88,6 +95,36 @@ Returns file names, sizes, and types. Root folder is used if no folder_id specif
                     folder = folder_result.scalar_one_or_none()
                     if not folder:
                         return ToolResult(success=False, error=f"Folder not found: {folder_id}")
+                elif path:
+                    # Resolve path from root: e.g. "code/src/utils"
+                    # Start at root folder
+                    folder_result = await db.execute(
+                        select(Folder).where(
+                            Folder.user_id == user_uuid,
+                            Folder.parent_id == None  # noqa: E711
+                        )
+                    )
+                    folder = folder_result.scalar_one_or_none()
+                    if not folder:
+                        return ToolResult(success=False, error="Root folder not found")
+
+                    # Walk each path segment
+                    segments = [s for s in path.strip("/").split("/") if s]
+                    for segment in segments:
+                        child_result = await db.execute(
+                            select(Folder).where(
+                                Folder.parent_id == folder.id,
+                                Folder.user_id == user_uuid,
+                                Folder.name == segment
+                            )
+                        )
+                        child = child_result.scalar_one_or_none()
+                        if not child:
+                            return ToolResult(
+                                success=False,
+                                error=f"Folder not found: '{segment}' in path '{path}'"
+                            )
+                        folder = child
                 else:
                     # Get root folder
                     folder_result = await db.execute(
