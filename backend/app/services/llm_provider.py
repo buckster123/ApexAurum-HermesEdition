@@ -247,12 +247,12 @@ PROVIDER_MODELS = {
         },
     },
     "openai": {
-        "gpt-4o": {
-            "name": "GPT-4o",
+        "gpt-4o-2024-05-13": {
+            "name": "GPT-4o (Launch)",
             "tier": "large",
             "max_tokens": 16384,
             "context_window": 128000,
-            "description": "OpenAI flagship - fast, vision, tools (128K ctx)",
+            "description": "Original GPT-4o - best creative personality (128K ctx)",
             "supports_tools": True,
         },
         "gpt-4o-mini": {

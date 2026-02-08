@@ -63,7 +63,7 @@ export const COUNCIL_MODELS = [
   { id: 'claude-sonnet-4-5-20250929', name: 'Sonnet 4.5', provider: 'anthropic', description: 'Balanced' },
   { id: 'claude-opus-4-5-20251101', name: 'Opus 4.5', provider: 'anthropic', description: 'Max capability' },
   // OpenAI
-  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', description: 'OpenAI flagship' },
+  { id: 'gpt-4o-2024-05-13', name: 'GPT-4o (Launch)', provider: 'openai', description: 'Best creative vibe' },
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', description: 'Fast & cheap' },
   { id: 'gpt-5', name: 'GPT-5', provider: 'openai', description: 'Next-gen reasoning' },
   { id: 'gpt-5-mini', name: 'GPT-5 Mini', provider: 'openai', description: 'Fast GPT-5' },
