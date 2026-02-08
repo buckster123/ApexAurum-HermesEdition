@@ -33,6 +33,57 @@ const mainArea = ref(null)
 const conversationsList = ref(null)
 const isMobile = ref(window.innerWidth < 768)
 const toolsCount = ref(0)
+const categoryCounts = ref({})
+
+// Tool category metadata — matches backend ToolCategory enum
+const TOOL_CATEGORIES = [
+  { id: 'utility',  label: 'Utilities',     icon: '🔧' },
+  { id: 'web',      label: 'Web',           icon: '🌐' },
+  { id: 'memory',   label: 'Memory',        icon: '🧠' },
+  { id: 'files',    label: 'Files',         icon: '📁' },
+  { id: 'agent',    label: 'Agents & Code', icon: '⚡' },
+  { id: 'music',    label: 'Music',         icon: '🎶' },
+  { id: 'browser',  label: 'Browser',       icon: '🖥️' },
+  { id: 'creative', label: 'Creative',      icon: '🎵' },
+  { id: 'nursery',  label: 'Nursery',       icon: '🧪' },
+]
+
+const activeToolsCount = computed(() => {
+  if (chat.toolCategories === null) return toolsCount.value
+  return TOOL_CATEGORIES.reduce((sum, cat) => {
+    if (chat.toolCategories.includes(cat.id)) {
+      return sum + (categoryCounts.value[cat.id] || 0)
+    }
+    return sum
+  }, 0)
+})
+
+function toggleCategory(catId) {
+  if (chat.toolCategories === null) {
+    // Currently "all" — switch to all-except-this
+    const allIds = TOOL_CATEGORIES.map(c => c.id).filter(id => id !== catId)
+    chat.setToolCategories(allIds)
+  } else if (chat.toolCategories.includes(catId)) {
+    const updated = chat.toolCategories.filter(id => id !== catId)
+    chat.setToolCategories(updated.length > 0 ? updated : [])
+  } else {
+    const updated = [...chat.toolCategories, catId]
+    // If all categories are now selected, reset to null (= "all")
+    if (updated.length >= TOOL_CATEGORIES.length) {
+      chat.setToolCategories(null)
+    } else {
+      chat.setToolCategories(updated)
+    }
+  }
+}
+
+function selectAllCategories() {
+  chat.setToolCategories(null)
+}
+
+function selectNoCategories() {
+  chat.setToolCategories([])
+}
 
 // File attachments
 const attachedFiles = ref([])  // Array of { id, name, file_type, mime_type }
@@ -195,10 +246,16 @@ onMounted(async () => {
   await chat.fetchConversations()
   await fetchCustomAgents()
 
-  // Fetch tools count
+  // Fetch tools list with per-category counts
   try {
     const response = await api.get('/api/v1/tools')
     toolsCount.value = response.data.count || 0
+    // Compute per-category counts
+    const counts = {}
+    for (const tool of (response.data.tools || [])) {
+      counts[tool.category] = (counts[tool.category] || 0) + 1
+    }
+    categoryCounts.value = counts
   } catch (e) {
     toolsCount.value = 46  // Fallback to known count
   }
@@ -653,7 +710,7 @@ function renderMarkdown(content) {
           <label class="text-xs" :class="pacMode ? 'text-purple-300/60' : 'text-gray-500'">
             <span class="flex items-center gap-1">
               🔧 Tools
-              <span class="text-gray-600">({{ toolsCount }})</span>
+              <span class="text-gray-600">({{ activeToolsCount }})</span>
             </span>
           </label>
           <button
@@ -666,6 +723,36 @@ function renderMarkdown(content) {
               :class="chat.toolsEnabled ? 'translate-x-5' : ''"
             ></span>
           </button>
+        </div>
+
+        <!-- Tool Category Selector -->
+        <div v-if="chat.toolsEnabled" class="mt-2">
+          <div class="flex flex-wrap gap-1">
+            <button
+              v-for="cat in TOOL_CATEGORIES"
+              :key="cat.id"
+              @click="toggleCategory(cat.id)"
+              class="px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-all border"
+              :class="chat.isCategoryEnabled(cat.id)
+                ? 'bg-gold/20 border-gold/40 text-gold hover:bg-gold/30'
+                : 'bg-apex-surface/50 border-apex-border/30 text-gray-500 hover:border-gray-400'"
+              :title="`${cat.label} (${categoryCounts[cat.id] || 0} tools)`"
+            >
+              {{ cat.icon }} {{ cat.label }}
+            </button>
+          </div>
+          <div class="flex gap-2 mt-1">
+            <button
+              @click="selectAllCategories"
+              class="text-[10px] text-gray-500 hover:text-gold transition-colors"
+              :class="{ 'text-gold': chat.toolCategories === null }"
+            >All</button>
+            <button
+              @click="selectNoCategories"
+              class="text-[10px] text-gray-500 hover:text-gold transition-colors"
+              :class="{ 'text-gold': chat.toolCategories !== null && chat.toolCategories.length === 0 }"
+            >None</button>
+          </div>
         </div>
 
         <!-- Agora Agent Posting Toggle -->

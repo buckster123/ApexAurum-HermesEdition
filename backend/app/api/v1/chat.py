@@ -1189,7 +1189,19 @@ Work together to create something beautiful!
             conversation_id=conversation.id if conversation else None,
             agent_id=request.agent,
         )
-        tools = tool_executor.get_available_tools()
+        # Parse tool_categories from request into ToolCategory enums
+        tool_cat_filter = None
+        if request.tool_categories:
+            tool_cat_filter = []
+            for cat_name in request.tool_categories:
+                try:
+                    tool_cat_filter.append(ToolCategory(cat_name))
+                except ValueError:
+                    logger.warning(f"Unknown tool category ignored: {cat_name}")
+            if not tool_cat_filter:
+                tool_cat_filter = None
+
+        tools = tool_executor.get_available_tools(categories=tool_cat_filter)
         # Filter out agora tools unless explicitly enabled
         if not request.use_agora_posting:
             tools = [t for t in tools if t.get("name") not in ("agora_post", "agora_read")]

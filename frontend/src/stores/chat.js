@@ -31,6 +31,9 @@ export const useChatStore = defineStore('chat', () => {
   const agoraPostingEnabled = ref(localStorage.getItem('apexaurum_agora_posting') === 'true')
   const agoraFeedAlertsEnabled = ref(localStorage.getItem('apexaurum_agora_feed_alerts') === 'true')
   const currentToolExecution = ref(null)  // Track currently executing tool
+  const toolCategories = ref(
+    JSON.parse(localStorage.getItem('apexaurum_tool_categories') || 'null')
+  )
 
   // Getters
   const sortedConversations = computed(() => {
@@ -117,6 +120,36 @@ export const useChatStore = defineStore('chat', () => {
     localStorage.setItem('apexaurum_agora_feed_alerts', enabled.toString())
   }
 
+  function setToolCategories(categories) {
+    toolCategories.value = categories
+    if (categories === null) {
+      localStorage.removeItem('apexaurum_tool_categories')
+    } else {
+      localStorage.setItem('apexaurum_tool_categories', JSON.stringify(categories))
+    }
+  }
+
+  function toggleToolCategory(category) {
+    if (toolCategories.value === null) {
+      // Currently "all" — switching to explicit list minus this one
+      // We need the full list of categories to compute this
+      // So we accept an allCategories array or just remove the one
+      toolCategories.value = []
+      // Caller should handle the "from all" case
+    }
+    const idx = toolCategories.value.indexOf(category)
+    if (idx >= 0) {
+      toolCategories.value.splice(idx, 1)
+    } else {
+      toolCategories.value.push(category)
+    }
+    localStorage.setItem('apexaurum_tool_categories', JSON.stringify(toolCategories.value))
+  }
+
+  function isCategoryEnabled(category) {
+    return toolCategories.value === null || toolCategories.value.includes(category)
+  }
+
   // Actions
   async function fetchConversations() {
     try {
@@ -195,6 +228,7 @@ export const useChatStore = defineStore('chat', () => {
           use_tools: toolsEnabled.value,
           use_agora_posting: agoraPostingEnabled.value && toolsEnabled.value,
           use_agora_feed_alerts: agoraFeedAlertsEnabled.value && toolsEnabled.value,
+          ...(toolsEnabled.value && toolCategories.value !== null && { tool_categories: toolCategories.value }),
           ...(fileIds && { file_ids: fileIds }),
         })
       })
@@ -457,9 +491,13 @@ export const useChatStore = defineStore('chat', () => {
     agoraPostingEnabled,
     agoraFeedAlertsEnabled,
     currentToolExecution,
+    toolCategories,
     setToolsEnabled,
     setAgoraPostingEnabled,
     setAgoraFeedAlertsEnabled,
+    setToolCategories,
+    toggleToolCategory,
+    isCategoryEnabled,
     // Core actions
     fetchConversations,
     loadConversation,
