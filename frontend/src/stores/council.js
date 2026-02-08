@@ -8,6 +8,22 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
 
+// Tool categories — matches backend ToolCategory enum
+export const TOOL_CATEGORIES = [
+  { id: 'utility',  label: 'Utilities',     icon: '🔧' },
+  { id: 'web',      label: 'Web',           icon: '🌐' },
+  { id: 'memory',   label: 'Memory',        icon: '🧠' },
+  { id: 'files',    label: 'Files',         icon: '📁' },
+  { id: 'agent',    label: 'Agent',         icon: '🤖' },
+  { id: 'music',    label: 'Music',         icon: '🎵' },
+  { id: 'browser',  label: 'Browser',       icon: '🔍' },
+  { id: 'creative', label: 'Creative',      icon: '🎨' },
+  { id: 'nursery',  label: 'Nursery',       icon: '🌱' },
+]
+
+// Default categories used by backend when none specified
+export const COUNCIL_DEFAULT_CATEGORY_IDS = ['utility', 'web', 'files']
+
 // Agent colors for UI consistency
 export const AGENT_COLORS = {
   AZOTH: '#00ffaa',
@@ -99,6 +115,7 @@ export const useCouncilStore = defineStore('council', () => {
   const newSessionMaxRounds = ref(200)  // Session ceiling (hidden from user)
   const newSessionModel = ref('claude-haiku-4-5-20251001')
   const newSessionCustomAgents = ref([])  // [{id, name, persona}]
+  const newSessionToolCategories = ref([])  // [] = use backend default, non-empty = explicit filter
   const agentModelOverrides = ref({})  // {agentId: {model, provider}}
 
   // Auto-deliberation state
@@ -209,6 +226,7 @@ export const useCouncilStore = defineStore('council', () => {
         max_rounds: newSessionMaxRounds.value,
         model: newSessionModel.value,
         use_tools: true,  // Tools always on for native agents
+        ...(newSessionToolCategories.value.length > 0 && { tool_categories: newSessionToolCategories.value }),
       })
       const session = response.data
 
@@ -219,6 +237,7 @@ export const useCouncilStore = defineStore('council', () => {
       // Clear form
       newSessionTopic.value = ''
       newSessionCustomAgents.value = []
+      newSessionToolCategories.value = []
       agentModelOverrides.value = {}
 
       return session
@@ -309,6 +328,23 @@ export const useCouncilStore = defineStore('council', () => {
 
   function clearError() {
     error.value = null
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // TOOL CATEGORY FILTERING
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  function toggleToolCategory(catId) {
+    const idx = newSessionToolCategories.value.indexOf(catId)
+    if (idx >= 0) {
+      newSessionToolCategories.value.splice(idx, 1)
+    } else {
+      newSessionToolCategories.value.push(catId)
+    }
+  }
+
+  function isToolCategorySelected(catId) {
+    return newSessionToolCategories.value.includes(catId)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
@@ -830,6 +866,7 @@ export const useCouncilStore = defineStore('council', () => {
     newSessionMaxRounds,
     newSessionModel,
     newSessionCustomAgents,
+    newSessionToolCategories,
     agentModelOverrides,
     // Auto-deliberation state
     isAutoDeliberating,
@@ -851,6 +888,8 @@ export const useCouncilStore = defineStore('council', () => {
     clearCurrentSession,
     clearMemorial,
     toggleAgent,
+    toggleToolCategory,
+    isToolCategorySelected,
     clearError,
     // Per-agent model actions
     setAgentModel,

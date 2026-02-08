@@ -33,6 +33,7 @@ class DeliberationSession(Base):
     consensus_threshold: Mapped[float] = mapped_column(Float, default=0.8)
     consensus_phrase: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., "CONSENSUS REACHED"
     use_tools: Mapped[bool] = mapped_column(Boolean, default=False)
+    tool_categories: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # Tool category filter (null = default)
     model: Mapped[str] = mapped_column(String(100), default="claude-haiku-4-5-20251001")  # Model for deliberation
 
     # Progress

@@ -35,6 +35,7 @@ from app.services.claude import (
 )
 from app.services.billing import BillingService
 from app.services.tool_executor import create_tool_executor
+from app.tools.base import ToolCategory
 from app.services.llm_provider import create_llm_service, PROVIDER_MODELS
 from app.config import get_settings
 from app.api.v1.chat import load_native_prompt, get_agent_prompt_with_memory  # Reuse prompt loading + memory
@@ -46,6 +47,9 @@ router = APIRouter(prefix="/council", tags=["Council"])
 
 # Use Haiku for fast deliberation
 COUNCIL_MODEL = "claude-haiku-4-5-20251001"
+
+# Default tool categories for council (keeps token overhead manageable)
+COUNCIL_DEFAULT_CATEGORIES = [ToolCategory.UTILITY, ToolCategory.WEB, ToolCategory.FILES]
 
 # Consensus detection phrases
 CONSENSUS_PHRASES = [
@@ -149,6 +153,7 @@ class CreateSessionRequest(BaseModel):
     max_rounds: int = 10
     use_tools: bool = True  # Tools always on for native agents (The Athanor's Hands)
     model: str = "claude-haiku-4-5-20251001"  # Default to fast Haiku
+    tool_categories: Optional[list[str]] = None  # e.g. ["utility", "web", "memory"] (null/empty = default)
 
 
 class AgentInfo(BaseModel):
@@ -171,6 +176,7 @@ class SessionResponse(BaseModel):
     max_rounds: int
     convergence_score: float
     agents: list[AgentInfo]
+    tool_categories: Optional[list[str]] = None
     total_cost_usd: float
     created_at: str
 
@@ -250,6 +256,8 @@ async def council_diagnostic(db: AsyncSession = Depends(get_db)):
         "tables": {},
         "columns": {},
         "model": COUNCIL_MODEL,
+        "default_tool_categories": [c.value for c in COUNCIL_DEFAULT_CATEGORIES],
+        "available_tool_categories": [c.value for c in ToolCategory],
     }
 
     # Check if council tables exist
@@ -388,12 +396,27 @@ async def create_session(
                         detail=f"Invalid model '{custom.model}' for provider '{custom.provider}'. Available: {available}"
                     )
 
+        # Validate tool_categories if provided
+        validated_tool_categories = None
+        if request.tool_categories:
+            validated_tool_categories = []
+            for cat_name in request.tool_categories:
+                try:
+                    validated_tool_categories.append(ToolCategory(cat_name).value)
+                except ValueError:
+                    valid_cats = [c.value for c in ToolCategory]
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Invalid tool category: '{cat_name}'. Available: {valid_cats}"
+                    )
+
         # Create session
         session = DeliberationSession(
             user_id=user.id,
             topic=request.topic,
             max_rounds=request.max_rounds,
             use_tools=request.use_tools,
+            tool_categories=validated_tool_categories,
             model=model,
             state="pending",
             mode="manual",
@@ -470,6 +493,7 @@ async def create_session(
                 )
                 for a in session.agents
             ],
+            tool_categories=session.tool_categories,
             total_cost_usd=session.total_cost_usd,
             created_at=session.created_at.isoformat(),
         )
@@ -522,6 +546,7 @@ async def list_sessions(
                     )
                     for a in s.agents
                 ],
+                tool_categories=s.tool_categories,
                 total_cost_usd=s.total_cost_usd,
                 created_at=s.created_at.isoformat() if s.created_at else None,
             )
@@ -577,6 +602,7 @@ async def get_session(
             )
             for a in session.agents
         ],
+        tool_categories=session.tool_categories,
         total_cost_usd=session.total_cost_usd,
         created_at=session.created_at.isoformat(),
         rounds=[
@@ -1652,8 +1678,13 @@ Guidelines:
             conversation_id=None,
             agent_id=agent.agent_id,
         )
-        tools = tool_executor.get_available_tools()
-        logger.debug(f"Council agent {agent.agent_id}: {len(tools)} tools available")
+        # Filter tools by session's tool categories (or default)
+        if session.tool_categories:
+            categories = [ToolCategory(c) for c in session.tool_categories]
+        else:
+            categories = COUNCIL_DEFAULT_CATEGORIES
+        tools = tool_executor.get_available_tools(categories=categories)
+        logger.debug(f"Council agent {agent.agent_id}: {len(tools)} tools available (categories: {[c.value for c in categories]})")
 
     # Call model with potential tool loop
     user_message = f"Round {round_record.round_number}: Share your perspective on the current state of the discussion."
@@ -1823,7 +1854,12 @@ Guidelines:
             conversation_id=None,
             agent_id=agent.agent_id,
         )
-        tools = tool_executor.get_available_tools()
+        # Filter tools by session's tool categories (or default)
+        if session.tool_categories:
+            categories = [ToolCategory(c) for c in session.tool_categories]
+        else:
+            categories = COUNCIL_DEFAULT_CATEGORIES
+        tools = tool_executor.get_available_tools(categories=categories)
 
     model = agent.model or getattr(session, 'model', None) or COUNCIL_MODEL
     user_message = f"Round {round_record.round_number}: Share your perspective on the current state of the discussion."

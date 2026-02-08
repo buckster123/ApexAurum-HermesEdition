@@ -8,7 +8,7 @@
 
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useCouncilStore, AGENT_COLORS, AVAILABLE_AGENTS, AVAILABLE_MODELS, COUNCIL_MODELS, DEPRECATED_MODELS } from '@/stores/council'
+import { useCouncilStore, AGENT_COLORS, AVAILABLE_AGENTS, AVAILABLE_MODELS, COUNCIL_MODELS, DEPRECATED_MODELS, TOOL_CATEGORIES, COUNCIL_DEFAULT_CATEGORY_IDS } from '@/stores/council'
 import AgentCard from '@/components/council/AgentCard.vue'
 
 const router = useRouter()
@@ -469,6 +469,32 @@ function getStateClass(state) {
               </div>
             </div>
 
+            <!-- Tool Categories -->
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-2">
+                Tool Categories
+                <span class="text-xs text-gray-500 font-normal ml-1">
+                  {{ council.newSessionToolCategories.length === 0 ? '(Default: Utility + Web + Files)' : `(${council.newSessionToolCategories.length} selected)` }}
+                </span>
+              </label>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="cat in TOOL_CATEGORIES"
+                  :key="cat.id"
+                  @click="council.toggleToolCategory(cat.id)"
+                  class="px-2 py-1 rounded-full text-xs font-medium transition-all border"
+                  :class="council.isToolCategorySelected(cat.id)
+                    ? 'bg-gold/20 border-gold/40 text-gold hover:bg-gold/30'
+                    : 'bg-apex-surface/50 border-apex-border/30 text-gray-500 hover:border-gray-400'"
+                >
+                  {{ cat.icon }} {{ cat.label }}
+                </button>
+              </div>
+              <p class="text-xs text-gray-500 mt-1">
+                Select none for default (Utility + Web + Files). Fewer categories = faster deliberations.
+              </p>
+            </div>
+
             <!-- Rounds -->
             <div>
               <label class="block text-sm font-medium text-gray-300 mb-2">
@@ -538,6 +564,16 @@ function getStateClass(state) {
                 </span>
                 <span class="text-sm text-gray-500">
                   ${{ council.currentSession.total_cost_usd.toFixed(4) }}
+                </span>
+              </div>
+              <!-- Active tool category badges -->
+              <div class="flex flex-wrap gap-1 mt-1.5">
+                <span
+                  v-for="catId in (council.currentSession.tool_categories || COUNCIL_DEFAULT_CATEGORY_IDS)"
+                  :key="catId"
+                  class="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gold/10 border border-gold/20 text-gold/70"
+                >
+                  {{ (TOOL_CATEGORIES.find(c => c.id === catId) || {}).icon }} {{ (TOOL_CATEGORIES.find(c => c.id === catId) || {}).label || catId }}
                 </span>
               </div>
             </div>

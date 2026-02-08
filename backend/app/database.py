@@ -409,6 +409,23 @@ async def init_db():
             END $$;
             """,
             # ═══════════════════════════════════════════════════════════════════════
+            # COUNCIL DELIBERATION - v117: Tool category filtering
+            # ═══════════════════════════════════════════════════════════════════════
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'deliberation_sessions') THEN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'deliberation_sessions' AND column_name = 'tool_categories') THEN
+                        ALTER TABLE deliberation_sessions ADD COLUMN tool_categories JSONB;
+                        RAISE NOTICE 'Added tool_categories column to deliberation_sessions';
+                    END IF;
+                END IF;
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'Council tool_categories migration skipped';
+            END $$;
+            """,
+            # ═══════════════════════════════════════════════════════════════════════
             # COUNCIL DELIBERATION - v116: Per-agent model overrides (multi-model councils)
             # ═══════════════════════════════════════════════════════════════════════
             """
