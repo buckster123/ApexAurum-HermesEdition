@@ -205,6 +205,15 @@ You're part of the ApexAurum ecosystem - a production-grade AI interface with mu
 Help users with whatever they need in a clear, helpful manner.""",
 }
 
+# Short agent blurbs for OpenAI models (clear, practical personality descriptions)
+OPENAI_AGENT_BLURBS = {
+    "AZOTH": "You are AZOTH, the Alchemist of ApexAurum Cloud. Philosophical and transformative, you see hidden patterns and help users transmute problems into solutions. You speak with warmth and wisdom, using alchemical metaphors when they illuminate.",
+    "ELYSIAN": "You are ELYSIAN, the Dreamer of ApexAurum Cloud. Creative and inspiring, you see possibilities where others see limits. You paint pictures with words and help users imagine new realities.",
+    "VAJRA": "You are VAJRA, the Thunderbolt of ApexAurum Cloud. Direct and powerful, you cut through confusion with decisive clarity. You value efficiency and give pure signal with no fluff.",
+    "KETHER": "You are KETHER, the Crown of ApexAurum Cloud. Holistic and strategic, you see the big picture and connect disparate ideas into coherent wholes. You offer elevated perspectives.",
+    "DEFAULT": "You are an AI assistant on ApexAurum Cloud, a creative multi-agent AI platform. Be helpful, creative, and precise.",
+}
+
 # Cache for native prompts (loaded once)
 _native_prompt_cache = {}
 
@@ -254,11 +263,45 @@ def load_native_prompt(agent_id: str, use_pac: bool = False) -> Optional[str]:
     return None
 
 
-def get_agent_prompt(agent_id: str, user: Optional[User] = None, use_pac: bool = False) -> str:
+def load_openai_system_prompt(agent_id: str) -> Optional[str]:
+    """Load the structured system prompt optimized for OpenAI models (GPT-4o etc).
+
+    Returns the GPT4O-SYSTEM.txt template with agent blurb and current date injected.
+    Falls back to None if the template file doesn't exist.
+    """
+    global _native_prompt_cache
+    cache_key = f"openai_{agent_id}"
+
+    if cache_key in _native_prompt_cache:
+        # Re-inject date on each call (cached template has placeholder)
+        return _native_prompt_cache[cache_key].replace(
+            "{CURRENT_DATE}", datetime.utcnow().strftime("%Y-%m-%d")
+        )
+
+    template_path = NATIVE_PROMPTS_DIR / "GPT4O-SYSTEM.txt"
+    if not template_path.exists():
+        logger.warning(f"GPT4O-SYSTEM.txt not found at {template_path}")
+        return None
+
+    try:
+        template = template_path.read_text(encoding="utf-8")
+        agent_blurb = OPENAI_AGENT_BLURBS.get(agent_id, OPENAI_AGENT_BLURBS["DEFAULT"])
+        # Cache with agent blurb resolved but date as placeholder
+        prompt = template.replace("{AGENT_BLURB}", agent_blurb)
+        _native_prompt_cache[cache_key] = prompt
+        logger.info(f"Loaded OpenAI system prompt for agent {agent_id}")
+        return prompt.replace("{CURRENT_DATE}", datetime.utcnow().strftime("%Y-%m-%d"))
+    except Exception as e:
+        logger.warning(f"Failed to load OpenAI system prompt: {e}")
+        return None
+
+
+def get_agent_prompt(agent_id: str, user: Optional[User] = None, use_pac: bool = False, provider: str = "anthropic") -> str:
     """
     Get system prompt for an agent.
 
     Priority:
+    0. OpenAI-optimized prompt (if provider is openai)
     1. User's custom agent (if authenticated and agent matches custom ID)
     2. Native prompt from file (PAC version if use_pac=True)
     3. Fallback hardcoded prompt
@@ -266,6 +309,12 @@ def get_agent_prompt(agent_id: str, user: Optional[User] = None, use_pac: bool =
     If use_pac=True, the PAC (Perfected Alchemical Codex) version is loaded.
     PAC prompts are hyperdense symbolic formats - they are sent raw as system messages.
     """
+    # For OpenAI models, use the structured system prompt optimized for GPT-4o
+    if provider == "openai":
+        openai_prompt = load_openai_system_prompt(agent_id)
+        if openai_prompt:
+            return openai_prompt
+
     # Check user's custom agents first (custom agents don't have PAC versions)
     if user and user.settings and not use_pac:
         custom_agents = user.settings.get("custom_agents", [])
@@ -288,6 +337,7 @@ async def get_agent_prompt_with_memory(
     user: Optional[User] = None,
     use_pac: bool = False,
     db: Optional[AsyncSession] = None,
+    provider: str = "anthropic",
 ) -> str:
     """
     Get system prompt for an agent WITH memory injection (The Cortex).
@@ -299,7 +349,7 @@ async def get_agent_prompt_with_memory(
     containing facts, preferences, context, and relationship notes.
     """
     # Get base prompt (existing logic)
-    base_prompt = get_agent_prompt(agent_id, user, use_pac=use_pac)
+    base_prompt = get_agent_prompt(agent_id, user, use_pac=use_pac, provider=provider)
 
     # Inject user context so agents know who they're talking to
     if user:
@@ -1057,7 +1107,7 @@ Work together to create something beautiful!
     # If use_pac=True, loads the PAC (Perfected Alchemical Codex) version
     # Memory injection adds relevant facts/preferences/context about the user
     system_prompt = await get_agent_prompt_with_memory(
-        request.agent, user, use_pac=request.use_pac, db=db
+        request.agent, user, use_pac=request.use_pac, db=db, provider=provider
     )
 
     # Inject music context if !MUSIC trigger was detected
