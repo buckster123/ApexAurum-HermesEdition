@@ -50,7 +50,7 @@ PRICING: Dict[str, Dict[str, Dict[str, float]]] = {
 
     # OpenAI models
     "openai": {
-        "gpt-4o-2024-05-13": {
+        "gpt-4o-2024-08-06": {
             "input": 2.50,    # $2.50 per 1M input tokens
             "output": 10.00,  # $10 per 1M output tokens
         },
@@ -142,7 +142,7 @@ PRICING: Dict[str, Dict[str, Dict[str, float]]] = {
 
     # OpenAI (for reference, not currently used)
     "openai": {
-        "gpt-4o-2024-05-13": {
+        "gpt-4o-2024-08-06": {
             "input": 2.50,
             "output": 10.00,
         },
