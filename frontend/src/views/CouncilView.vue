@@ -8,7 +8,7 @@
 
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useCouncilStore, AGENT_COLORS, AVAILABLE_AGENTS, AVAILABLE_MODELS, DEPRECATED_MODELS } from '@/stores/council'
+import { useCouncilStore, AGENT_COLORS, AVAILABLE_AGENTS, AVAILABLE_MODELS, COUNCIL_MODELS, DEPRECATED_MODELS } from '@/stores/council'
 import AgentCard from '@/components/council/AgentCard.vue'
 
 const router = useRouter()
@@ -171,8 +171,10 @@ function getAgentColor(agentId) {
 }
 
 function getModelName(modelId) {
+  if (!modelId) return null
   const model = AVAILABLE_MODELS.find(m => m.id === modelId)
-  return model ? model.name : 'Haiku 4.5'
+    || COUNCIL_MODELS.find(m => m.id === modelId)
+  return model ? model.name : modelId
 }
 
 function formatDate(dateStr) {
@@ -337,30 +339,48 @@ function getStateClass(state) {
                 Select Agents ({{ council.newSessionAgents.length }} selected)
               </label>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
+                <div
                   v-for="agent in AVAILABLE_AGENTS"
                   :key="agent.id"
-                  @click="council.toggleAgent(agent.id)"
                   :class="[
-                    'p-3 rounded-lg border-2 text-left transition-all',
+                    'p-3 rounded-lg border-2 text-left transition-all cursor-pointer',
                     council.newSessionAgents.includes(agent.id)
                       ? 'border-gold bg-gold/10'
                       : 'border-apex-border hover:border-gray-600'
                   ]"
                 >
-                  <div class="flex items-center gap-3">
+                  <div class="flex items-center gap-3" @click="council.toggleAgent(agent.id)">
                     <div
                       class="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold"
                       :style="{ backgroundColor: AGENT_COLORS[agent.id] + '30', color: AGENT_COLORS[agent.id] }"
                     >
                       {{ agent.id[0] }}
                     </div>
-                    <div>
+                    <div class="flex-1">
                       <p class="font-medium text-white">{{ agent.name }}</p>
                       <p class="text-xs text-gray-400">{{ agent.description }}</p>
                     </div>
                   </div>
-                </button>
+                  <!-- Per-agent model override (shown when agent is selected) -->
+                  <select
+                    v-if="council.newSessionAgents.includes(agent.id)"
+                    :value="council.agentModelOverrides[agent.id]?.model || ''"
+                    @click.stop
+                    @change="council.setAgentModel(
+                      agent.id,
+                      $event.target.value,
+                      COUNCIL_MODELS.find(m => m.id === $event.target.value)?.provider
+                    )"
+                    class="mt-2 w-full text-xs bg-apex-dark border border-apex-border rounded px-2 py-1 text-gray-400 focus:outline-none focus:border-gold"
+                  >
+                    <option value="">Session default ({{ getModelName(council.newSessionModel) }})</option>
+                    <optgroup v-for="provider in ['anthropic', 'openai', 'deepseek', 'groq', 'qwen', 'moonshot']" :key="provider" :label="provider.charAt(0).toUpperCase() + provider.slice(1)">
+                      <option v-for="m in COUNCIL_MODELS.filter(m => m.provider === provider)" :key="m.id" :value="m.id">
+                        {{ m.name }}
+                      </option>
+                    </optgroup>
+                  </select>
+                </div>
               </div>
 
               <!-- Custom Agents -->
@@ -410,7 +430,7 @@ function getStateClass(state) {
             <!-- Model Selection -->
             <div>
               <label class="block text-sm font-medium text-gray-300 mb-2">
-                Model for Deliberation
+                Default Model <span class="text-xs text-gray-500 font-normal">(agents without override)</span>
               </label>
               <!-- Current Models -->
               <div class="grid grid-cols-3 gap-2 mb-3">
@@ -616,6 +636,7 @@ function getStateClass(state) {
               :style="{ backgroundColor: getAgentColor(agent.agent_id) + '20', color: getAgentColor(agent.agent_id) }"
             >
               <span class="font-medium">{{ agent.agent_id }}</span>
+              <span v-if="agent.model" class="text-[10px] opacity-50">{{ getModelName(agent.model) }}</span>
               <span class="text-xs opacity-70">{{ agent.input_tokens + agent.output_tokens }} tok</span>
               <!-- Remove button (only if not complete and more than 1 active agent) -->
               <button

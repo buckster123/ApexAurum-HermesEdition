@@ -35,6 +35,7 @@ from app.services.claude import (
 )
 from app.services.billing import BillingService
 from app.services.tool_executor import create_tool_executor
+from app.services.llm_provider import create_llm_service, PROVIDER_MODELS
 from app.config import get_settings
 from app.api.v1.chat import load_native_prompt, get_agent_prompt_with_memory  # Reuse prompt loading + memory
 from app.services.neural_memory import NeuralMemoryService
@@ -101,6 +102,26 @@ def get_claude_service() -> ClaudeService:
     return _claude_service
 
 
+def get_agent_llm(agent: "SessionAgent", session: "DeliberationSession"):
+    """Create LLM service for a specific agent.
+
+    Returns ClaudeService for Anthropic agents (reuses singleton),
+    MultiProviderLLM for other providers. Both share identical
+    chat()/chat_stream() interfaces.
+    """
+    provider = agent.provider or "anthropic"
+    if provider == "anthropic":
+        return get_claude_service()
+    return create_llm_service(provider=provider)
+
+
+def validate_agent_model(model: str, provider: str) -> bool:
+    """Check if a model is valid for the given provider."""
+    if provider in PROVIDER_MODELS:
+        return model in PROVIDER_MODELS[provider]
+    return False
+
+
 # ============================================================================
 # Schemas
 # ============================================================================
@@ -109,12 +130,22 @@ class CustomAgentDef(BaseModel):
     agent_id: str
     display_name: Optional[str] = None
     persona: str  # Custom system prompt
+    model: Optional[str] = None      # Per-agent model override
+    provider: Optional[str] = None   # Per-agent provider override
+
+
+class AgentModelOverride(BaseModel):
+    """Per-agent model override for native agents."""
+    agent_id: str
+    model: str
+    provider: str = "anthropic"
 
 
 class CreateSessionRequest(BaseModel):
     topic: str
     agents: list[str] = ["AZOTH", "VAJRA", "ELYSIAN"]
     custom_agents: list[CustomAgentDef] = []
+    agent_models: list[AgentModelOverride] = []  # Per-agent model overrides for native agents
     max_rounds: int = 10
     use_tools: bool = True  # Tools always on for native agents (The Athanor's Hands)
     model: str = "claude-haiku-4-5-20251001"  # Default to fast Haiku
@@ -126,6 +157,8 @@ class AgentInfo(BaseModel):
     is_active: bool
     input_tokens: int
     output_tokens: int
+    model: Optional[str] = None
+    provider: Optional[str] = None
 
 
 class SessionResponse(BaseModel):
@@ -323,22 +356,37 @@ async def create_session(
                 }
             )
 
-        # Validate model - only models actually available on Anthropic API
-        valid_models = [
-            # Current 4.5 family
-            "claude-haiku-4-5-20251001",
-            "claude-sonnet-4-5-20250929",
-            "claude-opus-4-5-20251101",
-            # Legacy 4.x family (still available)
-            "claude-opus-4-1-20250805",
-            "claude-opus-4-20250514",
-            "claude-sonnet-4-20250514",
-            # Claude 3.7 (still available)
-            "claude-3-7-sonnet-20250219",
-            # Vintage 3.0 (only Haiku still available)
-            "claude-3-haiku-20240307",
-        ]
-        model = request.model if request.model in valid_models else COUNCIL_MODEL
+        # Validate session-level model (must be Anthropic)
+        anthropic_models = PROVIDER_MODELS.get("anthropic", {})
+        model = request.model if request.model in anthropic_models else COUNCIL_MODEL
+
+        # Validate per-agent model overrides
+        for am in request.agent_models:
+            if am.provider not in PROVIDER_MODELS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unknown provider: {am.provider}. Available: {list(PROVIDER_MODELS.keys())}"
+                )
+            if not validate_agent_model(am.model, am.provider):
+                available = list(PROVIDER_MODELS[am.provider].keys())
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid model '{am.model}' for provider '{am.provider}'. Available: {available}"
+                )
+
+        for custom in request.custom_agents:
+            if custom.provider and custom.model:
+                if custom.provider not in PROVIDER_MODELS:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Unknown provider: {custom.provider}. Available: {list(PROVIDER_MODELS.keys())}"
+                    )
+                if not validate_agent_model(custom.model, custom.provider):
+                    available = list(PROVIDER_MODELS[custom.provider].keys())
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Invalid model '{custom.model}' for provider '{custom.provider}'. Available: {available}"
+                    )
 
         # Create session
         session = DeliberationSession(
@@ -356,10 +404,13 @@ async def create_session(
         # Add agents (don't use relationship append - causes lazy loading in async)
         agents_data = []
         for agent_id in request.agents:
+            override = next((am for am in request.agent_models if am.agent_id == agent_id), None)
             agent = SessionAgent(
                 session_id=session.id,
                 agent_id=agent_id,
                 display_name=agent_id,
+                model=override.model if override else None,
+                provider=override.provider if override else None,
                 is_active=True,
             )
             db.add(agent)
@@ -372,6 +423,8 @@ async def create_session(
                 agent_id=custom.agent_id,
                 display_name=custom.display_name or custom.agent_id,
                 persona_override=custom.persona,
+                model=custom.model,
+                provider=custom.provider,
                 is_active=True,
             )
             db.add(agent)
@@ -412,6 +465,8 @@ async def create_session(
                     is_active=a.is_active,
                     input_tokens=a.input_tokens,
                     output_tokens=a.output_tokens,
+                    model=a.model,
+                    provider=a.provider,
                 )
                 for a in session.agents
             ],
@@ -462,6 +517,8 @@ async def list_sessions(
                         is_active=a.is_active,
                         input_tokens=a.input_tokens,
                         output_tokens=a.output_tokens,
+                        model=a.model,
+                        provider=a.provider,
                     )
                     for a in s.agents
                 ],
@@ -515,6 +572,8 @@ async def get_session(
                 is_active=a.is_active,
                 input_tokens=a.input_tokens,
                 output_tokens=a.output_tokens,
+                model=a.model,
+                provider=a.provider,
             )
             for a in session.agents
         ],
@@ -608,7 +667,6 @@ async def execute_round(
     active_agents = [a for a in session.agents if a.is_active]
 
     # Pre-load agent prompts and village memories sequentially
-    claude = get_claude_service()
     agent_prompts = {}
     agent_village_memories = {}
     for agent in active_agents:
@@ -649,9 +707,10 @@ async def execute_round(
     # Execute all agents in parallel (prompts pre-loaded, no DB contention)
     tasks = []
     for agent in active_agents:
+        llm = get_agent_llm(agent, session)
         tasks.append(
             execute_agent_turn(
-                claude, session, round_record, agent, context, db, user=user,
+                llm, session, round_record, agent, context, db, user=user,
                 base_prompt=agent_prompts.get(agent.agent_id),
                 village_memory_block=agent_village_memories.get(agent.agent_id, ""),
             )
@@ -730,17 +789,22 @@ async def execute_round(
 
     await db.commit()
 
-    # Record billing
-    if settings.stripe_secret_key and (total_round_input > 0 or total_round_output > 0):
+    # Record per-agent billing (correct provider/model per agent)
+    if settings.stripe_secret_key:
         try:
             billing = BillingService(db)
-            await billing.record_message_usage(
-                user_id=user.id,
-                provider="anthropic",
-                model=session.model or COUNCIL_MODEL,
-                input_tokens=total_round_input,
-                output_tokens=total_round_output,
-            )
+            for i, result in enumerate(agent_results):
+                agent = active_agents[i]
+                if not isinstance(result, Exception) and (result["input_tokens"] > 0 or result["output_tokens"] > 0):
+                    agent_provider = agent.provider or "anthropic"
+                    agent_model = agent.model or session.model or COUNCIL_MODEL
+                    await billing.record_message_usage(
+                        user_id=user.id,
+                        provider=agent_provider,
+                        model=agent_model,
+                        input_tokens=result["input_tokens"],
+                        output_tokens=result["output_tokens"],
+                    )
             await db.commit()
         except Exception as e:
             logger.error(f"Failed to record council billing: {e}")
@@ -1032,7 +1096,6 @@ async def auto_deliberate(
         session.state = "running"
         await db.commit()
 
-        claude = get_claude_service()
         rounds_executed = 0
         total_session_input = 0
         total_session_output = 0
@@ -1127,9 +1190,10 @@ async def auto_deliberate(
             # Execute all agents in parallel (prompts pre-loaded, no DB contention)
             tasks = []
             for agent in active_agents:
+                llm = get_agent_llm(agent, session)
                 tasks.append(
                     execute_agent_turn(
-                        claude, session, round_record, agent, context, db, user=user,
+                        llm, session, round_record, agent, context, db, user=user,
                         base_prompt=agent_prompts.get(agent.agent_id),
                         village_memory_block=agent_village_memories.get(agent.agent_id, ""),
                     )
@@ -1215,6 +1279,26 @@ async def auto_deliberate(
             # Yield round complete event
             yield f"data: {json.dumps({'type': 'round_complete', 'round_number': round_number, 'convergence_score': convergence_score, 'cost_usd': round_cost, 'total_cost_usd': session.total_cost_usd})}\n\n"
 
+            # Record per-agent billing
+            if settings.stripe_secret_key:
+                try:
+                    billing = BillingService(db)
+                    for i, result in enumerate(agent_results):
+                        agent = active_agents[i]
+                        if not isinstance(result, Exception) and (result["input_tokens"] > 0 or result["output_tokens"] > 0):
+                            agent_provider = agent.provider or "anthropic"
+                            agent_model = agent.model or session.model or COUNCIL_MODEL
+                            await billing.record_message_usage(
+                                user_id=user.id,
+                                provider=agent_provider,
+                                model=agent_model,
+                                input_tokens=result["input_tokens"],
+                                output_tokens=result["output_tokens"],
+                            )
+                    await db.commit()
+                except Exception as e:
+                    logger.error(f"Failed to record council billing: {e}")
+
             # Check for consensus (auto-stop if high convergence)
             if convergence_score >= 0.8:
                 session.state = "complete"
@@ -1262,20 +1346,8 @@ async def auto_deliberate(
 
         await db.commit()
 
-        # Record billing for entire auto-deliberation
-        if settings.stripe_secret_key and (total_session_input > 0 or total_session_output > 0):
-            try:
-                billing = BillingService(db)
-                await billing.record_message_usage(
-                    user_id=user.id,
-                    provider="anthropic",
-                    model=session.model or COUNCIL_MODEL,
-                    input_tokens=total_session_input,
-                    output_tokens=total_session_output,
-                )
-                await db.commit()
-            except Exception as e:
-                logger.error(f"Failed to record council billing: {e}")
+        # Note: Billing is now recorded per-agent per-round inline (see above)
+        # No need for session-level billing here
 
         # End event
         yield f"data: {json.dumps({'type': 'end', 'state': session.state, 'total_rounds': session.current_round, 'rounds_executed': rounds_executed, 'total_cost_usd': session.total_cost_usd, 'termination_reason': session.termination_reason})}\n\n"
@@ -1494,7 +1566,7 @@ def build_round_context(session: DeliberationSession, round_number: int, human_m
 
 
 async def execute_agent_turn(
-    claude: ClaudeService,
+    llm,  # ClaudeService or MultiProviderLLM (duck-typed, both share chat() interface)
     session: DeliberationSession,
     round_record: DeliberationRound,
     agent: SessionAgent,
@@ -1593,11 +1665,11 @@ Guidelines:
     all_tool_calls = []  # Track all tool calls for feedback
     max_tool_turns = 3  # Limit tool turns per agent per round
 
-    # Use session's model (falls back to COUNCIL_MODEL if not set)
-    model = getattr(session, 'model', None) or COUNCIL_MODEL
+    # Use agent's model override, then session model, then default
+    model = agent.model or getattr(session, 'model', None) or COUNCIL_MODEL
 
     for turn in range(max_tool_turns):
-        response = await claude.chat(
+        response = await llm.chat(
             messages=messages,
             model=model,
             system=system_prompt,
@@ -1660,7 +1732,7 @@ Guidelines:
 
 
 async def execute_agent_turn_streaming(
-    claude: ClaudeService,
+    llm,  # ClaudeService or MultiProviderLLM (duck-typed, both share chat_stream() interface)
     session: DeliberationSession,
     round_record: DeliberationRound,
     agent: SessionAgent,
@@ -1753,7 +1825,7 @@ Guidelines:
         )
         tools = tool_executor.get_available_tools()
 
-    model = getattr(session, 'model', None) or COUNCIL_MODEL
+    model = agent.model or getattr(session, 'model', None) or COUNCIL_MODEL
     user_message = f"Round {round_record.round_number}: Share your perspective on the current state of the discussion."
     messages = [{"role": "user", "content": user_message}]
 
@@ -1769,7 +1841,7 @@ Guidelines:
         assistant_text_blocks = []
         current_text = ""
 
-        async for event in claude.chat_stream(
+        async for event in llm.chat_stream(
             messages=messages, model=model,
             system=system_prompt, tools=tools,
         ):

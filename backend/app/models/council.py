@@ -72,6 +72,10 @@ class SessionAgent(Base):
     persona_override: Mapped[Optional[str]] = mapped_column(Text)  # Override system prompt for this session
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Per-agent model override (nullable = falls back to session model)
+    model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
     # Mid-session join/leave tracking
     joined_at_round: Mapped[Optional[int]] = mapped_column(Integer, default=0)  # Round when agent joined (0 = from start)
     left_at_round: Mapped[Optional[int]] = mapped_column(Integer)  # Round when agent left (None = still active)

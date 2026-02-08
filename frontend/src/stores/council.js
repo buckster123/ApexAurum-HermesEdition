@@ -40,6 +40,27 @@ export const AVAILABLE_MODELS = [
   { id: 'claude-3-haiku-20240307', name: 'Haiku 3', description: 'Vintage - Quick & charming', legacy: true },
 ]
 
+// Multi-provider models for per-agent overrides
+export const COUNCIL_MODELS = [
+  // Anthropic
+  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', provider: 'anthropic', description: 'Fast & efficient' },
+  { id: 'claude-sonnet-4-5-20250929', name: 'Sonnet 4.5', provider: 'anthropic', description: 'Balanced' },
+  { id: 'claude-opus-4-5-20251101', name: 'Opus 4.5', provider: 'anthropic', description: 'Max capability' },
+  // OpenAI
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', description: 'OpenAI flagship' },
+  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', description: 'Fast & cheap' },
+  { id: 'gpt-5', name: 'GPT-5', provider: 'openai', description: 'Next-gen reasoning' },
+  { id: 'gpt-5-mini', name: 'GPT-5 Mini', provider: 'openai', description: 'Fast GPT-5' },
+  // DeepSeek
+  { id: 'deepseek-chat', name: 'DeepSeek V3', provider: 'deepseek', description: 'DeepSeek reasoning' },
+  // Groq
+  { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', provider: 'groq', description: 'Fast open-source' },
+  // Qwen
+  { id: 'qwen3-max', name: 'Qwen3 Max', provider: 'qwen', description: 'Alibaba flagship' },
+  // Moonshot
+  { id: 'kimi-k2.5', name: 'Kimi K2.5', provider: 'moonshot', description: '1T MoE flagship' },
+]
+
 // Deprecated models - for memorial display only (not selectable)
 export const DEPRECATED_MODELS = [
   {
@@ -78,6 +99,7 @@ export const useCouncilStore = defineStore('council', () => {
   const newSessionMaxRounds = ref(200)  // Session ceiling (hidden from user)
   const newSessionModel = ref('claude-haiku-4-5-20251001')
   const newSessionCustomAgents = ref([])  // [{id, name, persona}]
+  const agentModelOverrides = ref({})  // {agentId: {model, provider}}
 
   // Auto-deliberation state
   const isAutoDeliberating = ref(false)
@@ -174,7 +196,16 @@ export const useCouncilStore = defineStore('council', () => {
           agent_id: a.id,
           display_name: a.name,
           persona: a.persona,
+          model: a.model || null,
+          provider: a.provider || null,
         })),
+        agent_models: Object.entries(agentModelOverrides.value)
+          .filter(([_, v]) => v && v.model)
+          .map(([agentId, v]) => ({
+            agent_id: agentId,
+            model: v.model,
+            provider: v.provider || 'anthropic',
+          })),
         max_rounds: newSessionMaxRounds.value,
         model: newSessionModel.value,
         use_tools: true,  // Tools always on for native agents
@@ -188,6 +219,7 @@ export const useCouncilStore = defineStore('council', () => {
       // Clear form
       newSessionTopic.value = ''
       newSessionCustomAgents.value = []
+      agentModelOverrides.value = {}
 
       return session
     } catch (e) {
@@ -267,6 +299,8 @@ export const useCouncilStore = defineStore('council', () => {
       // Don't remove if it's the last agent
       if (newSessionAgents.value.length > 1) {
         newSessionAgents.value.splice(index, 1)
+        // Clear model override when deselecting
+        delete agentModelOverrides.value[agentId]
       }
     } else {
       newSessionAgents.value.push(agentId)
@@ -275,6 +309,26 @@ export const useCouncilStore = defineStore('council', () => {
 
   function clearError() {
     error.value = null
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // PER-AGENT MODEL OVERRIDES
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  function setAgentModel(agentId, model, provider) {
+    if (!model) {
+      delete agentModelOverrides.value[agentId]
+    } else {
+      agentModelOverrides.value[agentId] = { model, provider: provider || 'anthropic' }
+    }
+  }
+
+  function clearAgentModel(agentId) {
+    delete agentModelOverrides.value[agentId]
+  }
+
+  function getAgentModel(agentId) {
+    return agentModelOverrides.value[agentId] || null
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
@@ -776,6 +830,7 @@ export const useCouncilStore = defineStore('council', () => {
     newSessionMaxRounds,
     newSessionModel,
     newSessionCustomAgents,
+    agentModelOverrides,
     // Auto-deliberation state
     isAutoDeliberating,
     streamingRound,
@@ -797,6 +852,10 @@ export const useCouncilStore = defineStore('council', () => {
     clearMemorial,
     toggleAgent,
     clearError,
+    // Per-agent model actions
+    setAgentModel,
+    clearAgentModel,
+    getAgentModel,
     // Agent management actions
     addAgentToSession,
     removeAgentFromSession,

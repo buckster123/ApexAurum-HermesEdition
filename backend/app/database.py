@@ -409,6 +409,28 @@ async def init_db():
             END $$;
             """,
             # ═══════════════════════════════════════════════════════════════════════
+            # COUNCIL DELIBERATION - v116: Per-agent model overrides (multi-model councils)
+            # ═══════════════════════════════════════════════════════════════════════
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'session_agents') THEN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'session_agents' AND column_name = 'model') THEN
+                        ALTER TABLE session_agents ADD COLUMN model VARCHAR(100);
+                        RAISE NOTICE 'Added model column to session_agents';
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'session_agents' AND column_name = 'provider') THEN
+                        ALTER TABLE session_agents ADD COLUMN provider VARCHAR(50);
+                        RAISE NOTICE 'Added provider column to session_agents';
+                    END IF;
+                END IF;
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'Council per-agent model migration skipped';
+            END $$;
+            """,
+            # ═══════════════════════════════════════════════════════════════════════
             # COUPONS - v77: Promotional coupons system
             # Create coupons and coupon_redemptions tables
             # ═══════════════════════════════════════════════════════════════════════

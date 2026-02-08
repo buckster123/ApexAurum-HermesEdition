@@ -23,29 +23,22 @@ from app.models.user import User
 from app.models.council import (
     DeliberationSession, SessionAgent, DeliberationRound, SessionMessage
 )
-from app.services.claude import ClaudeService
 from app.api.v1.council import (
     execute_agent_turn_streaming,
     build_round_context,
     check_convergence,
     store_council_memories,
+    get_agent_llm,
     COUNCIL_MODEL,
 )
+from app.services.billing import BillingService
+from app.config import get_settings
 from app.api.v1.chat import load_native_prompt, get_agent_prompt_with_memory
 from app.services.neural_memory import NeuralMemoryService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Council WebSocket"])
-
-# Singleton ClaudeService for council WS
-_claude_service = None
-
-
-def get_claude_service() -> ClaudeService:
-    global _claude_service
-    if _claude_service is None:
-        _claude_service = ClaudeService()
-    return _claude_service
+settings = get_settings()
 
 
 async def authenticate_ws(websocket: WebSocket) -> User | None:
@@ -231,8 +224,6 @@ async def run_streaming_deliberation(
     All agents run in parallel. Token events are sent to the WebSocket
     as they arrive from each agent's stream.
     """
-    claude = get_claude_service()
-
     async with async_session() as db:
         # Load session with relationships
         result = await db.execute(
@@ -382,9 +373,10 @@ async def run_streaming_deliberation(
                 # Run all agents in parallel (prompts pre-loaded, no DB contention)
                 tasks = []
                 for agent in active_agents:
+                    llm = get_agent_llm(agent, session)
                     tasks.append(
                         execute_agent_turn_streaming(
-                            claude, session, round_record, agent, context, db,
+                            llm, session, round_record, agent, context, db,
                             on_token=on_token, on_tool=on_tool, user=user,
                             base_prompt=agent_prompts.get(agent.agent_id),
                             village_memory_block=agent_village_memories.get(agent.agent_id, ""),
@@ -477,6 +469,24 @@ async def run_streaming_deliberation(
                     "cost_usd": round_cost,
                     "total_cost_usd": session.total_cost_usd,
                 })
+
+                # Record per-agent billing
+                if settings.stripe_secret_key:
+                    try:
+                        billing = BillingService(db)
+                        for i, ar in enumerate(agent_results):
+                            a = active_agents[i]
+                            if not isinstance(ar, Exception) and (ar["input_tokens"] > 0 or ar["output_tokens"] > 0):
+                                await billing.record_message_usage(
+                                    user_id=user.id,
+                                    provider=a.provider or "anthropic",
+                                    model=a.model or session.model or COUNCIL_MODEL,
+                                    input_tokens=ar["input_tokens"],
+                                    output_tokens=ar["output_tokens"],
+                                )
+                        await db.commit()
+                    except Exception as e:
+                        logger.error(f"Failed to record council WS billing: {e}")
 
                 # Consensus detection
                 if convergence_score >= 0.8:
