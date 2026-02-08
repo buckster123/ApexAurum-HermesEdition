@@ -83,7 +83,9 @@ Returns folder IDs, file names, sizes, and types.""",
             async with async_session() as db:
                 user_uuid = UUID(context.user_id) if isinstance(context.user_id, str) else context.user_id
 
-                # Get folder by ID, path, or root
+                # Resolve target folder — None means virtual root
+                folder = None
+
                 if folder_id:
                     folder_uuid = UUID(folder_id)
                     folder_result = await db.execute(
@@ -96,21 +98,24 @@ Returns folder IDs, file names, sizes, and types.""",
                     if not folder:
                         return ToolResult(success=False, error=f"Folder not found: {folder_id}")
                 elif path:
-                    # Resolve path from root: e.g. "code/src/utils"
-                    # Start at root folder
-                    folder_result = await db.execute(
+                    # Resolve path from root: e.g. "code" or "code/src/utils"
+                    segments = [s for s in path.strip("/").split("/") if s]
+                    # First segment is a top-level folder (parent_id = NULL)
+                    first_result = await db.execute(
                         select(Folder).where(
                             Folder.user_id == user_uuid,
-                            Folder.parent_id == None  # noqa: E711
+                            Folder.parent_id == None,  # noqa: E711
+                            Folder.name == segments[0]
                         )
                     )
-                    folder = folder_result.scalar_one_or_none()
+                    folder = first_result.scalar_one_or_none()
                     if not folder:
-                        return ToolResult(success=False, error="Root folder not found")
-
-                    # Walk each path segment
-                    segments = [s for s in path.strip("/").split("/") if s]
-                    for segment in segments:
+                        return ToolResult(
+                            success=False,
+                            error=f"Folder not found: '{segments[0]}' in path '{path}'"
+                        )
+                    # Walk remaining segments
+                    for segment in segments[1:]:
                         child_result = await db.execute(
                             select(Folder).where(
                                 Folder.parent_id == folder.id,
@@ -125,37 +130,42 @@ Returns folder IDs, file names, sizes, and types.""",
                                 error=f"Folder not found: '{segment}' in path '{path}'"
                             )
                         folder = child
+
+                # List contents — root is virtual (NULL parent/folder_id)
+                if folder:
+                    # Inside a specific folder
+                    subfolders_result = await db.execute(
+                        select(Folder).where(
+                            Folder.parent_id == folder.id,
+                            Folder.user_id == user_uuid
+                        )
+                    )
+                    files_result = await db.execute(
+                        select(File).where(
+                            File.folder_id == folder.id,
+                            File.user_id == user_uuid
+                        )
+                    )
+                    result_folder_id = str(folder.id)
+                    result_folder_name = folder.name
                 else:
-                    # Get root folder
-                    folder_result = await db.execute(
+                    # Virtual root: folders with parent_id=NULL, files with folder_id=NULL
+                    subfolders_result = await db.execute(
                         select(Folder).where(
                             Folder.user_id == user_uuid,
                             Folder.parent_id == None  # noqa: E711
                         )
                     )
-                    folder = folder_result.scalar_one_or_none()
-                    if not folder:
-                        return ToolResult(
-                            success=True,
-                            result={"folder_id": "root", "folders": [], "files": [], "total_items": 0}
+                    files_result = await db.execute(
+                        select(File).where(
+                            File.user_id == user_uuid,
+                            File.folder_id == None  # noqa: E711
                         )
-
-                # Get subfolders
-                subfolders_result = await db.execute(
-                    select(Folder).where(
-                        Folder.parent_id == folder.id,
-                        Folder.user_id == user_uuid
                     )
-                )
+                    result_folder_id = "root"
+                    result_folder_name = "/"
+
                 subfolders = subfolders_result.scalars().all()
-
-                # Get files in folder
-                files_result = await db.execute(
-                    select(File).where(
-                        File.folder_id == folder.id,
-                        File.user_id == user_uuid
-                    )
-                )
                 files = files_result.scalars().all()
 
                 folders_list = [
@@ -176,8 +186,8 @@ Returns folder IDs, file names, sizes, and types.""",
                 return ToolResult(
                     success=True,
                     result={
-                        "folder_id": str(folder.id),
-                        "folder_name": folder.name,
+                        "folder_id": result_folder_id,
+                        "folder_name": result_folder_name,
                         "folders": folders_list,
                         "files": files_list,
                         "total_items": len(folders_list) + len(files_list),
