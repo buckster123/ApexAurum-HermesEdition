@@ -13,6 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy.orm.attributes import flag_modified
+
 from app.database import get_db
 from app.models.user import User
 from app.auth.deps import get_current_user_optional
@@ -230,8 +232,8 @@ async def save_custom_prompt(
 
     if user:
         # Persist to user settings
-        settings = user.settings or {}
-        custom_agents = settings.get("custom_agents", [])
+        settings = dict(user.settings or {})  # shallow copy to ensure new reference
+        custom_agents = list(settings.get("custom_agents", []))  # copy list too
 
         # Check if updating existing agent
         existing_idx = next((i for i, a in enumerate(custom_agents) if a.get("id") == agent_id), None)
@@ -243,6 +245,7 @@ async def save_custom_prompt(
 
         settings["custom_agents"] = custom_agents
         user.settings = settings
+        flag_modified(user, "settings")
         await db.commit()
 
     return CustomAgentResponse(**agent_data)
@@ -263,7 +266,7 @@ async def delete_custom_prompt(
             detail="Must be logged in to delete custom agents"
         )
 
-    settings = user.settings or {}
+    settings = dict(user.settings or {})  # shallow copy for change detection
     custom_agents = settings.get("custom_agents", [])
 
     # Find and remove agent
@@ -277,6 +280,7 @@ async def delete_custom_prompt(
 
     settings["custom_agents"] = new_agents
     user.settings = settings
+    flag_modified(user, "settings")
     await db.commit()
 
     return {"message": f"Custom agent '{agent_id}' deleted"}

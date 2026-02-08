@@ -823,10 +823,10 @@ function renderMarkdown(content) {
           </div>
         </div>
 
-        <!-- Regular Agents -->
+        <!-- Native Agents -->
         <div class="flex flex-wrap gap-1">
           <button
-            v-for="agent in allAgents.filter(a => !a.isPac)"
+            v-for="agent in nativeAgents"
             :key="agent.id"
             @click="selectAgent(agent.id)"
             class="p-2 rounded text-center transition-all text-xs min-w-[2.5rem]"
@@ -835,13 +835,30 @@ function renderMarkdown(content) {
               color: selectedAgent === agent.id ? agent.color : '#9ca3af',
               boxShadow: selectedAgent === agent.id ? `inset 0 0 0 1px ${agent.color}` : 'none',
             }"
-            :title="agent.name + (agent.isNative ? '' : ' (Custom)')"
+            :title="agent.name"
           >
-            {{ agent.symbol || '+' }}{{ agent.name.charAt(0) }}
+            {{ agent.symbol }}{{ agent.name.charAt(0) }}
           </button>
         </div>
-        <div v-if="customAgents.length > 0" class="mt-2 text-xs text-gray-500">
-          + {{ customAgents.length }} custom
+
+        <!-- Custom Agents Dropdown -->
+        <div v-if="customAgents.length > 0" class="mt-2">
+          <select
+            :value="customAgents.some(a => a.id === selectedAgent) ? selectedAgent : ''"
+            @change="$event.target.value && selectAgent($event.target.value)"
+            class="w-full text-xs bg-apex-dark border border-apex-border rounded px-2 py-1.5 text-gray-400 focus:outline-none focus:border-gold"
+            :class="{ 'border-gold/50 text-gold': customAgents.some(a => a.id === selectedAgent) }"
+          >
+            <option value="" disabled>Custom Agents ({{ customAgents.length }})</option>
+            <option
+              v-for="agent in customAgents"
+              :key="agent.id"
+              :value="agent.id"
+              :style="{ color: agent.color }"
+            >
+              {{ agent.symbol || '+' }} {{ agent.name }}
+            </option>
+          </select>
         </div>
       </div>
     </aside>
