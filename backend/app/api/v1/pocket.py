@@ -238,7 +238,10 @@ async def pocket_chat(
     device, user = device_and_user
 
     # Detect app vs OLED hardware
-    is_app = device.device_type == "apex_app" or (device.firmware_version or "").startswith("app-")
+    # OLED ESP32 sends firmware like "oled-1.0" or has device_type "apex_oled".
+    # Everything else (apex_pocket, apex_app, app-*) is treated as app.
+    is_oled = device.device_type == "apex_oled" or (device.firmware_version or "").startswith("oled-")
+    is_app = not is_oled
 
     # Branch model + token limit by device type
     model = "claude-sonnet-4-5-20250929" if is_app else "claude-haiku-4-5-20251001"
