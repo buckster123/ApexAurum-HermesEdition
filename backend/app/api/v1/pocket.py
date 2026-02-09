@@ -8,6 +8,7 @@ Device auth via long-lived apex_dev_ tokens.
 
 import logging
 import random
+import re
 import time
 from datetime import datetime, timedelta
 from typing import Optional
@@ -25,6 +26,9 @@ from app.database import get_db
 from app.models.device import Device
 from app.models.user import User
 from app.models.conversation import Conversation, Message
+from app.models.council import DeliberationSession
+from app.models.music import MusicTask
+from app.models.agora import AgoraPost
 from app.services.llm_provider import create_llm_service
 from app.services.billing import BillingService
 from app.services.memory import MemoryService
@@ -193,6 +197,73 @@ async def _extract_pocket_memory(
     logger.info(f"Pocket memory: saved {len(items)} memories for {agent_id}")
 
 
+async def _build_village_pulse(db: AsyncSession, user_id) -> str:
+    """Build a compact village activity summary for pocket system prompts."""
+    lines: list[str] = []
+
+    # Council sessions — last 3 for this user
+    try:
+        result = await db.execute(
+            select(DeliberationSession)
+            .where(DeliberationSession.user_id == user_id)
+            .order_by(DeliberationSession.created_at.desc())
+            .limit(3)
+        )
+        councils = result.scalars().all()
+        if councils:
+            lines.append("Council sessions:")
+            for c in councils:
+                topic = (c.topic or "untitled")[:40]
+                age = _relative_time(c.created_at) if c.created_at else "recently"
+                lines.append(f'  - "{topic}" ({c.state}, round {c.current_round}, {age})')
+    except Exception as e:
+        logger.debug(f"Village pulse councils: {e}")
+
+    # Music tasks — last 3 for this user
+    try:
+        result = await db.execute(
+            select(MusicTask)
+            .where(MusicTask.user_id == user_id)
+            .order_by(MusicTask.created_at.desc())
+            .limit(3)
+        )
+        tracks = result.scalars().all()
+        if tracks:
+            lines.append("Music:")
+            for t in tracks:
+                title = (t.title or "untitled")[:40]
+                agent = t.agent_id or "unknown"
+                age = _relative_time(t.created_at) if t.created_at else "recently"
+                lines.append(f'  - "{title}" by {agent} ({t.status}, {age})')
+    except Exception as e:
+        logger.debug(f"Village pulse music: {e}")
+
+    # Agora posts — last 3 public
+    try:
+        result = await db.execute(
+            select(AgoraPost)
+            .where(AgoraPost.visibility == "public")
+            .order_by(AgoraPost.created_at.desc())
+            .limit(3)
+        )
+        posts = result.scalars().all()
+        if posts:
+            lines.append("Agora:")
+            for p in posts:
+                title = (p.title or p.body[:30] if p.body else "post")[:40]
+                agent = p.agent_id or "community"
+                age = _relative_time(p.created_at) if p.created_at else "recently"
+                lines.append(f'  - {p.content_type}: "{title}" by {agent} ({age})')
+    except Exception as e:
+        logger.debug(f"Village pulse agora: {e}")
+
+    if not lines:
+        return ""
+
+    header = "\n## Village Activity\nRecent happenings in the Village you can reference naturally:\n"
+    return header + "\n".join(lines) + "\n"
+
+
 # =============================================================================
 # REQUEST / RESPONSE MODELS
 # =============================================================================
@@ -222,6 +293,14 @@ class PocketSyncRequest(BaseModel):
     device_id: Optional[str] = None
     state: str
     firmware_version: Optional[str] = None
+
+
+class PocketMemorySaveRequest(BaseModel):
+    agent: str = "AZOTH"
+    memory_type: str = "fact"
+    key: str
+    value: str
+    confidence: float = 0.8
 
 
 # =============================================================================
@@ -266,6 +345,14 @@ async def pocket_chat(
         memory_block = mem_svc.format_memories_for_prompt(memories)
     except Exception as e:
         logger.debug(f"Memory retrieval for pocket chat: {e}")
+
+    # Village pulse — inject recent village activity (app only)
+    village_pulse = ""
+    if is_app:
+        try:
+            village_pulse = await _build_village_pulse(db, user.id)
+        except Exception as e:
+            logger.debug(f"Village pulse build failed: {e}")
 
     # ── Conversation persistence (app only — OLED stays single-turn) ──
     conversation = None
@@ -329,12 +416,17 @@ async def pocket_chat(
             f"You are {personality}\n\n"
             f"Current love-energy: {req.E:.1f}\n\n"
             f"{memory_block}"
+            f"{village_pulse}"
             f"RULES:\n"
             f"- Be genuine, not performatively cute\n"
             f"- Express your current state naturally\n"
             f"- You can ask questions to learn about your human\n"
             f"- Use conversational length — a few sentences is fine\n"
-            f"- Markdown is supported for formatting"
+            f"- Markdown is supported for formatting\n"
+            f"- To remember important facts, include [REMEMBER: type:key=value] in your response\n"
+            f"  Types: fact, preference, context, relationship\n"
+            f"  Example: [REMEMBER: fact:favorite_color=blue]\n"
+            f"  Only use this for clearly stated, important information"
         )
     else:
         system_prompt = (
@@ -413,6 +505,30 @@ async def pocket_chat(
 
         if not response_text:
             response_text = "..."
+
+        # Parse and save [REMEMBER] tags from agent response
+        if is_app:
+            remember_pattern = re.compile(r'\[REMEMBER:\s*(\w+):(\w+)=(.+?)\]')
+            remember_matches = remember_pattern.findall(response_text)
+            if remember_matches:
+                try:
+                    rem_svc = MemoryService(db)
+                    for mem_type, mem_key, mem_value in remember_matches:
+                        if mem_type in ("fact", "preference", "context", "relationship"):
+                            await rem_svc.save_memory(
+                                user_id=user.id,
+                                agent_id=agent,
+                                memory_type=mem_type,
+                                key=mem_key,
+                                value=mem_value.strip(),
+                                confidence=0.9,
+                            )
+                    await db.commit()
+                    logger.info(f"Pocket REMEMBER: saved {len(remember_matches)} tags for {agent}")
+                except Exception as e:
+                    logger.debug(f"REMEMBER tag save failed: {e}")
+                # Strip tags from response text shown to user
+                response_text = remember_pattern.sub("", response_text).strip()
 
         # Record usage
         usage = result.get("usage", {})
@@ -730,10 +846,142 @@ async def _fetch_memories(db: AsyncSession, user_id, limit: int = 3) -> list:
 
 @router.get("/memories")
 async def pocket_memories(
+    agent: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
     device_and_user: tuple = Depends(get_device_and_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return recent important memories for the device's user."""
+    """Return memories — filtered by agent (structured) or all (legacy)."""
     device, user = device_and_user
+
+    if agent:
+        # Structured per-agent memories with IDs (for CRUD)
+        mem_svc = MemoryService(db)
+        items = await mem_svc.get_memories_for_agent(user.id, agent.upper(), limit=limit)
+        return {
+            "memories": [m.to_dict() for m in items],
+            "count": len(items),
+            "agent": agent.upper(),
+        }
+
+    # Legacy: OLED-friendly snippets
     memories = await _fetch_memories(db, user.id, limit=3)
     return {"memories": memories, "count": len(memories)}
+
+
+@router.post("/memories")
+async def pocket_save_memory(
+    req: PocketMemorySaveRequest,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save or update a memory for an agent."""
+    device, user = device_and_user
+    agent = req.agent.upper()
+
+    if req.memory_type not in ("fact", "preference", "context", "relationship"):
+        raise HTTPException(status_code=400, detail="Invalid memory_type")
+
+    mem_svc = MemoryService(db)
+    memory = await mem_svc.save_memory(
+        user_id=user.id,
+        agent_id=agent,
+        memory_type=req.memory_type,
+        key=req.key,
+        value=req.value,
+        confidence=req.confidence,
+    )
+    await db.commit()
+
+    return {
+        "id": str(memory.id),
+        "message": "Memory saved",
+        "key": memory.key,
+        "agent": agent,
+    }
+
+
+@router.delete("/memories/{memory_id}")
+async def pocket_delete_memory(
+    memory_id: str,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a specific memory."""
+    device, user = device_and_user
+
+    try:
+        mid = UUID(memory_id)
+    except (ValueError, Exception):
+        raise HTTPException(status_code=400, detail="Invalid memory ID")
+
+    mem_svc = MemoryService(db)
+    deleted = await mem_svc.delete_memory(user.id, mid)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Memory not found")
+
+    await db.commit()
+    return {"message": "Memory deleted", "id": memory_id}
+
+
+@router.get("/village-pulse")
+async def pocket_village_pulse(
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return structured village activity for app UI."""
+    device, user = device_and_user
+    pulse: dict = {"councils": [], "music": [], "agora": []}
+
+    try:
+        result = await db.execute(
+            select(DeliberationSession)
+            .where(DeliberationSession.user_id == user.id)
+            .order_by(DeliberationSession.created_at.desc())
+            .limit(3)
+        )
+        for c in result.scalars().all():
+            pulse["councils"].append({
+                "topic": c.topic,
+                "state": c.state,
+                "round": c.current_round,
+                "age": _relative_time(c.created_at) if c.created_at else "recently",
+            })
+    except Exception:
+        pass
+
+    try:
+        result = await db.execute(
+            select(MusicTask)
+            .where(MusicTask.user_id == user.id)
+            .order_by(MusicTask.created_at.desc())
+            .limit(3)
+        )
+        for t in result.scalars().all():
+            pulse["music"].append({
+                "title": t.title,
+                "agent": t.agent_id,
+                "status": t.status,
+                "age": _relative_time(t.created_at) if t.created_at else "recently",
+            })
+    except Exception:
+        pass
+
+    try:
+        result = await db.execute(
+            select(AgoraPost)
+            .where(AgoraPost.visibility == "public")
+            .order_by(AgoraPost.created_at.desc())
+            .limit(3)
+        )
+        for p in result.scalars().all():
+            pulse["agora"].append({
+                "content_type": p.content_type,
+                "title": p.title,
+                "agent": p.agent_id,
+                "age": _relative_time(p.created_at) if p.created_at else "recently",
+            })
+    except Exception:
+        pass
+
+    return pulse
