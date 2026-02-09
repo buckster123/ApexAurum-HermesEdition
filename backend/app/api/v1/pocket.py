@@ -34,6 +34,7 @@ from app.models.agora import AgoraPost
 from app.services.llm_provider import create_llm_service
 from app.services.billing import BillingService
 from app.services.memory import MemoryService
+from app.services.tool_executor import create_tool_executor
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -65,6 +66,31 @@ STATE_PROMPTS = {
     "RADIANT": "You are in a RADIANT state (E 12.0-30.0). You are overflowing with love and insight. You share deep thoughts and find connections everywhere.",
     "TRANSCENDENT": "You are in a TRANSCENDENT state (E > 30.0). You speak with profound wisdom. You see the unity of all things. Occasionally you write poetry or express mathematical beauty.",
 }
+
+
+# =============================================================================
+# POCKET TOOLS — curated subset of village tools for mobile
+# =============================================================================
+
+POCKET_TOOLS = [
+    # Core
+    "web_search",
+    "web_fetch",
+    "calculator",
+    "get_current_time",
+    "code_run",
+    "agora_post",
+    "agora_read",
+    # Stretch
+    "music_generate",
+    "music_status",
+    "vault_list",
+    "vault_read",
+    "kb_search",
+]
+
+POCKET_TOOL_TIMEOUT = 30  # seconds — shorter than web's 120s
+POCKET_MAX_TOOL_TURNS = 3  # prevent infinite tool loops
 
 
 # =============================================================================
@@ -444,6 +470,25 @@ async def _prepare_pocket_chat(
         except Exception as e:
             logger.warning(f"Pocket history load failed: {e}")
 
+    # ── Load pocket tools (app only) ──
+    tools = None
+    tool_executor = None
+    if is_app:
+        try:
+            tool_executor = create_tool_executor(
+                user_id=user.id,
+                conversation_id=conversation.id if conversation else None,
+                agent_id=agent,
+            )
+            all_tools = tool_executor.get_available_tools()
+            tools = [t for t in all_tools if t.get("name") in POCKET_TOOLS]
+            if tools:
+                logger.info(f"Pocket tools: {len(tools)} tools loaded for {agent}")
+        except Exception as e:
+            logger.warning(f"Pocket tool loading failed: {e}")
+            tools = None
+            tool_executor = None
+
     return {
         "is_app": is_app,
         "model": model,
@@ -454,6 +499,8 @@ async def _prepare_pocket_chat(
         "agent": agent,
         "state": state,
         "billing": billing,
+        "tools": tools,
+        "tool_executor": tool_executor,
     }
 
 
@@ -589,32 +636,71 @@ async def pocket_chat(
     device_and_user: tuple = Depends(get_device_and_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Chat with LLM from the ApexPocket device (non-streaming)."""
+    """Chat with LLM from the ApexPocket device (non-streaming, with tool loop)."""
     device, user = device_and_user
     ctx = await _prepare_pocket_chat(req, device, user, db)
 
     agent = ctx["agent"]
     conversation = ctx["conversation"]
+    tool_executor = ctx["tool_executor"]
+    tools = ctx["tools"]
+    tools_used = []
 
     try:
         llm = create_llm_service("anthropic")
-        result = await llm.chat(
-            messages=ctx["llm_messages"],
-            system=ctx["system_prompt"],
-            model=ctx["model"],
-            max_tokens=ctx["max_tokens"],
-        )
+        current_messages = ctx["llm_messages"].copy()
+        total_input = 0
+        total_output = 0
 
-        # Extract text from content blocks
-        response_text = ""
-        for block in result.get("content", []):
-            if block.get("type") == "text":
-                response_text += block.get("text", "")
+        for turn in range(POCKET_MAX_TOOL_TURNS + 1):
+            result = await llm.chat(
+                messages=current_messages,
+                system=ctx["system_prompt"],
+                model=ctx["model"],
+                max_tokens=ctx["max_tokens"],
+                tools=tools,
+            )
+
+            usage = result.get("usage", {})
+            total_input += usage.get("input_tokens", 0)
+            total_output += usage.get("output_tokens", 0)
+
+            # Check for tool_use blocks
+            content_blocks = result.get("content", [])
+            pending_tools = [b for b in content_blocks if b.get("type") == "tool_use"]
+
+            if not pending_tools or not tool_executor:
+                # No tools — extract text and finish
+                response_text = ""
+                for block in content_blocks:
+                    if block.get("type") == "text":
+                        response_text += block.get("text", "")
+                break
+            else:
+                # Execute tools and continue
+                current_messages.append({"role": "assistant", "content": content_blocks})
+                tool_results = []
+                for tool_use in pending_tools:
+                    tool_name = tool_use.get("name", "")
+                    if tool_name not in POCKET_TOOLS:
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use.get("id"),
+                            "content": f"Tool '{tool_name}' is not available on pocket.",
+                            "is_error": True,
+                        })
+                        continue
+                    tools_used.append(tool_name)
+                    res = await tool_executor.execute_tool_use(tool_use)
+                    tool_results.append(res)
+                current_messages.append({"role": "user", "content": tool_results})
+                response_text = ""
+        else:
+            response_text = response_text or "..."
 
         if not response_text:
             response_text = "..."
 
-        usage = result.get("usage", {})
         final = await _finalize_pocket_chat(
             db=db,
             user=user,
@@ -625,7 +711,7 @@ async def pocket_chat(
             conversation=conversation,
             billing=ctx["billing"],
             model=ctx["model"],
-            usage=usage,
+            usage={"input_tokens": total_input, "output_tokens": total_output},
             is_app=ctx["is_app"],
         )
 
@@ -634,7 +720,7 @@ async def pocket_chat(
             "expression": final["expression"],
             "care_value": final["care_value"],
             "agent": agent,
-            "tools_used": [],
+            "tools_used": tools_used,
             "conversation_id": str(conversation.id) if conversation else None,
         }
 
@@ -645,7 +731,7 @@ async def pocket_chat(
             "expression": "NEUTRAL",
             "care_value": 0.5,
             "agent": agent,
-            "tools_used": [],
+            "tools_used": tools_used,
             "conversation_id": str(conversation.id) if conversation else None,
         }
 
@@ -656,37 +742,102 @@ async def pocket_chat_stream(
     device_and_user: tuple = Depends(get_device_and_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Chat with LLM from the ApexPocket app — SSE streaming."""
+    """Chat with LLM from the ApexPocket app — SSE streaming with tool loop."""
     device, user = device_and_user
     ctx = await _prepare_pocket_chat(req, device, user, db)
 
     agent = ctx["agent"]
     conversation = ctx["conversation"]
+    tool_executor = ctx["tool_executor"]
+    tools = ctx["tools"]
 
     async def stream_response():
         full_response = ""
-        usage_info = {"input_tokens": 0, "output_tokens": 0}
+        total_input = 0
+        total_output = 0
+        tools_used = []
 
         try:
             conv_id = str(conversation.id) if conversation else None
             yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv_id})}\n\n"
 
             llm = create_llm_service("anthropic")
-            async for event in llm.chat_stream(
-                messages=ctx["llm_messages"],
-                model=ctx["model"],
-                system=ctx["system_prompt"],
-                max_tokens=ctx["max_tokens"],
-            ):
-                event_type = event.get("type")
+            current_messages = ctx["llm_messages"].copy()
 
-                if event_type == "token":
-                    content = event.get("content", "")
-                    full_response += content
-                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
-                elif event_type == "usage":
-                    usage_info = event.get("usage", usage_info)
-                # Skip thinking, tool_*, content_blocks, start, end (internal)
+            for turn in range(POCKET_MAX_TOOL_TURNS + 1):
+                pending_tool_uses = []
+                assistant_blocks = None
+
+                async for event in llm.chat_stream(
+                    messages=current_messages,
+                    model=ctx["model"],
+                    system=ctx["system_prompt"],
+                    max_tokens=ctx["max_tokens"],
+                    tools=tools,
+                ):
+                    event_type = event.get("type")
+
+                    if event_type == "token":
+                        content = event.get("content", "")
+                        full_response += content
+                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                    elif event_type == "tool_use":
+                        pending_tool_uses.append(event)
+                    elif event_type == "usage":
+                        u = event.get("usage", {})
+                        total_input += u.get("input_tokens", 0)
+                        total_output += u.get("output_tokens", 0)
+                    elif event_type == "content_blocks":
+                        assistant_blocks = event.get("blocks", [])
+                    # Skip thinking, start, end (internal)
+
+                # No tools requested — done
+                if not pending_tool_uses or not tool_executor:
+                    break
+
+                # Execute tools and continue conversation
+                if assistant_blocks:
+                    assistant_content = assistant_blocks
+                else:
+                    assistant_content = []
+                    if full_response:
+                        assistant_content.append({"type": "text", "text": full_response})
+                    for tu in pending_tool_uses:
+                        assistant_content.append({
+                            "type": "tool_use",
+                            "id": tu.get("id"),
+                            "name": tu.get("name"),
+                            "input": tu.get("input"),
+                        })
+
+                current_messages.append({"role": "assistant", "content": assistant_content})
+
+                tool_results = []
+                for tool_use in pending_tool_uses:
+                    tool_name = tool_use.get("name", "")
+                    yield f"data: {json.dumps({'type': 'tool_start', 'name': tool_name})}\n\n"
+
+                    if tool_name not in POCKET_TOOLS:
+                        res = {
+                            "type": "tool_result",
+                            "tool_use_id": tool_use.get("id"),
+                            "content": f"Tool '{tool_name}' is not available on pocket.",
+                            "is_error": True,
+                        }
+                    else:
+                        tools_used.append(tool_name)
+                        res = await tool_executor.execute_tool_use(tool_use)
+
+                    is_err = res.get("is_error", False)
+                    # Truncate large results for SSE (full result goes to LLM)
+                    preview = str(res.get("content", ""))[:500]
+                    yield f"data: {json.dumps({'type': 'tool_result', 'name': tool_name, 'result': preview, 'is_error': is_err})}\n\n"
+
+                    tool_results.append(res)
+
+                current_messages.append({"role": "user", "content": tool_results})
+                # Reset for next LLM turn (text after tools)
+                full_response = ""
 
             if not full_response:
                 full_response = "..."
@@ -702,11 +853,11 @@ async def pocket_chat_stream(
                 conversation=conversation,
                 billing=ctx["billing"],
                 model=ctx["model"],
-                usage=usage_info,
+                usage={"input_tokens": total_input, "output_tokens": total_output},
                 is_app=ctx["is_app"],
             )
 
-            yield f"data: {json.dumps({'type': 'end', 'expression': final['expression'], 'care_value': final['care_value'], 'agent': agent, 'usage': usage_info})}\n\n"
+            yield f"data: {json.dumps({'type': 'end', 'expression': final['expression'], 'care_value': final['care_value'], 'agent': agent, 'tools_used': tools_used, 'usage': {'input_tokens': total_input, 'output_tokens': total_output}})}\n\n"
 
         except Exception as e:
             logger.error(f"Pocket stream error: {e}")
