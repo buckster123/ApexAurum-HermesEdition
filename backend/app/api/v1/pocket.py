@@ -23,6 +23,7 @@ from app.models.device import Device
 from app.models.user import User
 from app.services.llm_provider import create_llm_service
 from app.services.billing import BillingService
+from app.services.memory import MemoryService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -108,6 +109,86 @@ def calculate_care_value(user_message: str, response: str) -> float:
     return 0.8
 
 
+POCKET_EXTRACTION_PROMPT = """Extract memorable facts from this single exchange between a user and their AI companion.
+Return ONLY valid JSON. If nothing worth remembering, return {"memories": []}.
+
+Format:
+{"memories": [{"type": "fact|preference|context|relationship", "key": "snake_case_key", "value": "concise description", "confidence": 0.7}]}
+
+Rules:
+- Only extract CLEAR, USEFUL information (name, interests, feelings, projects, preferences)
+- Skip greetings, small talk, and vague statements
+- Max 2 items
+- confidence: 0.9 explicit, 0.7 implied
+
+Exchange:
+User: {user_msg}
+Agent: {agent_msg}"""
+
+
+async def _extract_pocket_memory(
+    db: AsyncSession,
+    user_id,
+    agent_id: str,
+    user_msg: str,
+    agent_msg: str,
+):
+    """Lightweight memory extraction from a single pocket exchange."""
+    import json as _json
+
+    # Skip very short or trivial messages
+    if len(user_msg.strip()) < 10:
+        return
+
+    prompt = POCKET_EXTRACTION_PROMPT.format(
+        user_msg=user_msg[:500], agent_msg=agent_msg[:500]
+    )
+
+    llm = create_llm_service("anthropic")
+    result = await llm.chat(
+        messages=[{"role": "user", "content": prompt}],
+        model="claude-haiku-4-5-20251001",
+        max_tokens=300,
+    )
+
+    response_text = ""
+    for block in result.get("content", []):
+        if block.get("type") == "text":
+            response_text += block.get("text", "")
+
+    # Parse JSON
+    json_start = response_text.find("{")
+    json_end = response_text.rfind("}") + 1
+    if json_start < 0 or json_end <= json_start:
+        return
+
+    try:
+        extracted = _json.loads(response_text[json_start:json_end])
+    except _json.JSONDecodeError:
+        return
+
+    items = extracted.get("memories", [])
+    if not items:
+        return
+
+    mem_svc = MemoryService(db)
+    for item in items[:2]:
+        if isinstance(item, dict) and "key" in item and "value" in item:
+            mem_type = item.get("type", "fact")
+            if mem_type not in ("fact", "preference", "context", "relationship"):
+                mem_type = "fact"
+            await mem_svc.save_memory(
+                user_id=user_id,
+                agent_id=agent_id,
+                memory_type=mem_type,
+                key=str(item["key"]),
+                value=str(item["value"]),
+                confidence=float(item.get("confidence", 0.7)),
+            )
+    await db.commit()
+    logger.info(f"Pocket memory: saved {len(items)} memories for {agent_id}")
+
+
 # =============================================================================
 # REQUEST / RESPONSE MODELS
 # =============================================================================
@@ -169,6 +250,15 @@ async def pocket_chat(
     agent = req.agent.upper() if req.agent else "AZOTH"
     personality = AGENT_PERSONALITIES.get(agent, AGENT_PERSONALITIES["AZOTH"])
 
+    # Retrieve memories for this agent-user pair
+    memory_block = ""
+    try:
+        mem_svc = MemoryService(db)
+        memories = await mem_svc.get_memories_for_agent(user.id, agent, limit=8)
+        memory_block = mem_svc.format_memories_for_prompt(memories)
+    except Exception as e:
+        logger.debug(f"Memory retrieval for pocket chat: {e}")
+
     # Build system prompt — OLED gets 80-char constraint, app gets full conversation
     state_prompt = STATE_PROMPTS[state]
     if is_app:
@@ -176,6 +266,7 @@ async def pocket_chat(
             f"{state_prompt}\n\n"
             f"You are {personality}\n\n"
             f"Current love-energy: {req.E:.1f}\n\n"
+            f"{memory_block}"
             f"RULES:\n"
             f"- Be genuine, not performatively cute\n"
             f"- Express your current state naturally\n"
@@ -188,6 +279,7 @@ async def pocket_chat(
             f"{state_prompt}\n\n"
             f"You are {personality}\n\n"
             f"Current love-energy: {req.E:.1f}\n\n"
+            f"{memory_block}"
             f"RULES:\n"
             f"- Keep responses under 80 characters when possible (tiny OLED screen)\n"
             f"- Be genuine, not performatively cute\n"
@@ -226,6 +318,14 @@ async def pocket_chat(
         # Analyze expression and care value
         expression = analyze_response_expression(response_text, state)
         care_value = calculate_care_value(req.message, response_text)
+
+        # Fire-and-forget: extract memories from this exchange
+        try:
+            await _extract_pocket_memory(
+                db, user.id, agent, req.message, response_text
+            )
+        except Exception as e:
+            logger.debug(f"Pocket memory extraction skipped: {e}")
 
         return {
             "response": response_text,
