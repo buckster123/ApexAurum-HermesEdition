@@ -6,8 +6,9 @@
  * Handles device tokens, soul state display, and lifecycle operations.
  */
 
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useDevicesStore } from '@/stores/devices'
+import QRCode from 'qrcode'
 
 const store = useDevicesStore()
 
@@ -15,6 +16,15 @@ const showAddModal = ref(false)
 const newDeviceName = ref('')
 const creating = ref(false)
 const copied = ref(false)
+const qrDataUrl = ref(null)
+
+watch(() => store.newDeviceToken, async (token) => {
+  if (token) {
+    qrDataUrl.value = await QRCode.toDataURL(token, { width: 200, margin: 2 })
+  } else {
+    qrDataUrl.value = null
+  }
+})
 
 onMounted(() => {
   store.fetchDevices()
@@ -330,6 +340,12 @@ function soulStateColor(soul) {
           <!-- Token display -->
           <div class="bg-black/40 border border-apex-border rounded p-3 mb-3">
             <code class="text-gold text-sm break-all select-all">{{ store.newDeviceToken }}</code>
+          </div>
+
+          <!-- QR Code -->
+          <div v-if="qrDataUrl" class="flex flex-col items-center mb-4">
+            <img :src="qrDataUrl" alt="QR Code" class="w-[200px] h-[200px] bg-white rounded-lg" />
+            <p class="text-gray-400 text-xs mt-2">Scan with ApexPocket app to pair</p>
           </div>
 
           <!-- Warning -->
