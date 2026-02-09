@@ -615,7 +615,14 @@ class MultiProviderLLM:
             kwargs["tools"] = tools
 
         try:
-            response = await self.anthropic_client.messages.create(**kwargs)
+            # Route through beta endpoint when betas are requested
+            betas = kwargs.pop("betas", None)
+            if betas:
+                response = await self.anthropic_client.beta.messages.create(
+                    betas=betas, **kwargs
+                )
+            else:
+                response = await self.anthropic_client.messages.create(**kwargs)
 
             content_blocks = []
             for block in response.content:
@@ -677,7 +684,12 @@ class MultiProviderLLM:
         usage_info = {"input_tokens": 0, "output_tokens": 0}
 
         try:
-            async with self.anthropic_client.messages.stream(**kwargs) as stream:
+            betas = kwargs.pop("betas", None)
+            if betas:
+                stream_ctx = self.anthropic_client.beta.messages.stream(betas=betas, **kwargs)
+            else:
+                stream_ctx = self.anthropic_client.messages.stream(**kwargs)
+            async with stream_ctx as stream:
                 async for event in stream:
                     if event.type == "content_block_delta":
                         if hasattr(event.delta, "thinking"):
