@@ -11,16 +11,18 @@ import random
 import time
 from datetime import datetime, timedelta
 from typing import Optional
+from uuid import uuid4, UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.device_deps import get_device_and_user
 from app.database import get_db
 from app.models.device import Device
 from app.models.user import User
+from app.models.conversation import Conversation, Message
 from app.services.llm_provider import create_llm_service
 from app.services.billing import BillingService
 from app.services.memory import MemoryService
@@ -199,6 +201,7 @@ class PocketChatRequest(BaseModel):
     state: str = "WARM"
     device_id: Optional[str] = None
     agent: str = "AZOTH"
+    conversation_id: Optional[str] = None
 
 
 class PocketCareRequest(BaseModel):
@@ -259,6 +262,60 @@ async def pocket_chat(
     except Exception as e:
         logger.debug(f"Memory retrieval for pocket chat: {e}")
 
+    # ── Conversation persistence (app only — OLED stays single-turn) ──
+    conversation = None
+    if is_app:
+        try:
+            # 1. If client sent a conversation_id, load it
+            if req.conversation_id:
+                try:
+                    conv_uuid = UUID(req.conversation_id)
+                    result = await db.execute(
+                        select(Conversation)
+                        .where(Conversation.id == conv_uuid)
+                        .where(Conversation.user_id == user.id)
+                    )
+                    conversation = result.scalar_one_or_none()
+                except (ValueError, Exception):
+                    pass
+
+            # 2. Find existing pocket conversation for this agent
+            if not conversation:
+                result = await db.execute(
+                    select(Conversation)
+                    .where(Conversation.user_id == user.id)
+                    .where(Conversation.tags.contains(["pocket", agent.lower()]))
+                    .order_by(Conversation.updated_at.desc())
+                    .limit(1)
+                )
+                conversation = result.scalar_one_or_none()
+
+            # 3. Create new pocket conversation
+            if not conversation:
+                conversation = Conversation(
+                    id=uuid4(),
+                    user_id=user.id,
+                    title=f"Pocket — {agent}",
+                    tags=["pocket", agent.lower()],
+                )
+                db.add(conversation)
+                await db.flush()
+                logger.info(f"Created pocket conversation {conversation.id} for {agent}")
+
+            # Save user message to DB
+            user_msg = Message(
+                id=uuid4(),
+                conversation_id=conversation.id,
+                role="user",
+                content=req.message,
+            )
+            db.add(user_msg)
+            await db.commit()
+
+        except Exception as e:
+            logger.warning(f"Pocket conversation persistence error: {e}")
+            conversation = None
+
     # Build system prompt — OLED gets 80-char constraint, app gets full conversation
     state_prompt = STATE_PROMPTS[state]
     if is_app:
@@ -287,10 +344,57 @@ async def pocket_chat(
             f"- You can ask questions to learn about your human"
         )
 
+    # ── Load conversation history (app only) ──
+    llm_messages = [{"role": "user", "content": req.message}]
+    if is_app and conversation:
+        try:
+            hist_result = await db.execute(
+                select(Message)
+                .where(Message.conversation_id == conversation.id)
+                .order_by(Message.created_at.desc())
+                .limit(22)  # 10 pairs + buffer
+            )
+            rows = list(reversed(hist_result.scalars().all()))
+
+            # Pop current user message (last one we just saved)
+            if rows and rows[-1].role == "user":
+                rows = rows[:-1]
+
+            # Build history with 20K token cap
+            history: list[dict] = []
+            token_count = 0
+            for msg in rows:
+                if msg.role not in ("user", "assistant"):
+                    continue
+                if not msg.content or not msg.content.strip():
+                    continue
+                est = len(msg.content) // 4
+                if token_count + est > 20_000:
+                    break
+                history.append({"role": msg.role, "content": msg.content})
+                token_count += est
+
+            # Merge consecutive same-role messages
+            if history:
+                merged: list[dict] = [history[0]]
+                for m in history[1:]:
+                    if m["role"] == merged[-1]["role"]:
+                        merged[-1]["content"] += "\n\n" + m["content"]
+                    else:
+                        merged.append(m)
+                # Ensure starts with user
+                while merged and merged[0]["role"] != "user":
+                    merged.pop(0)
+                if merged:
+                    llm_messages = merged + [{"role": "user", "content": req.message}]
+                    logger.info(f"Pocket history: {len(merged)} msgs (~{token_count} tokens) for {agent}")
+        except Exception as e:
+            logger.warning(f"Pocket history load failed: {e}")
+
     try:
         llm = create_llm_service("anthropic")
         result = await llm.chat(
-            messages=[{"role": "user", "content": req.message}],
+            messages=llm_messages,
             system=system_prompt,
             model=model,
             max_tokens=max_tokens,
@@ -319,6 +423,22 @@ async def pocket_chat(
         expression = analyze_response_expression(response_text, state)
         care_value = calculate_care_value(req.message, response_text)
 
+        # Save assistant message to DB (app only)
+        if is_app and conversation:
+            try:
+                assistant_msg = Message(
+                    id=uuid4(),
+                    conversation_id=conversation.id,
+                    role="assistant",
+                    content=response_text,
+                    tokens_used=usage.get("output_tokens") or None,
+                )
+                db.add(assistant_msg)
+                conversation.updated_at = datetime.utcnow()
+                await db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to save pocket assistant message: {e}")
+
         # Fire-and-forget: extract memories from this exchange
         try:
             await _extract_pocket_memory(
@@ -333,6 +453,7 @@ async def pocket_chat(
             "care_value": care_value,
             "agent": agent,
             "tools_used": [],
+            "conversation_id": str(conversation.id) if conversation else None,
         }
 
     except Exception as e:
@@ -343,6 +464,7 @@ async def pocket_chat(
             "care_value": 0.5,
             "agent": agent,
             "tools_used": [],
+            "conversation_id": str(conversation.id) if conversation else None,
         }
 
 
@@ -462,6 +584,59 @@ async def pocket_agents(
             for k, v in AGENT_PERSONALITIES.items()
         ],
         "default": "AZOTH",
+    }
+
+
+# =============================================================================
+# HISTORY ENDPOINT - Fetch pocket conversation messages
+# =============================================================================
+
+@router.get("/history")
+async def pocket_history(
+    agent: str = Query("AZOTH"),
+    limit: int = Query(50, ge=1, le=200),
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return chat history for a pocket agent conversation."""
+    device, user = device_and_user
+    agent = agent.upper()
+
+    # Find the pocket conversation for this agent
+    result = await db.execute(
+        select(Conversation)
+        .where(Conversation.user_id == user.id)
+        .where(Conversation.tags.contains(["pocket", agent.lower()]))
+        .order_by(Conversation.updated_at.desc())
+        .limit(1)
+    )
+    conversation = result.scalar_one_or_none()
+
+    if not conversation:
+        return {"conversation_id": None, "messages": []}
+
+    # Fetch messages
+    msg_result = await db.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.created_at.desc())
+        .limit(limit)
+    )
+    rows = list(reversed(msg_result.scalars().all()))
+
+    messages = []
+    for msg in rows:
+        if msg.role not in ("user", "assistant"):
+            continue
+        messages.append({
+            "text": msg.content or "",
+            "isUser": msg.role == "user",
+            "timestamp": int(msg.created_at.timestamp() * 1000) if msg.created_at else 0,
+        })
+
+    return {
+        "conversation_id": str(conversation.id),
+        "messages": messages,
     }
 
 

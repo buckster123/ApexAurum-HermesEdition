@@ -509,6 +509,86 @@ async def build_attachment_content(
     return content_blocks
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONVERSATION HISTORY LOADER - Multi-turn context for LLM calls
+# ═══════════════════════════════════════════════════════════════════════════════
+
+MAX_HISTORY_MESSAGES = 40  # 20 pairs
+MAX_HISTORY_TOKENS = 50_000  # ~50K tokens budget for history
+
+
+async def load_conversation_history(
+    db: AsyncSession,
+    conversation_id: UUID,
+    user_id: UUID,
+    max_messages: int = MAX_HISTORY_MESSAGES,
+    max_tokens: int = MAX_HISTORY_TOKENS,
+) -> list[dict]:
+    """
+    Load conversation history as LLM message dicts.
+
+    Returns messages in chronological order with proper role alternation.
+    The most recent user message (current turn) is excluded — it's added
+    separately by the caller with any file attachments.
+    """
+    # Fetch recent messages (extra buffer for filtering)
+    result = await db.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.desc())
+        .limit(max_messages + 2)
+    )
+    rows = result.scalars().all()
+
+    if not rows:
+        return []
+
+    # Reverse to chronological order
+    rows = list(reversed(rows))
+
+    # Pop the last user message (it's the current turn, already saved to DB)
+    if rows and rows[-1].role == "user":
+        rows = rows[:-1]
+
+    if not rows:
+        return []
+
+    # Build message list, skip system/empty, enforce token budget
+    history: list[dict] = []
+    token_count = 0
+
+    for msg in rows:
+        if msg.role not in ("user", "assistant"):
+            continue
+        if not msg.content or not msg.content.strip():
+            continue
+
+        est_tokens = len(msg.content) // 4
+        if token_count + est_tokens > max_tokens:
+            break
+
+        history.append({"role": msg.role, "content": msg.content})
+        token_count += est_tokens
+
+    if not history:
+        return []
+
+    # Enforce role alternation: merge consecutive same-role messages
+    merged: list[dict] = [history[0]]
+    for msg in history[1:]:
+        if msg["role"] == merged[-1]["role"]:
+            merged[-1]["content"] += "\n\n" + msg["content"]
+        else:
+            merged.append(msg)
+
+    # Ensure history starts with "user" (Anthropic API requirement)
+    while merged and merged[0]["role"] != "user":
+        merged.pop(0)
+
+    logger.info(f"Loaded {len(merged)} history messages for conversation {conversation_id} (~{token_count} tokens)")
+    return merged
+
+
 # Schemas
 class ChatRequest(BaseModel):
     message: str
@@ -979,14 +1059,24 @@ async def send_message(
         db.add(user_msg)
         await db.commit()  # Commit early so conversation is visible to other endpoints
 
-    # Build messages for Claude (with optional file attachments)
+    # Load conversation history for multi-turn context
+    history_messages = []
+    if conversation and request.save_conversation:
+        try:
+            history_messages = await load_conversation_history(db, conversation.id, user.id)
+        except Exception as e:
+            logger.warning(f"Failed to load conversation history: {e}")
+
+    # Build current user message (with optional file attachments)
     if request.file_ids:
         user_content = await build_attachment_content(
             request.file_ids, user.id, request.message, db
         )
-        messages = [{"role": "user", "content": user_content}]
+        current_user_msg = {"role": "user", "content": user_content}
     else:
-        messages = [{"role": "user", "content": request.message}]
+        current_user_msg = {"role": "user", "content": request.message}
+
+    messages = history_messages + [current_user_msg]
 
     # ═══════════════════════════════════════════════════════════════════════════
     # !MUSIC TRIGGER DETECTION - apexXuno Creative Mode
@@ -1370,6 +1460,7 @@ Work together to create something beautiful!
                         content=final_response,
                         tool_calls=tool_calls if tool_calls else None,
                         tool_results=tool_results if tool_results else None,
+                        tokens_used=total_output_tokens or None,
                     )
                     db.add(assistant_msg)
                     await db.commit()
@@ -1482,6 +1573,7 @@ Work together to create something beautiful!
 
             # Save assistant message (only if saving conversation)
             assistant_msg_id = None
+            usage = response.get("usage", {})
             if conversation and request.save_conversation:
                 assistant_msg = Message(
                     id=uuid4(),
@@ -1490,6 +1582,7 @@ Work together to create something beautiful!
                     content=assistant_content,
                     tool_calls=tool_calls if tool_calls else None,
                     tool_results=tool_results if tool_results else None,
+                    tokens_used=usage.get("output_tokens") or None,
                 )
                 db.add(assistant_msg)
                 assistant_msg_id = assistant_msg.id
@@ -1497,7 +1590,6 @@ Work together to create something beautiful!
 
             # Record billing usage (if Stripe is configured)
             usage_info = None
-            usage = response.get("usage", {})
             if billing_service and usage:
                 usage_info = await billing_service.record_message_usage(
                     user_id=user.id,
