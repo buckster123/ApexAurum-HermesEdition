@@ -15,7 +15,9 @@ from uuid import uuid4, UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import cast, select, text
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY, array as pg_array
+from sqlalchemy import String as SAString
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.device_deps import get_device_and_user
@@ -284,7 +286,7 @@ async def pocket_chat(
                 result = await db.execute(
                     select(Conversation)
                     .where(Conversation.user_id == user.id)
-                    .where(Conversation.tags.contains(["pocket", agent.lower()]))
+                    .where(Conversation.tags.op("@>")(cast(pg_array(["pocket", agent.lower()]), PG_ARRAY(SAString))))
                     .order_by(Conversation.updated_at.desc())
                     .limit(1)
                 )
@@ -606,7 +608,7 @@ async def pocket_history(
     result = await db.execute(
         select(Conversation)
         .where(Conversation.user_id == user.id)
-        .where(Conversation.tags.contains(["pocket", agent.lower()]))
+        .where(Conversation.tags.op("@>")(cast(pg_array(["pocket", agent.lower()]), PG_ARRAY(SAString))))
         .order_by(Conversation.updated_at.desc())
         .limit(1)
     )
