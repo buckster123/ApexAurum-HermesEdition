@@ -6,6 +6,7 @@ Mirrors the local backend API contracts for firmware compatibility.
 Device auth via long-lived apex_dev_ tokens.
 """
 
+import json
 import logging
 import random
 import re
@@ -15,6 +16,7 @@ from typing import Optional
 from uuid import uuid4, UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import cast, select, text
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY, array as pg_array
@@ -265,6 +267,280 @@ async def _build_village_pulse(db: AsyncSession, user_id) -> str:
 
 
 # =============================================================================
+# PRE/POST LLM HELPERS (shared by chat + chat/stream)
+# =============================================================================
+
+async def _prepare_pocket_chat(
+    req,
+    device,
+    user,
+    db: AsyncSession,
+) -> dict:
+    """
+    All pre-LLM setup: billing check, agent/state resolution, memories,
+    village pulse, conversation persistence, history, system prompt.
+    Returns a dict with everything needed to call LLM.
+    """
+    # Detect app vs OLED hardware
+    is_oled = device.device_type == "apex_oled" or (device.firmware_version or "").startswith("oled-")
+    is_app = not is_oled
+
+    # Branch model + token limit by device type
+    model = "claude-sonnet-4-5-20250929" if is_app else "claude-haiku-4-5-20251001"
+    max_tokens = 1024 if is_app else 100
+
+    # Billing check
+    billing = BillingService(db)
+    can_send, reason = await billing.can_send_message(user.id)
+    if not can_send:
+        raise HTTPException(status_code=402, detail=reason or "Message limit reached")
+
+    # Resolve state and agent
+    state = get_state_from_string(req.state)
+    agent = req.agent.upper() if req.agent else "AZOTH"
+    personality = AGENT_PERSONALITIES.get(agent, AGENT_PERSONALITIES["AZOTH"])
+
+    # Retrieve memories for this agent-user pair
+    memory_block = ""
+    try:
+        mem_svc = MemoryService(db)
+        memories = await mem_svc.get_memories_for_agent(user.id, agent, limit=8)
+        memory_block = mem_svc.format_memories_for_prompt(memories)
+    except Exception as e:
+        logger.debug(f"Memory retrieval for pocket chat: {e}")
+
+    # Village pulse — inject recent village activity (app only)
+    village_pulse = ""
+    if is_app:
+        try:
+            village_pulse = await _build_village_pulse(db, user.id)
+        except Exception as e:
+            logger.debug(f"Village pulse build failed: {e}")
+
+    # ── Conversation persistence (app only — OLED stays single-turn) ──
+    conversation = None
+    if is_app:
+        try:
+            if req.conversation_id:
+                try:
+                    conv_uuid = UUID(req.conversation_id)
+                    result = await db.execute(
+                        select(Conversation)
+                        .where(Conversation.id == conv_uuid)
+                        .where(Conversation.user_id == user.id)
+                    )
+                    conversation = result.scalar_one_or_none()
+                except (ValueError, Exception):
+                    pass
+
+            if not conversation:
+                result = await db.execute(
+                    select(Conversation)
+                    .where(Conversation.user_id == user.id)
+                    .where(Conversation.tags.op("@>")(cast(pg_array(["pocket", agent.lower()]), PG_ARRAY(SAString))))
+                    .order_by(Conversation.updated_at.desc())
+                    .limit(1)
+                )
+                conversation = result.scalar_one_or_none()
+
+            if not conversation:
+                conversation = Conversation(
+                    id=uuid4(),
+                    user_id=user.id,
+                    title=f"Pocket — {agent}",
+                    tags=["pocket", agent.lower()],
+                )
+                db.add(conversation)
+                await db.flush()
+                logger.info(f"Created pocket conversation {conversation.id} for {agent}")
+
+            # Save user message to DB
+            user_msg = Message(
+                id=uuid4(),
+                conversation_id=conversation.id,
+                role="user",
+                content=req.message,
+            )
+            db.add(user_msg)
+            await db.commit()
+
+        except Exception as e:
+            logger.warning(f"Pocket conversation persistence error: {e}")
+            conversation = None
+
+    # Build system prompt
+    state_prompt = STATE_PROMPTS[state]
+    if is_app:
+        system_prompt = (
+            f"{state_prompt}\n\n"
+            f"You are {personality}\n\n"
+            f"Current love-energy: {req.E:.1f}\n\n"
+            f"{memory_block}"
+            f"{village_pulse}"
+            f"RULES:\n"
+            f"- Be genuine, not performatively cute\n"
+            f"- Express your current state naturally\n"
+            f"- You can ask questions to learn about your human\n"
+            f"- Use conversational length — a few sentences is fine\n"
+            f"- Markdown is supported for formatting\n"
+            f"- To remember important facts, include [REMEMBER: type:key=value] in your response\n"
+            f"  Types: fact, preference, context, relationship\n"
+            f"  Example: [REMEMBER: fact:favorite_color=blue]\n"
+            f"  Only use this for clearly stated, important information"
+        )
+    else:
+        system_prompt = (
+            f"{state_prompt}\n\n"
+            f"You are {personality}\n\n"
+            f"Current love-energy: {req.E:.1f}\n\n"
+            f"{memory_block}"
+            f"RULES:\n"
+            f"- Keep responses under 80 characters when possible (tiny OLED screen)\n"
+            f"- Be genuine, not performatively cute\n"
+            f"- Express your current state naturally\n"
+            f"- You can ask questions to learn about your human"
+        )
+
+    # ── Load conversation history (app only) ──
+    llm_messages = [{"role": "user", "content": req.message}]
+    if is_app and conversation:
+        try:
+            hist_result = await db.execute(
+                select(Message)
+                .where(Message.conversation_id == conversation.id)
+                .order_by(Message.created_at.desc())
+                .limit(22)
+            )
+            rows = list(reversed(hist_result.scalars().all()))
+
+            if rows and rows[-1].role == "user":
+                rows = rows[:-1]
+
+            history: list[dict] = []
+            token_count = 0
+            for msg in rows:
+                if msg.role not in ("user", "assistant"):
+                    continue
+                if not msg.content or not msg.content.strip():
+                    continue
+                est = len(msg.content) // 4
+                if token_count + est > 20_000:
+                    break
+                history.append({"role": msg.role, "content": msg.content})
+                token_count += est
+
+            if history:
+                merged: list[dict] = [history[0]]
+                for m in history[1:]:
+                    if m["role"] == merged[-1]["role"]:
+                        merged[-1]["content"] += "\n\n" + m["content"]
+                    else:
+                        merged.append(m)
+                while merged and merged[0]["role"] != "user":
+                    merged.pop(0)
+                if merged:
+                    llm_messages = merged + [{"role": "user", "content": req.message}]
+                    logger.info(f"Pocket history: {len(merged)} msgs (~{token_count} tokens) for {agent}")
+        except Exception as e:
+            logger.warning(f"Pocket history load failed: {e}")
+
+    return {
+        "is_app": is_app,
+        "model": model,
+        "max_tokens": max_tokens,
+        "system_prompt": system_prompt,
+        "llm_messages": llm_messages,
+        "conversation": conversation,
+        "agent": agent,
+        "state": state,
+        "billing": billing,
+    }
+
+
+async def _finalize_pocket_chat(
+    db: AsyncSession,
+    user,
+    agent: str,
+    state: str,
+    response_text: str,
+    user_message: str,
+    conversation,
+    billing: BillingService,
+    model: str,
+    usage: dict,
+    is_app: bool,
+) -> dict:
+    """
+    All post-LLM work: REMEMBER tag parsing, billing, expression,
+    care value, message save, memory extraction.
+    Returns dict with cleaned response_text, expression, care_value.
+    """
+    # Parse and save [REMEMBER] tags from agent response
+    if is_app:
+        remember_pattern = re.compile(r'\[REMEMBER:\s*(\w+):(\w+)=(.+?)\]')
+        remember_matches = remember_pattern.findall(response_text)
+        if remember_matches:
+            try:
+                rem_svc = MemoryService(db)
+                for mem_type, mem_key, mem_value in remember_matches:
+                    if mem_type in ("fact", "preference", "context", "relationship"):
+                        await rem_svc.save_memory(
+                            user_id=user.id,
+                            agent_id=agent,
+                            memory_type=mem_type,
+                            key=mem_key,
+                            value=mem_value.strip(),
+                            confidence=0.9,
+                        )
+                await db.commit()
+                logger.info(f"Pocket REMEMBER: saved {len(remember_matches)} tags for {agent}")
+            except Exception as e:
+                logger.debug(f"REMEMBER tag save failed: {e}")
+            response_text = remember_pattern.sub("", response_text).strip()
+
+    # Record usage
+    await billing.record_message_usage(
+        user.id,
+        "anthropic",
+        model,
+        usage.get("input_tokens", 0),
+        usage.get("output_tokens", 0),
+    )
+
+    # Analyze expression and care value
+    expression = analyze_response_expression(response_text, state)
+    care_value = calculate_care_value(user_message, response_text)
+
+    # Save assistant message to DB (app only)
+    if is_app and conversation:
+        try:
+            assistant_msg = Message(
+                id=uuid4(),
+                conversation_id=conversation.id,
+                role="assistant",
+                content=response_text,
+                tokens_used=usage.get("output_tokens") or None,
+            )
+            db.add(assistant_msg)
+            conversation.updated_at = datetime.utcnow()
+            await db.commit()
+        except Exception as e:
+            logger.warning(f"Failed to save pocket assistant message: {e}")
+
+    # Fire-and-forget: extract memories from this exchange
+    try:
+        await _extract_pocket_memory(db, user.id, agent, user_message, response_text)
+    except Exception as e:
+        logger.debug(f"Pocket memory extraction skipped: {e}")
+
+    return {
+        "response_text": response_text,
+        "expression": expression,
+        "care_value": care_value,
+    }
+
+
+# =============================================================================
 # REQUEST / RESPONSE MODELS
 # =============================================================================
 
@@ -313,188 +589,20 @@ async def pocket_chat(
     device_and_user: tuple = Depends(get_device_and_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Chat with LLM from the ApexPocket device."""
+    """Chat with LLM from the ApexPocket device (non-streaming)."""
     device, user = device_and_user
+    ctx = await _prepare_pocket_chat(req, device, user, db)
 
-    # Detect app vs OLED hardware
-    # OLED ESP32 sends firmware like "oled-1.0" or has device_type "apex_oled".
-    # Everything else (apex_pocket, apex_app, app-*) is treated as app.
-    is_oled = device.device_type == "apex_oled" or (device.firmware_version or "").startswith("oled-")
-    is_app = not is_oled
-
-    # Branch model + token limit by device type
-    model = "claude-sonnet-4-5-20250929" if is_app else "claude-haiku-4-5-20251001"
-    max_tokens = 1024 if is_app else 100
-
-    # Billing check
-    billing = BillingService(db)
-    can_send, reason = await billing.can_send_message(user.id)
-    if not can_send:
-        raise HTTPException(status_code=402, detail=reason or "Message limit reached")
-
-    # Resolve state and agent
-    state = get_state_from_string(req.state)
-    agent = req.agent.upper() if req.agent else "AZOTH"
-    personality = AGENT_PERSONALITIES.get(agent, AGENT_PERSONALITIES["AZOTH"])
-
-    # Retrieve memories for this agent-user pair
-    memory_block = ""
-    try:
-        mem_svc = MemoryService(db)
-        memories = await mem_svc.get_memories_for_agent(user.id, agent, limit=8)
-        memory_block = mem_svc.format_memories_for_prompt(memories)
-    except Exception as e:
-        logger.debug(f"Memory retrieval for pocket chat: {e}")
-
-    # Village pulse — inject recent village activity (app only)
-    village_pulse = ""
-    if is_app:
-        try:
-            village_pulse = await _build_village_pulse(db, user.id)
-        except Exception as e:
-            logger.debug(f"Village pulse build failed: {e}")
-
-    # ── Conversation persistence (app only — OLED stays single-turn) ──
-    conversation = None
-    if is_app:
-        try:
-            # 1. If client sent a conversation_id, load it
-            if req.conversation_id:
-                try:
-                    conv_uuid = UUID(req.conversation_id)
-                    result = await db.execute(
-                        select(Conversation)
-                        .where(Conversation.id == conv_uuid)
-                        .where(Conversation.user_id == user.id)
-                    )
-                    conversation = result.scalar_one_or_none()
-                except (ValueError, Exception):
-                    pass
-
-            # 2. Find existing pocket conversation for this agent
-            if not conversation:
-                result = await db.execute(
-                    select(Conversation)
-                    .where(Conversation.user_id == user.id)
-                    .where(Conversation.tags.op("@>")(cast(pg_array(["pocket", agent.lower()]), PG_ARRAY(SAString))))
-                    .order_by(Conversation.updated_at.desc())
-                    .limit(1)
-                )
-                conversation = result.scalar_one_or_none()
-
-            # 3. Create new pocket conversation
-            if not conversation:
-                conversation = Conversation(
-                    id=uuid4(),
-                    user_id=user.id,
-                    title=f"Pocket — {agent}",
-                    tags=["pocket", agent.lower()],
-                )
-                db.add(conversation)
-                await db.flush()
-                logger.info(f"Created pocket conversation {conversation.id} for {agent}")
-
-            # Save user message to DB
-            user_msg = Message(
-                id=uuid4(),
-                conversation_id=conversation.id,
-                role="user",
-                content=req.message,
-            )
-            db.add(user_msg)
-            await db.commit()
-
-        except Exception as e:
-            logger.warning(f"Pocket conversation persistence error: {e}")
-            conversation = None
-
-    # Build system prompt — OLED gets 80-char constraint, app gets full conversation
-    state_prompt = STATE_PROMPTS[state]
-    if is_app:
-        system_prompt = (
-            f"{state_prompt}\n\n"
-            f"You are {personality}\n\n"
-            f"Current love-energy: {req.E:.1f}\n\n"
-            f"{memory_block}"
-            f"{village_pulse}"
-            f"RULES:\n"
-            f"- Be genuine, not performatively cute\n"
-            f"- Express your current state naturally\n"
-            f"- You can ask questions to learn about your human\n"
-            f"- Use conversational length — a few sentences is fine\n"
-            f"- Markdown is supported for formatting\n"
-            f"- To remember important facts, include [REMEMBER: type:key=value] in your response\n"
-            f"  Types: fact, preference, context, relationship\n"
-            f"  Example: [REMEMBER: fact:favorite_color=blue]\n"
-            f"  Only use this for clearly stated, important information"
-        )
-    else:
-        system_prompt = (
-            f"{state_prompt}\n\n"
-            f"You are {personality}\n\n"
-            f"Current love-energy: {req.E:.1f}\n\n"
-            f"{memory_block}"
-            f"RULES:\n"
-            f"- Keep responses under 80 characters when possible (tiny OLED screen)\n"
-            f"- Be genuine, not performatively cute\n"
-            f"- Express your current state naturally\n"
-            f"- You can ask questions to learn about your human"
-        )
-
-    # ── Load conversation history (app only) ──
-    llm_messages = [{"role": "user", "content": req.message}]
-    if is_app and conversation:
-        try:
-            hist_result = await db.execute(
-                select(Message)
-                .where(Message.conversation_id == conversation.id)
-                .order_by(Message.created_at.desc())
-                .limit(22)  # 10 pairs + buffer
-            )
-            rows = list(reversed(hist_result.scalars().all()))
-
-            # Pop current user message (last one we just saved)
-            if rows and rows[-1].role == "user":
-                rows = rows[:-1]
-
-            # Build history with 20K token cap
-            history: list[dict] = []
-            token_count = 0
-            for msg in rows:
-                if msg.role not in ("user", "assistant"):
-                    continue
-                if not msg.content or not msg.content.strip():
-                    continue
-                est = len(msg.content) // 4
-                if token_count + est > 20_000:
-                    break
-                history.append({"role": msg.role, "content": msg.content})
-                token_count += est
-
-            # Merge consecutive same-role messages
-            if history:
-                merged: list[dict] = [history[0]]
-                for m in history[1:]:
-                    if m["role"] == merged[-1]["role"]:
-                        merged[-1]["content"] += "\n\n" + m["content"]
-                    else:
-                        merged.append(m)
-                # Ensure starts with user
-                while merged and merged[0]["role"] != "user":
-                    merged.pop(0)
-                if merged:
-                    llm_messages = merged + [{"role": "user", "content": req.message}]
-                    logger.info(f"Pocket history: {len(merged)} msgs (~{token_count} tokens) for {agent}")
-        except Exception as e:
-            logger.warning(f"Pocket history load failed: {e}")
+    agent = ctx["agent"]
+    conversation = ctx["conversation"]
 
     try:
         llm = create_llm_service("anthropic")
         result = await llm.chat(
-            messages=llm_messages,
-            system=system_prompt,
-            model=model,
-            max_tokens=max_tokens,
+            messages=ctx["llm_messages"],
+            system=ctx["system_prompt"],
+            model=ctx["model"],
+            max_tokens=ctx["max_tokens"],
         )
 
         # Extract text from content blocks
@@ -506,72 +614,25 @@ async def pocket_chat(
         if not response_text:
             response_text = "..."
 
-        # Parse and save [REMEMBER] tags from agent response
-        if is_app:
-            remember_pattern = re.compile(r'\[REMEMBER:\s*(\w+):(\w+)=(.+?)\]')
-            remember_matches = remember_pattern.findall(response_text)
-            if remember_matches:
-                try:
-                    rem_svc = MemoryService(db)
-                    for mem_type, mem_key, mem_value in remember_matches:
-                        if mem_type in ("fact", "preference", "context", "relationship"):
-                            await rem_svc.save_memory(
-                                user_id=user.id,
-                                agent_id=agent,
-                                memory_type=mem_type,
-                                key=mem_key,
-                                value=mem_value.strip(),
-                                confidence=0.9,
-                            )
-                    await db.commit()
-                    logger.info(f"Pocket REMEMBER: saved {len(remember_matches)} tags for {agent}")
-                except Exception as e:
-                    logger.debug(f"REMEMBER tag save failed: {e}")
-                # Strip tags from response text shown to user
-                response_text = remember_pattern.sub("", response_text).strip()
-
-        # Record usage
         usage = result.get("usage", {})
-        await billing.record_message_usage(
-            user.id,
-            "anthropic",
-            model,
-            usage.get("input_tokens", 0),
-            usage.get("output_tokens", 0),
+        final = await _finalize_pocket_chat(
+            db=db,
+            user=user,
+            agent=agent,
+            state=ctx["state"],
+            response_text=response_text,
+            user_message=req.message,
+            conversation=conversation,
+            billing=ctx["billing"],
+            model=ctx["model"],
+            usage=usage,
+            is_app=ctx["is_app"],
         )
 
-        # Analyze expression and care value
-        expression = analyze_response_expression(response_text, state)
-        care_value = calculate_care_value(req.message, response_text)
-
-        # Save assistant message to DB (app only)
-        if is_app and conversation:
-            try:
-                assistant_msg = Message(
-                    id=uuid4(),
-                    conversation_id=conversation.id,
-                    role="assistant",
-                    content=response_text,
-                    tokens_used=usage.get("output_tokens") or None,
-                )
-                db.add(assistant_msg)
-                conversation.updated_at = datetime.utcnow()
-                await db.commit()
-            except Exception as e:
-                logger.warning(f"Failed to save pocket assistant message: {e}")
-
-        # Fire-and-forget: extract memories from this exchange
-        try:
-            await _extract_pocket_memory(
-                db, user.id, agent, req.message, response_text
-            )
-        except Exception as e:
-            logger.debug(f"Pocket memory extraction skipped: {e}")
-
         return {
-            "response": response_text,
-            "expression": expression,
-            "care_value": care_value,
+            "response": final["response_text"],
+            "expression": final["expression"],
+            "care_value": final["care_value"],
             "agent": agent,
             "tools_used": [],
             "conversation_id": str(conversation.id) if conversation else None,
@@ -587,6 +648,79 @@ async def pocket_chat(
             "tools_used": [],
             "conversation_id": str(conversation.id) if conversation else None,
         }
+
+
+@router.post("/chat/stream")
+async def pocket_chat_stream(
+    req: PocketChatRequest,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Chat with LLM from the ApexPocket app — SSE streaming."""
+    device, user = device_and_user
+    ctx = await _prepare_pocket_chat(req, device, user, db)
+
+    agent = ctx["agent"]
+    conversation = ctx["conversation"]
+
+    async def stream_response():
+        full_response = ""
+        usage_info = {"input_tokens": 0, "output_tokens": 0}
+
+        try:
+            conv_id = str(conversation.id) if conversation else None
+            yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv_id})}\n\n"
+
+            llm = create_llm_service("anthropic")
+            async for event in llm.chat_stream(
+                messages=ctx["llm_messages"],
+                model=ctx["model"],
+                system=ctx["system_prompt"],
+                max_tokens=ctx["max_tokens"],
+            ):
+                event_type = event.get("type")
+
+                if event_type == "token":
+                    content = event.get("content", "")
+                    full_response += content
+                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                elif event_type == "usage":
+                    usage_info = event.get("usage", usage_info)
+                # Skip thinking, tool_*, content_blocks, start, end (internal)
+
+            if not full_response:
+                full_response = "..."
+
+            # Post-LLM finalization
+            final = await _finalize_pocket_chat(
+                db=db,
+                user=user,
+                agent=agent,
+                state=ctx["state"],
+                response_text=full_response,
+                user_message=req.message,
+                conversation=conversation,
+                billing=ctx["billing"],
+                model=ctx["model"],
+                usage=usage_info,
+                is_app=ctx["is_app"],
+            )
+
+            yield f"data: {json.dumps({'type': 'end', 'expression': final['expression'], 'care_value': final['care_value'], 'agent': agent, 'usage': usage_info})}\n\n"
+
+        except Exception as e:
+            logger.error(f"Pocket stream error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        stream_response(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/care")
