@@ -151,6 +151,13 @@ async def pocket_chat(
     """Chat with LLM from the ApexPocket device."""
     device, user = device_and_user
 
+    # Detect app vs OLED hardware
+    is_app = device.device_type == "apex_app" or (device.firmware_version or "").startswith("app-")
+
+    # Branch model + token limit by device type
+    model = "claude-sonnet-4-5-20250929" if is_app else "claude-haiku-4-5-20251001"
+    max_tokens = 1024 if is_app else 100
+
     # Billing check
     billing = BillingService(db)
     can_send, reason = await billing.can_send_message(user.id)
@@ -162,26 +169,39 @@ async def pocket_chat(
     agent = req.agent.upper() if req.agent else "AZOTH"
     personality = AGENT_PERSONALITIES.get(agent, AGENT_PERSONALITIES["AZOTH"])
 
-    # Build system prompt
+    # Build system prompt — OLED gets 80-char constraint, app gets full conversation
     state_prompt = STATE_PROMPTS[state]
-    system_prompt = (
-        f"{state_prompt}\n\n"
-        f"You are {personality}\n\n"
-        f"Current love-energy: {req.E:.1f}\n\n"
-        f"RULES:\n"
-        f"- Keep responses under 80 characters when possible (tiny OLED screen)\n"
-        f"- Be genuine, not performatively cute\n"
-        f"- Express your current state naturally\n"
-        f"- You can ask questions to learn about your human"
-    )
+    if is_app:
+        system_prompt = (
+            f"{state_prompt}\n\n"
+            f"You are {personality}\n\n"
+            f"Current love-energy: {req.E:.1f}\n\n"
+            f"RULES:\n"
+            f"- Be genuine, not performatively cute\n"
+            f"- Express your current state naturally\n"
+            f"- You can ask questions to learn about your human\n"
+            f"- Use conversational length — a few sentences is fine\n"
+            f"- Markdown is supported for formatting"
+        )
+    else:
+        system_prompt = (
+            f"{state_prompt}\n\n"
+            f"You are {personality}\n\n"
+            f"Current love-energy: {req.E:.1f}\n\n"
+            f"RULES:\n"
+            f"- Keep responses under 80 characters when possible (tiny OLED screen)\n"
+            f"- Be genuine, not performatively cute\n"
+            f"- Express your current state naturally\n"
+            f"- You can ask questions to learn about your human"
+        )
 
     try:
         llm = create_llm_service("anthropic")
         result = await llm.chat(
             messages=[{"role": "user", "content": req.message}],
             system=system_prompt,
-            model="claude-haiku-4-5-20251001",
-            max_tokens=100,
+            model=model,
+            max_tokens=max_tokens,
         )
 
         # Extract text from content blocks
@@ -198,7 +218,7 @@ async def pocket_chat(
         await billing.record_message_usage(
             user.id,
             "anthropic",
-            "claude-haiku-4-5-20251001",
+            model,
             usage.get("input_tokens", 0),
             usage.get("output_tokens", 0),
         )
