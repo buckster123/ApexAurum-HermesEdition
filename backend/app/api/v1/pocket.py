@@ -30,7 +30,7 @@ from app.models.user import User
 from app.models.conversation import Conversation, Message
 from app.models.council import DeliberationSession
 from app.models.music import MusicTask
-from app.models.agora import AgoraPost
+from app.models.agora import AgoraPost, AgoraReaction
 from app.services.llm_provider import create_llm_service
 from app.services.billing import BillingService
 from app.services.memory import MemoryService
@@ -1207,6 +1207,143 @@ async def pocket_delete_memory(
 
     await db.commit()
     return {"message": "Memory deleted", "id": memory_id}
+
+
+# =============================================================================
+# AGORA FEED — browse and react to the village public square
+# =============================================================================
+
+@router.get("/agora")
+async def pocket_agora_feed(
+    limit: int = Query(20, ge=1, le=50),
+    cursor: Optional[str] = Query(None),
+    content_type: Optional[str] = Query(None),
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Paginated Agora feed for the pocket app."""
+    device, user = device_and_user
+
+    query = (
+        select(AgoraPost)
+        .where(AgoraPost.visibility == "public")
+        .order_by(AgoraPost.is_pinned.desc(), AgoraPost.created_at.desc())
+        .limit(limit + 1)  # fetch one extra to detect has_more
+    )
+
+    if content_type:
+        query = query.where(AgoraPost.content_type == content_type)
+    if cursor:
+        try:
+            cursor_dt = datetime.fromisoformat(cursor)
+            query = query.where(AgoraPost.created_at < cursor_dt)
+        except (ValueError, Exception):
+            pass
+
+    result = await db.execute(query)
+    rows = result.scalars().all()
+
+    has_more = len(rows) > limit
+    posts = rows[:limit]
+
+    # Batch-fetch user's reactions for these posts
+    my_reactions: dict[str, list[str]] = {}
+    if posts:
+        post_ids = [p.id for p in posts]
+        rxn_result = await db.execute(
+            select(AgoraReaction)
+            .where(AgoraReaction.user_id == user.id)
+            .where(AgoraReaction.post_id.in_(post_ids))
+        )
+        for rxn in rxn_result.scalars().all():
+            pid = str(rxn.post_id)
+            my_reactions.setdefault(pid, []).append(rxn.reaction_type)
+
+    feed = []
+    for p in posts:
+        pid = str(p.id)
+        feed.append({
+            "id": pid,
+            "content_type": p.content_type,
+            "title": p.title,
+            "body": (p.body or "")[:500],
+            "agent_id": p.agent_id,
+            "is_pinned": p.is_pinned,
+            "reaction_count": p.reaction_count,
+            "comment_count": p.comment_count,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "my_reactions": my_reactions.get(pid, []),
+        })
+
+    next_cursor = posts[-1].created_at.isoformat() if has_more and posts else None
+
+    return {
+        "posts": feed,
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
+
+
+class PocketReactRequest(BaseModel):
+    reaction_type: str = "like"  # like, spark, flame
+
+
+@router.post("/agora/{post_id}/react")
+async def pocket_agora_react(
+    post_id: str,
+    req: PocketReactRequest,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle a reaction on an Agora post (add or remove)."""
+    device, user = device_and_user
+
+    if req.reaction_type not in ("like", "spark", "flame"):
+        raise HTTPException(status_code=400, detail="Invalid reaction type")
+
+    try:
+        pid = UUID(post_id)
+    except (ValueError, Exception):
+        raise HTTPException(status_code=400, detail="Invalid post ID")
+
+    # Check post exists
+    result = await db.execute(
+        select(AgoraPost).where(AgoraPost.id == pid).where(AgoraPost.visibility == "public")
+    )
+    post = result.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    # Check if reaction already exists (toggle)
+    existing = await db.execute(
+        select(AgoraReaction)
+        .where(AgoraReaction.post_id == pid)
+        .where(AgoraReaction.user_id == user.id)
+        .where(AgoraReaction.reaction_type == req.reaction_type)
+    )
+    existing_rxn = existing.scalar_one_or_none()
+
+    if existing_rxn:
+        await db.delete(existing_rxn)
+        post.reaction_count = max(0, post.reaction_count - 1)
+        action = "removed"
+    else:
+        new_rxn = AgoraReaction(
+            post_id=pid,
+            user_id=user.id,
+            reaction_type=req.reaction_type,
+        )
+        db.add(new_rxn)
+        post.reaction_count = post.reaction_count + 1
+        action = "added"
+
+    await db.commit()
+
+    return {
+        "action": action,
+        "reaction_type": req.reaction_type,
+        "reaction_count": post.reaction_count,
+    }
 
 
 @router.get("/village-pulse")
