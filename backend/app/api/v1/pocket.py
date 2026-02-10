@@ -94,6 +94,114 @@ POCKET_TOOL_TIMEOUT = 30  # seconds — shorter than web's 120s
 POCKET_MAX_TOOL_TURNS = 3  # prevent infinite tool loops
 
 
+def _extract_media(tool_name: str, content_str: str):
+    """Extract structured media metadata from a tool result for rich mobile cards.
+
+    Returns None if no media is extractable. The returned dict has:
+      {"type": "links"|"audio"|"files", "items": [...]}
+    """
+    try:
+        data = json.loads(content_str)
+    except (ValueError, TypeError):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    if tool_name == "web_search":
+        results = data.get("results", [])
+        if not results:
+            return None
+        items = []
+        for r in results[:5]:
+            url = r.get("url", "")
+            if not url:
+                continue
+            items.append({
+                "title": (r.get("title") or "")[:120],
+                "url": url,
+                "snippet": (r.get("text") or "")[:200],
+                "source": r.get("source", ""),
+            })
+        return {"type": "links", "items": items} if items else None
+
+    elif tool_name == "web_fetch":
+        url = data.get("url", "")
+        title = data.get("title")
+        status = data.get("status_code")
+        if not url:
+            return None
+        return {
+            "type": "links",
+            "items": [{
+                "title": (title or url)[:120],
+                "url": url,
+                "snippet": f"HTTP {status}" if status else "",
+                "source": "",
+            }],
+        }
+
+    elif tool_name == "music_status":
+        if data.get("status") != "completed":
+            return None
+        audio_url = data.get("audio_url", "")
+        if not audio_url:
+            return None
+        tracks = data.get("tracks", [])
+        items = []
+        for t in (tracks or [{"audio_url": audio_url, "title": data.get("title", ""), "duration": data.get("duration", 0)}]):
+            au = t.get("audio_url", "")
+            if not au:
+                continue
+            items.append({
+                "title": (t.get("title") or "Untitled")[:100],
+                "audio_url": au,
+                "duration": t.get("duration", 0),
+            })
+        return {"type": "audio", "items": items} if items else None
+
+    elif tool_name == "vault_list":
+        folders = data.get("folders", [])
+        files = data.get("files", [])
+        if not folders and not files:
+            return None
+        items = []
+        for f in folders[:10]:
+            items.append({
+                "name": f.get("name", ""),
+                "file_id": f.get("id", ""),
+                "is_folder": True,
+                "size": 0,
+                "mime_type": "",
+            })
+        for f in files[:10]:
+            items.append({
+                "name": f.get("name", ""),
+                "file_id": f.get("id", ""),
+                "is_folder": False,
+                "size": f.get("size", 0),
+                "mime_type": f.get("mime_type", ""),
+            })
+        return {"type": "files", "items": items} if items else None
+
+    elif tool_name == "vault_read":
+        name = data.get("name", "")
+        if not name:
+            return None
+        return {
+            "type": "files",
+            "items": [{
+                "name": name,
+                "file_id": data.get("id", ""),
+                "is_folder": False,
+                "size": data.get("size", 0),
+                "mime_type": data.get("mime_type", ""),
+            }],
+        }
+
+    return None
+
+
 # =============================================================================
 # HELPERS
 # =============================================================================
@@ -853,9 +961,15 @@ async def pocket_chat_stream(
                         res = await tool_executor.execute_tool_use(tool_use)
 
                     is_err = res.get("is_error", False)
+                    content_str = res.get("content", "")
                     # Truncate large results for SSE (full result goes to LLM)
-                    preview = str(res.get("content", ""))[:500]
-                    yield f"data: {json.dumps({'type': 'tool_result', 'name': tool_name, 'result': preview, 'is_error': is_err})}\n\n"
+                    preview = str(content_str)[:500]
+                    # Extract structured media for rich mobile rendering
+                    media = _extract_media(tool_name, content_str) if not is_err else None
+                    sse_payload = {'type': 'tool_result', 'name': tool_name, 'result': preview, 'is_error': is_err}
+                    if media:
+                        sse_payload['media'] = media
+                    yield f"data: {json.dumps(sse_payload)}\n\n"
 
                     tool_results.append(res)
 
