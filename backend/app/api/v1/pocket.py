@@ -149,9 +149,10 @@ def _extract_media(tool_name: str, content_str: str):
         audio_url = data.get("audio_url", "")
         if not audio_url:
             return None
+        task_id = data.get("task_id", "")
         tracks = data.get("tracks", [])
         items = []
-        for t in (tracks or [{"audio_url": audio_url, "title": data.get("title", ""), "duration": data.get("duration", 0)}]):
+        for t in (tracks or [{"audio_url": audio_url, "title": data.get("title", ""), "duration": data.get("duration", 0), "task_id": task_id}]):
             au = t.get("audio_url", "")
             if not au:
                 continue
@@ -159,6 +160,7 @@ def _extract_media(tool_name: str, content_str: str):
                 "title": (t.get("title") or "Untitled")[:100],
                 "audio_url": au,
                 "duration": t.get("duration", 0),
+                "task_id": t.get("task_id", task_id),
             })
         return {"type": "audio", "items": items} if items else None
 
@@ -177,6 +179,7 @@ def _extract_media(tool_name: str, content_str: str):
                 "title": (t.get("title") or "Untitled")[:100],
                 "audio_url": au,
                 "duration": t.get("duration", 0),
+                "task_id": t.get("task_id", ""),
             })
         return {"type": "audio", "items": items} if items else None
 
