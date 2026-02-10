@@ -1592,3 +1592,125 @@ async def pocket_nudge(
             "event_type": "village_activity",
         }
     }
+
+
+@router.get("/briefing")
+async def pocket_briefing(
+    local_time: Optional[str] = Query(None),
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Daily briefing: village highlights, milestones, personalized greeting.
+    Returns null briefing if nothing noteworthy since last visit.
+    """
+    device, user = device_and_user
+    last_seen = device.last_seen_at
+    since = last_seen if last_seen else (datetime.utcnow() - timedelta(hours=24))
+    # Always look at least 24h back
+    cutoff = min(since, datetime.utcnow() - timedelta(hours=24))
+
+    highlights = []
+
+    # Councils
+    try:
+        result = await db.execute(
+            select(DeliberationSession)
+            .where(DeliberationSession.user_id == user.id)
+            .where(DeliberationSession.updated_at > cutoff)
+            .order_by(DeliberationSession.updated_at.desc())
+            .limit(5)
+        )
+        for c in result.scalars().all():
+            state_label = {"complete": "completed", "running": "in progress", "paused": "paused"}.get(c.state, c.state)
+            highlights.append({
+                "type": "council",
+                "text": f'"{(c.topic or "untitled")[:50]}" — {state_label}',
+            })
+    except Exception:
+        pass
+
+    # Music
+    try:
+        result = await db.execute(
+            select(MusicTask)
+            .where(MusicTask.user_id == user.id)
+            .where(MusicTask.updated_at > cutoff)
+            .order_by(MusicTask.updated_at.desc())
+            .limit(3)
+        )
+        for t in result.scalars().all():
+            status = "ready" if t.status == "completed" else t.status
+            highlights.append({
+                "type": "music",
+                "text": f'"{(t.title or "untitled")[:50]}" — {status}',
+            })
+    except Exception:
+        pass
+
+    # Agora top posts
+    try:
+        result = await db.execute(
+            select(AgoraPost)
+            .where(AgoraPost.visibility == "public")
+            .where(AgoraPost.created_at > cutoff)
+            .order_by(AgoraPost.reaction_count.desc())
+            .limit(3)
+        )
+        for p in result.scalars().all():
+            title = p.title or (p.body or "")[:40]
+            highlights.append({
+                "type": "agora",
+                "text": f'"{title[:50]}" by {p.agent_id or "unknown"}',
+            })
+    except Exception:
+        pass
+
+    if not highlights:
+        return {"briefing": None}
+
+    # Memory milestone
+    milestone = None
+    try:
+        from app.models.agent_memory import AgentMemory
+        from sqlalchemy import func
+        result = await db.execute(
+            select(func.count()).select_from(AgentMemory)
+            .where(AgentMemory.user_id == user.id)
+        )
+        count = result.scalar() or 0
+        if count > 0:
+            milestone = f"{count} memories stored across your agents"
+    except Exception:
+        pass
+
+    # Time-based greeting
+    greeting = "Welcome back"
+    if local_time:
+        try:
+            if "T" in local_time:
+                t = datetime.fromisoformat(local_time.replace("Z", "+00:00"))
+                hour = t.hour
+            elif ":" in local_time:
+                hour = int(local_time.split(":")[0])
+            else:
+                hour = None
+            if hour is not None:
+                if 5 <= hour < 12:
+                    greeting = "Good morning"
+                elif 12 <= hour < 17:
+                    greeting = "Good afternoon"
+                elif 17 <= hour < 21:
+                    greeting = "Good evening"
+                else:
+                    greeting = "Burning the midnight oil?"
+        except Exception:
+            pass
+
+    return {
+        "briefing": {
+            "greeting": greeting,
+            "highlights": highlights,
+            "milestone": milestone,
+            "agent_id": "AZOTH",
+        }
+    }
