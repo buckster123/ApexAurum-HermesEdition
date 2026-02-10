@@ -58,26 +58,27 @@ export function useDevMode() {
   // === DEV MODE (Layer 1) ===
 
   function enableDevMode(skipTierCheck = false) {
-    // Check tier restriction (Adept only) unless explicitly skipped
+    // Check tier restriction (Adept+) unless explicitly skipped
     if (!skipTierCheck) {
       // Dynamically import billing store to check tier (refresh first for admin changes)
       import('@/stores/billing').then(async ({ useBillingStore }) => {
         const billing = useBillingStore()
         await billing.fetchStatus()
-        if (billing.tierLevel < 2) {
-          // Show restriction message (Adept = level 2, Opus = 3, Azothic = 4)
-          tierRestrictionMessage.value = 'Dev Mode requires Adept tier or higher. Upgrade to unlock!'
-          console.log('%c🔒 Dev Mode requires Adept tier', 'color: #FFD700; font-size: 14px;')
-          console.log('%cUpgrade to Adept to unlock developer features.', 'color: #888; font-style: italic;')
 
-          // Clear message after 5 seconds
-          setTimeout(() => {
-            tierRestrictionMessage.value = ''
-          }, 5000)
+        // Check tier level OR the dev_mode feature flag from backend
+        // (feature flag catches admin-upgraded accounts where tier name is correct)
+        if (billing.tierLevel >= 2 || billing.status?.features?.dev_mode) {
+          doEnableDevMode()
           return
         }
-        // Tier check passed, actually enable
-        doEnableDevMode()
+
+        // Show restriction message
+        tierRestrictionMessage.value = 'Dev Mode requires Adept tier or higher. Upgrade to unlock!'
+        console.log('%c🔒 Dev Mode requires Adept tier', 'color: #FFD700; font-size: 14px;')
+        console.log('%cUpgrade to Adept to unlock developer features.', 'color: #888; font-style: italic;')
+        setTimeout(() => {
+          tierRestrictionMessage.value = ''
+        }, 5000)
       }).catch(() => {
         // If store fails to load, allow activation (fail open for testing)
         doEnableDevMode()
