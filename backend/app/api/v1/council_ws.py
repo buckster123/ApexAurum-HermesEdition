@@ -159,7 +159,7 @@ async def council_websocket(websocket: WebSocket, session_id: str):
                         .where(DeliberationSession.user_id == user.id)
                     )
                     session = result.scalar_one_or_none()
-                    if session and session.state == "paused":
+                    if session and session.state in ("paused", "pending"):
                         session.state = "running"
                         await db.commit()
                         if deliberation_task is None or deliberation_task.done():
@@ -197,11 +197,21 @@ async def council_websocket(websocket: WebSocket, session_id: str):
                         session = result.scalar_one_or_none()
                         if session:
                             session.pending_human_message = butt_in_msg
+                            # Auto-resume if idle so the butt-in triggers a round
+                            if session.state in ("paused", "pending"):
+                                session.state = "running"
                             await db.commit()
                             await send_event(websocket, {
                                 "type": "butt_in_queued",
                                 "message": butt_in_msg,
                             })
+                            # Kick off +1 round if no deliberation is running
+                            if deliberation_task is None or deliberation_task.done():
+                                deliberation_task = asyncio.create_task(
+                                    run_streaming_deliberation(
+                                        websocket, session_uuid, user, 1
+                                    )
+                                )
 
     except WebSocketDisconnect:
         logger.info(f"Council WS disconnected: session={session_id}")
