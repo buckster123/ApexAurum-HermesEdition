@@ -24,6 +24,7 @@ from sqlalchemy import String as SAString
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.device_deps import get_device_and_user
+from app.auth.jwt import create_access_token
 from app.database import get_db
 from app.models.device import Device
 from app.models.user import User
@@ -956,6 +957,20 @@ async def pocket_status(
         "last_village_activity": None,
         "message_of_the_day": motd,
     }
+
+
+@router.post("/ws-token")
+async def pocket_ws_token(
+    device_and_user: tuple = Depends(get_device_and_user),
+):
+    """Exchange device token for a short-lived JWT for WebSocket auth."""
+    device, user = device_and_user
+    token = create_access_token(
+        user_id=user.id,
+        email=user.email,
+        expires_delta=timedelta(hours=1),
+    )
+    return {"token": token, "expires_in": 3600}
 
 
 @router.post("/sync")
