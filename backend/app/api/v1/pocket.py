@@ -489,6 +489,24 @@ async def _prepare_pocket_chat(
             tools = None
             tool_executor = None
 
+    # ── Image vision support (app only) ──
+    if req.image_base64 and is_app:
+        if len(req.image_base64) > 1_500_000:
+            raise HTTPException(status_code=413, detail="Image too large (max ~1MB)")
+        user_content = [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/jpeg",
+                    "data": req.image_base64,
+                },
+            },
+            {"type": "text", "text": req.message},
+        ]
+        llm_messages[-1] = {"role": "user", "content": user_content}
+        logger.info(f"Pocket vision: image attached ({len(req.image_base64)} chars base64)")
+
     return {
         "is_app": is_app,
         "model": model,
@@ -598,6 +616,7 @@ class PocketChatRequest(BaseModel):
     device_id: Optional[str] = None
     agent: str = "AZOTH"
     conversation_id: Optional[str] = None
+    image_base64: Optional[str] = None  # JPEG base64 for vision (max ~1MB encoded)
 
 
 class PocketCareRequest(BaseModel):
