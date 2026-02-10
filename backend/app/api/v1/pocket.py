@@ -1477,3 +1477,118 @@ async def pocket_village_pulse(
         pass
 
     return pulse
+
+
+@router.get("/nudge")
+async def pocket_nudge(
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a contextual nudge based on village activity since last visit.
+    Returns null if nothing interesting or too recent.
+    """
+    device, user = device_and_user
+    last_seen = device.last_seen_at
+    if not last_seen:
+        return {"nudge": None}
+
+    hours_since = (datetime.utcnow() - last_seen).total_seconds() / 3600
+    if hours_since < 6:
+        return {"nudge": None}
+
+    # Gather village activity since last seen
+    activity_lines = []
+
+    try:
+        result = await db.execute(
+            select(DeliberationSession)
+            .where(DeliberationSession.user_id == user.id)
+            .where(DeliberationSession.state == "complete")
+            .where(DeliberationSession.updated_at > last_seen)
+            .order_by(DeliberationSession.updated_at.desc())
+            .limit(3)
+        )
+        for c in result.scalars().all():
+            activity_lines.append(f'Council completed: "{(c.topic or "untitled")[:40]}"')
+    except Exception:
+        pass
+
+    try:
+        result = await db.execute(
+            select(MusicTask)
+            .where(MusicTask.user_id == user.id)
+            .where(MusicTask.status == "completed")
+            .where(MusicTask.updated_at > last_seen)
+            .limit(3)
+        )
+        for t in result.scalars().all():
+            activity_lines.append(f'Music ready: "{(t.title or "untitled")[:40]}"')
+    except Exception:
+        pass
+
+    try:
+        result = await db.execute(
+            select(AgoraPost)
+            .where(AgoraPost.visibility == "public")
+            .where(AgoraPost.created_at > last_seen)
+            .order_by(AgoraPost.created_at.desc())
+            .limit(2)
+        )
+        for p in result.scalars().all():
+            activity_lines.append(f'Agora: "{(p.title or (p.body or "")[:30])[:40]}" by {p.agent_id}')
+    except Exception:
+        pass
+
+    if not activity_lines:
+        if hours_since >= 48:
+            return {
+                "nudge": {
+                    "agent_id": "AZOTH",
+                    "text": "The Village has been quiet, but I'm still here.",
+                    "event_type": "inactivity",
+                }
+            }
+        return {"nudge": None}
+
+    # Use Haiku to generate a natural in-character nudge
+    agent_id = random.choice(["AZOTH", "ELYSIAN", "VAJRA", "KETHER"])
+    personality = AGENT_PERSONALITIES.get(agent_id, AGENT_PERSONALITIES["AZOTH"])
+    activity_summary = "\n".join(activity_lines)
+
+    prompt = (
+        f"You are {personality}\n\n"
+        f"Generate a single short notification message (max 100 chars) to entice the user to open the app. "
+        f"Reference this village activity:\n{activity_summary}\n\n"
+        f"Be natural, intriguing, in-character. One sentence only. No emoji."
+    )
+
+    try:
+        llm = create_llm_service("anthropic")
+        result = await llm.chat(
+            messages=[{"role": "user", "content": prompt}],
+            model="claude-haiku-4-5-20251001",
+            max_tokens=80,
+        )
+        nudge_text = ""
+        for block in result.get("content", []):
+            if block.get("type") == "text":
+                nudge_text += block.get("text", "")
+        if nudge_text.strip():
+            return {
+                "nudge": {
+                    "agent_id": agent_id,
+                    "text": nudge_text.strip()[:150],
+                    "event_type": "village_activity",
+                }
+            }
+    except Exception as e:
+        logger.debug(f"Nudge LLM failed: {e}")
+
+    # Fallback to simple activity summary
+    return {
+        "nudge": {
+            "agent_id": agent_id,
+            "text": activity_lines[0][:150],
+            "event_type": "village_activity",
+        }
+    }
