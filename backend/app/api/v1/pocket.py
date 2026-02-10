@@ -85,6 +85,8 @@ POCKET_TOOLS = [
     # Stretch
     "music_generate",
     "music_status",
+    "music_list",
+    "music_download",
     "vault_list",
     "vault_read",
     "kb_search",
@@ -150,6 +152,24 @@ def _extract_media(tool_name: str, content_str: str):
         tracks = data.get("tracks", [])
         items = []
         for t in (tracks or [{"audio_url": audio_url, "title": data.get("title", ""), "duration": data.get("duration", 0)}]):
+            au = t.get("audio_url", "")
+            if not au:
+                continue
+            items.append({
+                "title": (t.get("title") or "Untitled")[:100],
+                "audio_url": au,
+                "duration": t.get("duration", 0),
+            })
+        return {"type": "audio", "items": items} if items else None
+
+    elif tool_name == "music_list":
+        tasks = data.get("tasks", [])
+        if not tasks:
+            return None
+        items = []
+        for t in tasks:
+            if t.get("status") != "completed":
+                continue
             au = t.get("audio_url", "")
             if not au:
                 continue
