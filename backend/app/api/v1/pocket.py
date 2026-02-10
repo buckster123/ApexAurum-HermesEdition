@@ -1714,3 +1714,64 @@ async def pocket_briefing(
             "agent_id": "AZOTH",
         }
     }
+
+
+# =============================================================================
+# AGENT-INITIATED MESSAGES
+# =============================================================================
+
+async def queue_pending_message(
+    db: AsyncSession,
+    user_id: UUID,
+    agent_id: str,
+    message_text: str,
+    event_type: str = "general",
+    source_id: str = None,
+):
+    """Queue a message for the user to see next time they open the pocket app."""
+    await db.execute(
+        text(
+            "INSERT INTO pocket_pending_messages (user_id, agent_id, text, event_type, source_id) "
+            "VALUES (:user_id, :agent_id, :text, :event_type, :source_id)"
+        ),
+        {
+            "user_id": str(user_id),
+            "agent_id": agent_id,
+            "text": message_text,
+            "event_type": event_type,
+            "source_id": source_id,
+        },
+    )
+
+
+@router.get("/pending-messages")
+async def pocket_pending_messages(
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch undelivered agent-initiated messages and mark them as delivered."""
+    device, user = device_and_user
+
+    result = await db.execute(
+        text(
+            "UPDATE pocket_pending_messages SET delivered = TRUE "
+            "WHERE user_id = :user_id AND delivered = FALSE "
+            "RETURNING id, agent_id, text, event_type, created_at "
+            "ORDER BY created_at ASC LIMIT 10"
+        ),
+        {"user_id": str(user.id)},
+    )
+    rows = result.fetchall()
+
+    messages = [
+        {
+            "id": str(row.id),
+            "agent_id": row.agent_id,
+            "text": row.text,
+            "event_type": row.event_type,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
+
+    return {"messages": messages}

@@ -1064,6 +1064,23 @@ END $$;
         """)
         migrations.append("CREATE INDEX IF NOT EXISTS idx_cerebro_dream_user ON cerebro_dream_log(user_id);")
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # POCKET PENDING MESSAGES - v5A: Agent-initiated messages for pocket app
+        # ═══════════════════════════════════════════════════════════════════════
+        migrations.append("""
+            CREATE TABLE IF NOT EXISTS pocket_pending_messages (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                agent_id VARCHAR(20) NOT NULL DEFAULT 'AZOTH',
+                text TEXT NOT NULL,
+                event_type VARCHAR(50) NOT NULL DEFAULT 'general',
+                source_id VARCHAR(100),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                delivered BOOLEAN DEFAULT FALSE
+            );
+        """)
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_pocket_pending_user ON pocket_pending_messages(user_id, delivered);")
+
         for migration in migrations:
             await conn.execute(text(migration))
         print(f"Database migrations complete (embedding_dim={embed_dim})")

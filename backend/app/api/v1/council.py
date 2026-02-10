@@ -867,6 +867,19 @@ async def execute_round(
         except Exception:
             pass
 
+        # Queue pocket pending message for council completion
+        try:
+            from app.api.v1.pocket import queue_pending_message
+            lead_agent = agent_names[0] if agent_names else "AZOTH"
+            await queue_pending_message(
+                db, user.id, lead_agent,
+                f'The council on "{session.topic[:60]}" has reached its conclusion.',
+                event_type="council_complete",
+                source_id=str(session.id),
+            )
+        except Exception:
+            pass
+
     return ExecuteRoundResponse(
         round_number=round_number,
         messages=[
@@ -1374,6 +1387,22 @@ async def auto_deliberate(
 
         # Note: Billing is now recorded per-agent per-round inline (see above)
         # No need for session-level billing here
+
+        # Queue pocket pending message on completion
+        if session.state == "complete":
+            try:
+                from app.api.v1.pocket import queue_pending_message
+                agent_names = [a.agent_id for a in session.agents if a.is_active] if session.agents else []
+                lead_agent = agent_names[0] if agent_names else "AZOTH"
+                await queue_pending_message(
+                    db, user.id, lead_agent,
+                    f'The council on "{session.topic[:60]}" has reached its conclusion.',
+                    event_type="council_complete",
+                    source_id=str(session.id),
+                )
+                await db.commit()
+            except Exception:
+                pass
 
         # End event
         yield f"data: {json.dumps({'type': 'end', 'state': session.state, 'total_rounds': session.current_round, 'rounds_executed': rounds_executed, 'total_cost_usd': session.total_cost_usd, 'termination_reason': session.termination_reason})}\n\n"
