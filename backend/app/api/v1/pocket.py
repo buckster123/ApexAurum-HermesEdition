@@ -397,11 +397,13 @@ async def _prepare_pocket_chat(
 
     # Build system prompt
     state_prompt = STATE_PROMPTS[state]
+    time_context = _build_time_context(req.local_time, req.timezone)
     if is_app:
         system_prompt = (
             f"{state_prompt}\n\n"
             f"You are {personality}\n\n"
             f"Current love-energy: {req.E:.1f}\n\n"
+            f"{time_context}"
             f"{memory_block}"
             f"{village_pulse}"
             f"RULES:\n"
@@ -618,6 +620,8 @@ class PocketChatRequest(BaseModel):
     agent: str = "AZOTH"
     conversation_id: Optional[str] = None
     image_base64: Optional[str] = None  # JPEG base64 for vision (max ~1MB encoded)
+    local_time: Optional[str] = None    # ISO datetime from device (e.g. "2026-02-10T23:15:00")
+    timezone: Optional[str] = None      # IANA timezone (e.g. "Europe/Oslo")
 
 
 class PocketCareRequest(BaseModel):
@@ -1083,6 +1087,38 @@ async def pocket_history(
 # =============================================================================
 # MEMORY BRIDGE
 # =============================================================================
+
+def _build_time_context(local_time: Optional[str], timezone: Optional[str] = None) -> str:
+    """Build a concise time context line for system prompt injection (~15 tokens)."""
+    if not local_time:
+        return ""
+    try:
+        from datetime import datetime as dt_cls
+        if "T" in local_time:
+            t = dt_cls.fromisoformat(local_time.replace("Z", "+00:00"))
+            hour, minute = t.hour, t.minute
+            day_name = t.strftime("%A")
+        elif ":" in local_time:
+            parts = local_time.split(":")
+            hour, minute = int(parts[0]), int(parts[1])
+            day_name = None
+        else:
+            return ""
+        if 5 <= hour < 12:
+            period = "morning"
+        elif 12 <= hour < 17:
+            period = "afternoon"
+        elif 17 <= hour < 21:
+            period = "evening"
+        else:
+            period = "night"
+        time_str = f"{hour:02d}:{minute:02d}"
+        if day_name:
+            return f"User's local time: {time_str} ({day_name} {period})\n"
+        return f"User's local time: {time_str} ({period})\n"
+    except Exception:
+        return ""
+
 
 def _relative_time(dt: datetime) -> str:
     """Format a datetime as relative time for OLED display."""
