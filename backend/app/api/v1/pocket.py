@@ -1995,9 +1995,11 @@ async def pocket_pending_messages(
     result = await db.execute(
         text(
             "UPDATE pocket_pending_messages SET delivered = TRUE "
-            "WHERE user_id = :user_id AND delivered = FALSE "
-            "RETURNING id, agent_id, text, event_type, created_at "
-            "ORDER BY created_at ASC LIMIT 10"
+            "WHERE id IN ("
+            "  SELECT id FROM pocket_pending_messages "
+            "  WHERE user_id = :user_id AND delivered = FALSE "
+            "  ORDER BY created_at ASC LIMIT 10"
+            ") RETURNING id, agent_id, text, event_type, created_at"
         ),
         {"user_id": str(user.id)},
     )
