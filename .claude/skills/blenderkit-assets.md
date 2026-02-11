@@ -188,110 +188,177 @@ for r in data.get('results', [])[:5]:
 
 #### Step 3: Get Authenticated Download URL (Requires Pro/Login)
 
+**V2 Pipeline (Direct API — Battle-Tested February 2026):**
+
+The search results include a `files` array with `downloadUrl` for each file type. Call this URL with Bearer auth + `scene_uuid` to get a signed URL.
+
 ```python
-import bpy
-import importlib
-import uuid
+import bpy, requests, uuid
 
-BK_ADDON_NAME = 'bl_ext.user_default.blenderkit'
+BK = 'bl_ext.user_default.blenderkit'
+api_key = bpy.context.preferences.addons[BK].preferences.api_key
 
-# Get API key from addon preferences
-prefs = bpy.context.preferences.addons[BK_ADDON_NAME].preferences
-api_key = prefs.api_key
-scene_id = str(uuid.uuid4())  # BlenderKit requires a scene UUID for tracking
-
-# Parse the asset data (fix avatar512 bug first)
-search_mod = importlib.import_module(f'{BK_ADDON_NAME}.search')
 asset = data['results'][0]  # From REST API search above
 
-# CRITICAL: Strip unknown author fields — BlenderKit API returns fields
-# that the addon's UserProfile dataclass doesn't expect (e.g. avatar512).
-# Without this, parse_result() throws TypeError.
-SAFE_AUTHOR_KEYS = ['aboutMe', 'aboutMeUrl', 'avatar128', 'firstName',
-                     'fullName', 'gravatarHash', 'id', 'lastName']
-author = asset.get('author', {})
-for key in list(author.keys()):
-    if key not in SAFE_AUTHOR_KEYS:
-        del author[key]
+# Get the blend file download endpoint from the files array
+blend_files = [f for f in asset.get('files', []) if f['fileType'] == 'blend']
+download_url = blend_files[0]['downloadUrl']
 
-parsed = search_mod.parse_result(asset)
+# Call with Bearer auth + scene_uuid → returns JSON with signed filePath
+r = requests.get(download_url,
+    headers={"Authorization": f"Bearer {api_key}"},
+    params={"scene_uuid": str(uuid.uuid4())},
+    timeout=15)
 
-# Get signed download URL
-client_lib = importlib.import_module(f'{BK_ADDON_NAME}.client_lib')
-can_download, download_url, filename = client_lib.get_download_url(parsed, scene_id, api_key)
-print(f"Can download: {can_download}")
-print(f"URL: {download_url[:80]}...")
-print(f"Filename: {filename}")
+signed_data = r.json()
+signed_url = signed_data['filePath']  # → https://assets.blenderkit.com/...?verify=...
+print(f"Signed URL: {signed_url[:80]}...")
 ```
+
+**Why V2?** The older `client_lib.get_download_url()` approach relies on a local wrapper server (`localhost:1234`) whose API changes between BlenderKit versions. The V2 pipeline talks directly to `blenderkit.com` — no wrapper dependency.
+
+<details>
+<summary>Legacy V1 Pipeline (client_lib — may not work with all BlenderKit versions)</summary>
+
+```python
+import bpy, importlib, uuid
+
+BK = 'bl_ext.user_default.blenderkit'
+SAFE_AUTHOR_KEYS = {'aboutMe','aboutMeUrl','avatar128','firstName',
+                     'fullName','gravatarHash','id','lastName'}
+
+asset = data['results'][0]
+# CRITICAL: Strip unknown author fields (avatar512 bug)
+asset['author'] = {k: v for k, v in asset.get('author', {}).items() if k in SAFE_AUTHOR_KEYS}
+parsed = importlib.import_module(f'{BK}.search').parse_result(asset)
+
+api_key = bpy.context.preferences.addons[BK].preferences.api_key
+client_lib = importlib.import_module(f'{BK}.client_lib')
+can_download, download_url, filename = client_lib.get_download_url(
+    parsed, str(uuid.uuid4()), api_key)
+```
+
+**Known issue:** If the local wrapper server (`localhost:1234`) rejects GET requests to `/wrappers/get_download_url`, you'll get `KeyError: 'can_download'`. This happens when the wrapper binary version doesn't match the addon code. Use V2 instead.
+</details>
 
 #### Step 4: Download and Import
 
 ```python
-import bpy
-import requests
-import tempfile
-import os
+import bpy, requests, tempfile, os
 
-# Download the .blend file from the signed URL
-response = requests.get(download_url, timeout=60, stream=True)
-temp_path = os.path.join(tempfile.gettempdir(), f"bk_{filename}")
+# Download the .blend file from the signed URL (from Step 3)
+r = requests.get(signed_url, timeout=120, stream=True)
+temp_path = os.path.join(tempfile.gettempdir(), "bk_asset.blend")
 
 with open(temp_path, 'wb') as f:
-    for chunk in response.iter_content(chunk_size=8192):
+    for chunk in r.iter_content(chunk_size=8192):
         f.write(chunk)
-print(f"Downloaded: {os.path.getsize(temp_path) / (1024*1024):.2f} MB")
+print(f"Downloaded: {os.path.getsize(temp_path) / (1024*1024):.1f} MB")
 
 # Append all objects from the .blend into the current scene
-with bpy.data.libraries.load(temp_path, link=False) as (data_from, data_to):
-    data_to.objects = data_from.objects
+with bpy.data.libraries.load(temp_path, link=False) as (src, dst):
+    dst.objects = src.objects
 
-for obj in data_to.objects:
+for obj in dst.objects:
     if obj is not None:
         bpy.context.collection.objects.link(obj)
-        obj.location.x += 3.0  # Offset from origin (adjust as needed)
+        obj.location = (3.0, 0.0, 0.0)  # Offset from origin
         print(f"Imported: {obj.name} ({obj.type})")
 ```
 
-#### Complete One-Shot Pipeline
+#### Complete One-Shot Pipeline (V2 — Direct API)
 
-Here's the full flow condensed into a single `execute_blender_code` call:
+The full search → auth → download → import flow in a single `execute_blender_code` call.
+Successfully used to batch-import 8 assets (crystals, temples, characters, props) in one session.
 
 ```python
-import bpy, requests, importlib, tempfile, os, uuid
+import bpy, requests, uuid, tempfile, os
 
 BK = 'bl_ext.user_default.blenderkit'
 SEARCH_QUERY = "asset_type:model+order:_score+crystal+gem"
 PLACE_AT = (3.0, 0.0, 0.0)
+API_KEY = bpy.context.preferences.addons[BK].preferences.api_key
 
-# 1. Search via REST API
+# 1. Search via REST API (no auth needed)
 resp = requests.get("https://www.blenderkit.com/api/v1/search/",
     params={"query": SEARCH_QUERY, "addon_version": "3.18.0", "page": 1}, timeout=10)
 asset = resp.json()['results'][0]
 
-# 2. Fix avatar bug & parse
-safe_keys = {'aboutMe','aboutMeUrl','avatar128','firstName','fullName','gravatarHash','id','lastName'}
-asset['author'] = {k: v for k, v in asset.get('author', {}).items() if k in safe_keys}
-parsed = importlib.import_module(f'{BK}.search').parse_result(asset)
+# 2. Get the blend file download endpoint from files array
+blend_files = [f for f in asset.get('files', []) if f['fileType'] == 'blend']
+download_url = blend_files[0]['downloadUrl']
 
-# 3. Get authenticated download URL
-api_key = bpy.context.preferences.addons[BK].preferences.api_key
-can_dl, url, fname = importlib.import_module(f'{BK}.client_lib').get_download_url(
-    parsed, str(uuid.uuid4()), api_key)
+# 3. Authenticate → get signed URL (Bearer + scene_uuid)
+r = requests.get(download_url,
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    params={"scene_uuid": str(uuid.uuid4())},
+    timeout=15)
+signed_url = r.json()['filePath']  # → https://assets.blenderkit.com/...?verify=...
 
-# 4. Download & import
-if can_dl:
-    r = requests.get(url, timeout=60, stream=True)
-    path = os.path.join(tempfile.gettempdir(), f"bk_{fname}")
+# 4. Download the .blend file
+r2 = requests.get(signed_url, timeout=120, stream=True)
+path = os.path.join(tempfile.gettempdir(), "bk_asset.blend")
+with open(path, 'wb') as f:
+    for chunk in r2.iter_content(8192): f.write(chunk)
+
+# 5. Import objects into scene
+with bpy.data.libraries.load(path, link=False) as (src, dst):
+    dst.objects = src.objects
+for obj in dst.objects:
+    if obj:
+        bpy.context.collection.objects.link(obj)
+        obj.location = PLACE_AT
+        print(f"Imported: {obj.name} ({obj.type})")
+```
+
+#### Reusable Download Function (for batch imports)
+
+```python
+import bpy, requests, uuid, tempfile, os
+
+BK = 'bl_ext.user_default.blenderkit'
+API_KEY = bpy.context.preferences.addons[BK].preferences.api_key
+
+def bk_grab(search_query, place_at=(0,0,0), label="asset"):
+    """Search, download, and import a BlenderKit asset in one call."""
+    resp = requests.get("https://www.blenderkit.com/api/v1/search/",
+        params={"query": search_query, "addon_version": "3.18.0", "page": 1}, timeout=10)
+    results = resp.json().get('results', [])
+    if not results:
+        print(f"[{label}] No results"); return None
+    asset = results[0]
+    print(f"[{label}] Found: {asset['name']}")
+    blend_files = [f for f in asset.get('files', []) if f['fileType'] == 'blend']
+    if not blend_files:
+        print(f"[{label}] No blend file"); return None
+    r = requests.get(blend_files[0]['downloadUrl'],
+        headers={"Authorization": f"Bearer {API_KEY}"},
+        params={"scene_uuid": str(uuid.uuid4())}, timeout=15)
+    if r.status_code != 200:
+        print(f"[{label}] Auth failed: {r.status_code}"); return None
+    signed_url = r.json().get('filePath', '')
+    r2 = requests.get(signed_url, timeout=120, stream=True)
+    safe = label.replace(' ', '_').lower()
+    path = os.path.join(tempfile.gettempdir(), f"bk_{safe}.blend")
     with open(path, 'wb') as f:
-        for chunk in r.iter_content(8192): f.write(chunk)
-
+        for chunk in r2.iter_content(8192): f.write(chunk)
+    size_mb = os.path.getsize(path) / (1024*1024)
+    print(f"[{label}] Downloaded: {size_mb:.1f} MB")
+    imported = []
     with bpy.data.libraries.load(path, link=False) as (src, dst):
         dst.objects = src.objects
     for obj in dst.objects:
         if obj:
             bpy.context.collection.objects.link(obj)
-            obj.location = PLACE_AT
-            print(f"Imported: {obj.name} ({obj.type})")
+            obj.location = place_at
+            imported.append(obj.name)
+    print(f"[{label}] Imported {len(imported)} objects")
+    return imported
+
+# Example: batch import multiple assets
+bk_grab("asset_type:model+amethyst+crystal", (0, 0, 0), "Crystal")
+bk_grab("asset_type:model+ancient+temple",   (10, 0, 0), "Temple")
+bk_grab("asset_type:model+fantasy+tree",     (20, 0, 0), "Tree")
 ```
 
 #### Alternative: Trigger Search via bpy.ops (Fragile)
@@ -375,14 +442,15 @@ This is the most reliable approach since BlenderKit's search/download works best
 3. Claude uses `get_scene_info` to understand what's there
 4. Claude adds lighting, adjusts materials, positions camera, adds procedural elements
 
-### Strategy 3: Full Programmatic Pipeline (Battle-Tested)
+### Strategy 3: Full Programmatic Pipeline (V2 — Battle-Tested February 2026)
 1. Search via REST API (`requests.get` to `blenderkit.com/api/v1/search/`)
-2. Fix avatar bug, parse with `search.parse_result()`
-3. Get signed download URL via `client_lib.get_download_url(parsed, scene_id, api_key)`
-4. Download `.blend` with `requests.get(url)`, import via `bpy.data.libraries.load()`
-5. Claude positions, materials, lighting via BlenderMCP
+2. Extract `downloadUrl` from the asset's `files` array (fileType: `blend`)
+3. Call `downloadUrl` with `Authorization: Bearer <api_key>` + `scene_uuid=<uuid>` query param
+4. Response JSON contains `filePath` → signed URL on `assets.blenderkit.com`
+5. Download `.blend` from signed URL, import via `bpy.data.libraries.load()`
+6. Claude positions, materials, lighting via BlenderMCP
 
-**This is the proven path.** See "Complete One-Shot Pipeline" pattern above.
+**This is the proven path.** No dependency on the local wrapper server. Successfully batch-imported 8 assets (190MB character with armature, 99MB photoscan, temples, trees, props) in one session. See "Complete One-Shot Pipeline (V2)" above.
 
 ### Strategy 4: Community Fork
 For MCP-native BlenderKit tools, [breakerh/blender-mcp-blenderkit](https://github.com/breakerh/blender-mcp-blenderkit) adds BlenderKit capabilities directly to the MCP server.
@@ -472,7 +540,9 @@ bpy.ops.export_scene.gltf(
 | `TypeError: UserProfile.__init__() got unexpected keyword argument 'avatar512'` | REST API returns author fields the addon's dataclass doesn't expect | Strip unknown author keys before calling `search.parse_result()` — see SAFE_AUTHOR_KEYS pattern |
 | `scene.blenderkit_download` operator fails with avatar512 | Same root cause as above — operator calls `parse_result` internally | Bypass the operator entirely — use `client_lib.get_download_url()` + `requests.get()` + `bpy.data.libraries.load()` |
 | `get_search_results()` returns stale results | BlenderKit search is async — results from previous query may linger | Use REST API search for immediate results, or wait + re-call `get_search_results()` |
-| Download URL returns 403 `"Parameter scene_uuid not set"` | Tried downloading via REST API file URL without auth | Use `client_lib.get_download_url()` which provides a signed URL |
+| Download URL returns 403 `"Parameter scene_uuid not set"` | Tried downloading via REST API file URL without auth | Add `Authorization: Bearer <api_key>` header + `scene_uuid=<uuid>` query param to the `downloadUrl` from files array |
+| `KeyError: 'can_download'` in `client_lib.get_download_url()` | Local wrapper server (`localhost:1234`) version mismatch — rejects GET requests to `/wrappers/get_download_url` | **Use V2 pipeline instead** — call `downloadUrl` directly with Bearer auth + scene_uuid, no wrapper dependency |
+| Large asset download fails with `IncompleteRead` | Connection timeout on assets >100MB over slow/unstable networks | Increase timeout to 300s, use larger chunk size (16384), or retry |
 
 ### Addon Paths
 
@@ -538,4 +608,4 @@ up Cycles rendering at 2K."
 
 ---
 
-*Sub-skill of the BlenderMCP skill suite. Enhanced with battle-tested session learnings and research from BlenderKit release notes, GitHub issues, community forums, and CG Channel coverage. Last updated: February 2026.*
+*Sub-skill of the BlenderMCP skill suite. Enhanced with battle-tested session learnings (V1 pipeline: Feb 11 2026 session 1, V2 direct API pipeline: Feb 11 2026 session 2) and research from BlenderKit release notes, GitHub issues, community forums, and CG Channel coverage. Last updated: February 11, 2026.*
