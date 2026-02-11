@@ -1132,6 +1132,7 @@ fun expressionToWeights(tag: String): FloatArray = when (tag) {
 | `ModuleNotFoundError: 'bgl'` | BGL removed | Use `gpu` module instead |
 | `StructRNA of type Object has been removed` | Accessing deleted object | Don't iterate and delete simultaneously; collect first |
 | `scene.node_tree` is None | Compositor API changed | Use `scene.compositing_node_group` |
+| **EEVEE crash**: `EXCEPTION_ACCESS_VIOLATION` in `VKCommandBuilder::add_buffer_barriers` | Vulkan backend crashes during full EEVEE render with complex multi-material scenes (e.g., many BlenderKit assets) | **Use `render.opengl(write_still=True)` instead of `render.render()`**. The viewport render path avoids the full EEVEE Vulkan pipeline. Alternatively use `BLENDER_WORKBENCH` engine for previews. Crash log location: `%TEMP%\<filename>.crash.txt` |
 
 ### Screenshot Issues
 | Problem | Cause | Fix |
