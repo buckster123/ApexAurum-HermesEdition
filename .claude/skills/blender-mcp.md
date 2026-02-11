@@ -276,11 +276,72 @@ The preferred asset creation strategy:
 4. **Fall back to scripting** — Only use `execute_blender_code` when other methods fail
 
 ### Rule 5: Use Viewport Screenshots for Feedback
-After each significant change, capture a screenshot to verify results:
+After each significant change, capture a screenshot to verify results.
+
+**Known issue**: The MCP `get_viewport_screenshot` tool fails over remote/LAN setups ("Screenshot file was not created"). Use the **`render.opengl` workaround** below instead.
+
+#### Viewport Screenshot — Battle-Tested Pipeline (Remote LAN)
+
+```python
+import bpy, os, http.server, threading
+
+def take_and_serve_screenshot(filename="viewport.png", resolution=(1920, 1080), port=9877):
+    """Capture viewport via render.opengl and serve via HTTP for remote download."""
+    desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+    filepath = os.path.join(desktop, filename)
+
+    # Configure render output
+    scene = bpy.context.scene
+    old_fp, old_fmt = scene.render.filepath, scene.render.image_settings.file_format
+    old_rx, old_ry = scene.render.resolution_x, scene.render.resolution_y
+
+    scene.render.filepath = filepath
+    scene.render.image_settings.file_format = 'PNG'
+    scene.render.resolution_x, scene.render.resolution_y = resolution
+
+    # Render viewport (needs VIEW_3D context)
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                with bpy.context.temp_override(window=window, area=area):
+                    bpy.ops.render.opengl(write_still=True)
+                break
+        break
+
+    # Restore settings
+    scene.render.filepath, scene.render.image_settings.file_format = old_fp, old_fmt
+    scene.render.resolution_x, scene.render.resolution_y = old_rx, old_ry
+
+    size_kb = os.path.getsize(filepath) / 1024
+    print(f"Screenshot: {filename} ({size_kb:.0f} KB)")
+
+    # Serve via HTTP (port 9877 — adjacent to MCP port 9876, usually not firewalled)
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=desktop, **kwargs)
+
+    server = http.server.HTTPServer(('0.0.0.0', port), Handler)
+    thread = threading.Thread(target=lambda: [server.handle_request() for _ in range(3)], daemon=True)
+    thread.start()
+    print(f"Serving on port {port}")
+
+take_and_serve_screenshot("viewport.png")
 ```
-Take a viewport screenshot so we can see the current state.
+
+Then from the Pi/client side:
+```bash
+curl -s -o /tmp/viewport.png "http://<BLENDER_IP>:9877/viewport.png" --max-time 30
 ```
-This creates a visual feedback loop that dramatically improves results.
+
+**Three screenshot methods available:**
+
+| Method | What it captures | Use when |
+|--------|-----------------|----------|
+| `render.opengl(write_still=True)` | Clean viewport render (no UI) | Best for sharing & feedback |
+| `screen.screenshot(filepath=...)` | Full Blender window with UI | Debugging UI/layout issues |
+| `get_viewport_screenshot` (MCP tool) | Viewport via MCP | Local setups only (fails over LAN) |
+
+**Port note:** Port 8765 may get firewall-blocked after repeated use. Port **9877** (adjacent to MCP's 9876) is reliably allowed through.
 
 ### Rule 6: Name Everything
 Always name objects explicitly. Unnamed objects (`Cube.001`, `Sphere.014`) become unmanageable:
@@ -1071,6 +1132,14 @@ fun expressionToWeights(tag: String): FloatArray = when (tag) {
 | `ModuleNotFoundError: 'bgl'` | BGL removed | Use `gpu` module instead |
 | `StructRNA of type Object has been removed` | Accessing deleted object | Don't iterate and delete simultaneously; collect first |
 | `scene.node_tree` is None | Compositor API changed | Use `scene.compositing_node_group` |
+
+### Screenshot Issues
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| `get_viewport_screenshot` fails: "Screenshot file was not created" | MCP screenshot tool doesn't work over remote/LAN connections | Use `bpy.ops.render.opengl(write_still=True)` with VIEW_3D context override + HTTP server on port 9877 to transfer the file |
+| `screen.screenshot` error: `keyword "full" unrecognized` | Blender 5.0 removed the `full` parameter | Use `bpy.ops.screen.screenshot(filepath=path)` without `full` kwarg |
+| HTTP file transfer fails on port 8765 | Windows firewall blocks the port after repeated use | Use port **9877** (adjacent to MCP's 9876, reliably allowed) |
+| `render.opengl` renders black | No lights in scene | Add a Sun light before rendering, or use EEVEE with world lighting |
 
 ### Common Code Errors
 | Error | Cause | Fix |
