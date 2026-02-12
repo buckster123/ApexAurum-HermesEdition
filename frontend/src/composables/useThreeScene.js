@@ -298,8 +298,12 @@ export function useThreeScene(containerRef, options = {}) {
 
 /**
  * Create a glowing memory node
+ *
+ * When agentModels is provided and has a loaded model for this agent,
+ * uses a GLB clone instead of the default sphere. Progressive enhancement —
+ * spheres remain the fallback when models aren't loaded.
  */
-export function createMemoryNode(memory, agentColors, layerConfig) {
+export function createMemoryNode(memory, agentColors, layerConfig, agentModels = null) {
   const agent = memory.agent_id || 'AZOTH'
   const layer = memory.layer || 'working'
 
@@ -310,21 +314,38 @@ export function createMemoryNode(memory, agentColors, layerConfig) {
   const salience = memory.salience ?? memory.attention_weight ?? 0.5
   const baseSize = 0.5 + salience * 1.5
 
-  // Create geometry
-  const geometry = new THREE.SphereGeometry(baseSize, 16, 16)
+  let node
 
-  // Create material with glow effect
-  const material = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(colorInfo.hex),
-    emissive: new THREE.Color(colorInfo.glow),
-    emissiveIntensity: layerInfo.brightness * 0.5,
-    metalness: 0.3,
-    roughness: 0.4,
-    transparent: true,
-    opacity: layerInfo.brightness,
-  })
+  // Try GLB model first (progressive enhancement)
+  if (agentModels && agentModels.isLoaded(agent)) {
+    node = agentModels.getAgentClone(agent, baseSize * 2)
+    if (node) {
+      // Tint the model with agent color
+      node.traverse((child) => {
+        if (child.isMesh && child.material) {
+          const mat = child.material.clone()
+          mat.emissive = new THREE.Color(colorInfo.glow)
+          mat.emissiveIntensity = layerInfo.brightness * 0.3
+          child.material = mat
+        }
+      })
+    }
+  }
 
-  const mesh = new THREE.Mesh(geometry, material)
+  // Fallback to sphere
+  if (!node) {
+    const geometry = new THREE.SphereGeometry(baseSize, 16, 16)
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(colorInfo.hex),
+      emissive: new THREE.Color(colorInfo.glow),
+      emissiveIntensity: layerInfo.brightness * 0.5,
+      metalness: 0.3,
+      roughness: 0.4,
+      transparent: true,
+      opacity: layerInfo.brightness,
+    })
+    node = new THREE.Mesh(geometry, material)
+  }
 
   // Position based on layer
   const [minR, maxR] = layerInfo.radius
@@ -332,16 +353,16 @@ export function createMemoryNode(memory, agentColors, layerConfig) {
   const theta = Math.random() * Math.PI * 2
   const phi = Math.acos(2 * Math.random() - 1)
 
-  mesh.position.set(
+  node.position.set(
     r * Math.sin(phi) * Math.cos(theta),
     r * Math.sin(phi) * Math.sin(theta) - 10, // Offset down slightly
     r * Math.cos(phi)
   )
 
   // Store memory data
-  mesh.userData = { memory, type: 'memory-node' }
+  node.userData = { memory, type: 'memory-node' }
 
-  return mesh
+  return node
 }
 
 /**

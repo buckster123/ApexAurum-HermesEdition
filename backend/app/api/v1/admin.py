@@ -1135,3 +1135,162 @@ async def moderate_agora_post(
     await db.commit()
 
     return {"status": "ok", "post_id": str(post_id), "action": body.action, "visibility": post.visibility}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Dream Engine Stats (privacy-safe aggregates only)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/dream/stats")
+async def get_dream_stats(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Aggregated Dream Engine statistics for admin dashboard.
+
+    Privacy-safe by construction: all queries are aggregates.
+    No user_id, email, or memory content is returned.
+    """
+    result = {
+        "total_dream_cycles": 0,
+        "successful_cycles": 0,
+        "failed_cycles": 0,
+        "success_rate_pct": 0.0,
+        "total_llm_calls": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "total_memories_processed": 0,
+        "total_links_created": 0,
+        "total_links_strengthened": 0,
+        "total_memories_pruned": 0,
+        "total_schemas_extracted": 0,
+        "total_procedures_extracted": 0,
+        "avg_cycle_duration_sec": 0.0,
+        "phase_breakdown": {},
+        "cycles_by_day": [],
+        "cortex_totals": {
+            "memory_nodes": 0,
+            "episodes": 0,
+            "procedures": 0,
+            "schemas": 0,
+        },
+    }
+
+    # --- Dream cycle aggregates from cerebro_dream_log ---
+    try:
+        # Distinct cycle counts
+        cycle_row = await db.execute(text("""
+            SELECT
+                COUNT(DISTINCT cycle_id) AS total_cycles,
+                COUNT(DISTINCT CASE WHEN success = true THEN cycle_id END) AS successful
+            FROM cerebro_dream_log
+            WHERE cycle_id IS NOT NULL
+        """))
+        cr = cycle_row.fetchone()
+        if cr:
+            total = cr[0] or 0
+            success = cr[1] or 0
+            result["total_dream_cycles"] = total
+            result["successful_cycles"] = success
+            result["failed_cycles"] = total - success
+            result["success_rate_pct"] = round((success / total * 100) if total > 0 else 0, 1)
+
+        # Aggregate metrics across all phases
+        agg_row = await db.execute(text("""
+            SELECT
+                COUNT(*) AS phases,
+                COALESCE(SUM(total_llm_calls), 0) AS llm_calls,
+                COALESCE(SUM(total_input_tokens), 0) AS in_tokens,
+                COALESCE(SUM(total_output_tokens), 0) AS out_tokens,
+                COALESCE(SUM(memories_processed), 0) AS mem_proc,
+                COALESCE(SUM(links_created), 0) AS links_c,
+                COALESCE(SUM(links_strengthened), 0) AS links_s,
+                COALESCE(SUM(memories_pruned), 0) AS pruned,
+                COALESCE(SUM(schemas_extracted), 0) AS schemas,
+                COALESCE(SUM(procedures_extracted), 0) AS procedures,
+                COALESCE(AVG(duration_seconds), 0) AS avg_dur
+            FROM cerebro_dream_log
+        """))
+        ar = agg_row.fetchone()
+        if ar:
+            result["total_llm_calls"] = int(ar[1])
+            result["total_input_tokens"] = int(ar[2])
+            result["total_output_tokens"] = int(ar[3])
+            result["total_memories_processed"] = int(ar[4])
+            result["total_links_created"] = int(ar[5])
+            result["total_links_strengthened"] = int(ar[6])
+            result["total_memories_pruned"] = int(ar[7])
+            result["total_schemas_extracted"] = int(ar[8])
+            result["total_procedures_extracted"] = int(ar[9])
+            result["avg_cycle_duration_sec"] = round(float(ar[10]), 2)
+
+        # Phase breakdown
+        phase_rows = await db.execute(text("""
+            SELECT
+                phase,
+                COUNT(*) AS count,
+                COALESCE(AVG(duration_seconds), 0) AS avg_duration,
+                COALESCE(SUM(memories_processed), 0) AS total_memories
+            FROM cerebro_dream_log
+            GROUP BY phase
+            ORDER BY phase
+        """))
+        for row in phase_rows.fetchall():
+            result["phase_breakdown"][row[0]] = {
+                "count": int(row[1]),
+                "avg_duration": round(float(row[2]), 2),
+                "total_memories": int(row[3]),
+            }
+
+        # Cycles per day (last 30 days)
+        day_rows = await db.execute(text("""
+            SELECT DATE(completed_at) AS day, COUNT(DISTINCT cycle_id) AS count
+            FROM cerebro_dream_log
+            WHERE completed_at >= NOW() - INTERVAL '30 days'
+              AND cycle_id IS NOT NULL
+            GROUP BY DATE(completed_at)
+            ORDER BY day
+        """))
+        result["cycles_by_day"] = [
+            {"date": str(row[0]), "count": int(row[1])}
+            for row in day_rows.fetchall()
+        ]
+
+    except Exception as e:
+        logger.debug(f"Dream log stats unavailable: {e}")
+
+    # --- Cortex totals (privacy-safe aggregates) ---
+    try:
+        nodes = await db.execute(text(
+            "SELECT COUNT(*) FROM cerebro_memory_nodes"
+        ))
+        result["cortex_totals"]["memory_nodes"] = int(nodes.scalar() or 0)
+    except Exception:
+        pass
+
+    try:
+        episodes = await db.execute(text(
+            "SELECT COUNT(*) FROM cerebro_episodes"
+        ))
+        result["cortex_totals"]["episodes"] = int(episodes.scalar() or 0)
+    except Exception:
+        pass
+
+    try:
+        procedures = await db.execute(text(
+            "SELECT COUNT(*) FROM cerebro_memory_nodes WHERE memory_type = 'procedural'"
+        ))
+        result["cortex_totals"]["procedures"] = int(procedures.scalar() or 0)
+    except Exception:
+        pass
+
+    try:
+        schemas = await db.execute(text(
+            "SELECT COUNT(*) FROM cerebro_memory_nodes WHERE memory_type = 'schematic'"
+        ))
+        result["cortex_totals"]["schemas"] = int(schemas.scalar() or 0)
+    except Exception:
+        pass
+
+    return result

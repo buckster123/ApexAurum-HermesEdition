@@ -107,6 +107,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/dream',
+      name: 'dream',
+      component: () => import('@/views/DreamView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/village-gui',
       name: 'village-gui',
       component: () => import('@/views/VillageGUIView.vue'),

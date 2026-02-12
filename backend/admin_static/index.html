@@ -87,6 +87,7 @@
           <button onclick="showTab('grants')" data-tab="grants" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent hover:border-gold/50 transition-colors">Grants</button>
           <button onclick="showTab('errors')" data-tab="errors" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent hover:border-gold/50 transition-colors">Errors</button>
           <button onclick="showTab('agora')" data-tab="agora" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent hover:border-gold/50 transition-colors">Agora</button>
+          <button onclick="showTab('dream')" data-tab="dream" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent hover:border-gold/50 transition-colors">Dream Engine</button>
         </div>
       </div>
 
@@ -615,6 +616,103 @@
           </div>
         </div>
 
+        <!-- Dream Engine Tab -->
+        <div id="tab-dream" class="tab-content hidden">
+          <h2 class="text-xl font-bold mb-6" style="color:#FFD700;text-shadow:0 0 10px rgba(212,175,55,0.4)">Dream Engine</h2>
+
+          <!-- Cycle stats -->
+          <div class="grid md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="dream-stat-cycles" class="text-2xl font-bold text-gold">-</div>
+              <div class="text-sm text-gray-400">Total Cycles</div>
+            </div>
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="dream-stat-success" class="text-2xl font-bold text-green-400">-</div>
+              <div class="text-sm text-gray-400">Success Rate</div>
+            </div>
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="dream-stat-llm" class="text-2xl font-bold text-blue-400">-</div>
+              <div class="text-sm text-gray-400">LLM Calls</div>
+            </div>
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="dream-stat-tokens" class="text-2xl font-bold text-purple-400">-</div>
+              <div class="text-sm text-gray-400">Total Tokens</div>
+            </div>
+          </div>
+
+          <!-- Memory stats -->
+          <div class="grid md:grid-cols-5 gap-4 mb-6">
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="dream-stat-memories" class="text-2xl font-bold" style="color:#4FC3F7">-</div>
+              <div class="text-sm text-gray-400">Memories Processed</div>
+            </div>
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="dream-stat-links" class="text-2xl font-bold text-green-400">-</div>
+              <div class="text-sm text-gray-400">Links Created</div>
+            </div>
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="dream-stat-pruned" class="text-2xl font-bold text-red-400">-</div>
+              <div class="text-sm text-gray-400">Pruned</div>
+            </div>
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="dream-stat-schemas" class="text-2xl font-bold" style="color:#FF7043">-</div>
+              <div class="text-sm text-gray-400">Schemas</div>
+            </div>
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="dream-stat-procedures" class="text-2xl font-bold text-yellow-400">-</div>
+              <div class="text-sm text-gray-400">Procedures</div>
+            </div>
+          </div>
+
+          <!-- Phase breakdown table -->
+          <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-6 mb-6">
+            <h3 class="text-lg font-semibold mb-4">Phase Breakdown</h3>
+            <div id="dream-loading" class="text-center py-4 text-gray-500">Loading dream stats...</div>
+            <table id="dream-phase-table" class="w-full text-sm hidden">
+              <thead>
+                <tr class="text-left text-gray-400 border-b border-apex-border">
+                  <th class="pb-3 pr-3">Phase</th>
+                  <th class="pb-3 pr-3">Runs</th>
+                  <th class="pb-3 pr-3">Avg Duration</th>
+                  <th class="pb-3">Memories</th>
+                </tr>
+              </thead>
+              <tbody id="dream-phase-body" class="divide-y divide-apex-border"></tbody>
+            </table>
+            <div id="dream-empty" class="text-center py-4 text-gray-500 hidden">No dream cycles recorded yet.</div>
+          </div>
+
+          <!-- Cortex overview -->
+          <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-6 mb-6">
+            <h3 class="text-lg font-semibold mb-4">Cortex Overview</h3>
+            <div class="grid md:grid-cols-4 gap-4">
+              <div class="text-center">
+                <div id="dream-stat-nodes" class="text-xl font-bold text-gold">-</div>
+                <div class="text-xs text-gray-400">Memory Nodes</div>
+              </div>
+              <div class="text-center">
+                <div id="dream-stat-episodes" class="text-xl font-bold text-blue-400">-</div>
+                <div class="text-xs text-gray-400">Episodes</div>
+              </div>
+              <div class="text-center">
+                <div id="dream-stat-total-proc" class="text-xl font-bold text-green-400">-</div>
+                <div class="text-xs text-gray-400">Procedures</div>
+              </div>
+              <div class="text-center">
+                <div id="dream-stat-total-schema" class="text-xl font-bold" style="color:#FF7043">-</div>
+                <div class="text-xs text-gray-400">Schemas</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cycles per day -->
+          <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-6">
+            <h3 class="text-lg font-semibold mb-4">Cycles (Last 30 Days)</h3>
+            <div id="dream-trend" class="flex items-end gap-1 h-24"></div>
+            <div id="dream-trend-empty" class="text-center py-4 text-gray-500 hidden">No recent activity.</div>
+          </div>
+        </div>
+
       </main>
     </div>
   </div>
@@ -734,6 +832,7 @@
       if (tab === 'grants') loadGrants();
       if (tab === 'errors') { loadErrorSettings(); loadErrors(); }
       if (tab === 'agora') { loadAgoraStats(); loadAgoraPosts(); }
+      if (tab === 'dream') loadDreamStats();
     }
 
     // Coupons
@@ -2001,6 +2100,98 @@
         loadAgoraStats();
       } catch (err) {
         alert('Failed: ' + err.message);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Dream Engine Stats
+    // ═══════════════════════════════════════════════════════════════════
+
+    const PHASE_META = {
+      sws_replay:           { name: 'SWS Replay',           color: '#4FC3F7' },
+      pattern_extract:      { name: 'Pattern Extract',      color: '#66BB6A' },
+      schema_form:          { name: 'Schema Formation',     color: '#FFD700' },
+      emotional_reprocess:  { name: 'Emotional Reprocess',  color: '#EF5350' },
+      pruning:              { name: 'Pruning',              color: '#9E9E9E' },
+      rem_recombine:        { name: 'REM Recombine',        color: '#AB47BC' },
+    };
+
+    function fmtNum(n) {
+      return (n || 0).toLocaleString();
+    }
+
+    async function loadDreamStats() {
+      const loading = document.getElementById('dream-loading');
+      const phaseTable = document.getElementById('dream-phase-table');
+      const emptyMsg = document.getElementById('dream-empty');
+
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/admin/dream/stats`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load dream stats');
+        const d = await res.json();
+
+        // Cycle stats
+        document.getElementById('dream-stat-cycles').textContent = fmtNum(d.total_dream_cycles);
+        document.getElementById('dream-stat-success').textContent = d.success_rate_pct + '%';
+        document.getElementById('dream-stat-llm').textContent = fmtNum(d.total_llm_calls);
+        document.getElementById('dream-stat-tokens').textContent = fmtNum(d.total_input_tokens + d.total_output_tokens);
+
+        // Memory stats
+        document.getElementById('dream-stat-memories').textContent = fmtNum(d.total_memories_processed);
+        document.getElementById('dream-stat-links').textContent = fmtNum(d.total_links_created);
+        document.getElementById('dream-stat-pruned').textContent = fmtNum(d.total_memories_pruned);
+        document.getElementById('dream-stat-schemas').textContent = fmtNum(d.total_schemas_extracted);
+        document.getElementById('dream-stat-procedures').textContent = fmtNum(d.total_procedures_extracted);
+
+        // Cortex overview
+        document.getElementById('dream-stat-nodes').textContent = fmtNum(d.cortex_totals.memory_nodes);
+        document.getElementById('dream-stat-episodes').textContent = fmtNum(d.cortex_totals.episodes);
+        document.getElementById('dream-stat-total-proc').textContent = fmtNum(d.cortex_totals.procedures);
+        document.getElementById('dream-stat-total-schema').textContent = fmtNum(d.cortex_totals.schemas);
+
+        // Phase breakdown table
+        loading.classList.add('hidden');
+        const phases = Object.entries(d.phase_breakdown || {});
+        if (phases.length === 0) {
+          emptyMsg.classList.remove('hidden');
+        } else {
+          phaseTable.classList.remove('hidden');
+          const tbody = document.getElementById('dream-phase-body');
+          tbody.innerHTML = phases.map(([key, val]) => {
+            const meta = PHASE_META[key] || { name: key, color: '#888' };
+            return `<tr class="text-gray-300">
+              <td class="py-2 pr-3"><span class="inline-block w-2 h-2 rounded-full mr-2" style="background:${meta.color}"></span>${meta.name}</td>
+              <td class="py-2 pr-3">${val.count}</td>
+              <td class="py-2 pr-3">${val.avg_duration.toFixed(1)}s</td>
+              <td class="py-2">${fmtNum(val.total_memories)}</td>
+            </tr>`;
+          }).join('');
+        }
+
+        // Cycles per day trend (bar chart)
+        const trendEl = document.getElementById('dream-trend');
+        const trendEmpty = document.getElementById('dream-trend-empty');
+        const days = d.cycles_by_day || [];
+        if (days.length === 0) {
+          trendEl.classList.add('hidden');
+          trendEmpty.classList.remove('hidden');
+        } else {
+          const maxCount = Math.max(...days.map(d => d.count), 1);
+          trendEl.innerHTML = days.map(day => {
+            const pct = Math.max((day.count / maxCount) * 100, 4);
+            const date = day.date.slice(5); // MM-DD
+            return `<div class="flex-1 flex flex-col items-center gap-1">
+              <div class="w-full rounded-t" style="height:${pct}%;background:linear-gradient(to top,#D4AF37,#FFD700)" title="${day.date}: ${day.count} cycles"></div>
+              <span class="text-xs text-gray-500">${date}</span>
+            </div>`;
+          }).join('');
+        }
+
+      } catch (err) {
+        loading.textContent = 'Failed to load dream stats';
+        console.error('[Admin] Dream stats error:', err);
       }
     }
   </script>

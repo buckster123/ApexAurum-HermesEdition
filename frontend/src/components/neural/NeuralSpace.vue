@@ -12,6 +12,7 @@ import { useThreeScene, createMemoryNode, createConnectionLine } from '@/composa
 import { useNeoCortexStore, AGENT_COLORS, LAYER_CONFIG } from '@/stores/neocortex'
 import { useSound } from '@/composables/useSound'
 import { NeuralAmbientSystem } from '@/composables/useNeuralAmbient'
+import { useAgentModels } from '@/composables/useAgentModels'
 
 const props = defineProps({
   autoRotate: {
@@ -54,10 +55,27 @@ const nodeMap = new Map() // id -> mesh
 const hoveredNode = ref(null)
 const selectedNode = ref(null)
 
+// Agent 3D models (progressive enhancement)
+const agentModels = useAgentModels()
+
 // Ambient neural pulse system
 let ambientSystem = null
 let removeAmbientCallback = null
 let initCheckInterval = null
+
+/**
+ * Walk up the parent chain to find the memory-node group.
+ * GLB models are Groups, so raycasting hits child meshes —
+ * this finds the ancestor that holds the userData.
+ */
+function findMemoryNode(obj) {
+  let current = obj
+  while (current) {
+    if (current.userData?.type === 'memory-node') return current
+    current = current.parent
+  }
+  return null
+}
 
 // Build visualization from graph data
 function buildVisualization() {
@@ -78,9 +96,9 @@ function buildVisualization() {
   const nodes = store.filteredNodes
   const edges = store.filteredEdges
 
-  // Create nodes
+  // Create nodes (with GLB models when available, spheres as fallback)
   nodes.forEach(memory => {
-    const mesh = createMemoryNode(memory, AGENT_COLORS, LAYER_CONFIG)
+    const mesh = createMemoryNode(memory, AGENT_COLORS, LAYER_CONFIG, agentModels)
     nodeGroup.value.add(mesh)
     nodeMap.set(memory.id, mesh)
   })
@@ -112,19 +130,20 @@ function onMouseMove(event) {
   if (!nodeGroup.value) return
 
   const intersect = getObjectAtMouse(event, nodeGroup.value.children)
+  const memNode = intersect ? findMemoryNode(intersect.object) : null
 
-  if (intersect?.object?.userData?.type === 'memory-node') {
-    const memory = intersect.object.userData.memory
+  if (memNode) {
+    const memory = memNode.userData.memory
 
     // Update hover state
-    if (hoveredNode.value !== intersect.object) {
+    if (hoveredNode.value !== memNode) {
       // Reset previous hover
       if (hoveredNode.value) {
         hoveredNode.value.scale.set(1, 1, 1)
       }
 
-      hoveredNode.value = intersect.object
-      intersect.object.scale.set(1.2, 1.2, 1.2)
+      hoveredNode.value = memNode
+      memNode.scale.set(1.2, 1.2, 1.2)
 
       store.hoveredMemory = memory
       emit('hover', memory)
@@ -143,22 +162,36 @@ function onMouseMove(event) {
   }
 }
 
+function setNodeEmissive(node, multiplier) {
+  if (node.isMesh && node.material) {
+    node.material.emissiveIntensity *= multiplier
+  }
+  if (node.children) {
+    node.traverse((child) => {
+      if (child.isMesh && child.material) {
+        child.material.emissiveIntensity *= multiplier
+      }
+    })
+  }
+}
+
 function onClick(event) {
   if (!nodeGroup.value) return
 
   const intersect = getObjectAtMouse(event, nodeGroup.value.children)
+  const memNode = intersect ? findMemoryNode(intersect.object) : null
 
-  if (intersect?.object?.userData?.type === 'memory-node') {
-    const memory = intersect.object.userData.memory
+  if (memNode) {
+    const memory = memNode.userData.memory
 
     // Reset previous selection
     if (selectedNode.value) {
-      selectedNode.value.material.emissiveIntensity *= 0.5
+      setNodeEmissive(selectedNode.value, 0.5)
     }
 
     // Select new node
-    selectedNode.value = intersect.object
-    intersect.object.material.emissiveIntensity *= 2
+    selectedNode.value = memNode
+    setNodeEmissive(memNode, 2)
 
     store.selectMemory(memory)
     emit('select', memory)
@@ -172,10 +205,11 @@ function onDoubleClick(event) {
   if (!nodeGroup.value) return
 
   const intersect = getObjectAtMouse(event, nodeGroup.value.children)
+  const memNode = intersect ? findMemoryNode(intersect.object) : null
 
-  if (intersect?.object?.userData?.type === 'memory-node') {
-    const memory = intersect.object.userData.memory
-    const pos = intersect.object.position.toArray()
+  if (memNode) {
+    const memory = memNode.userData.memory
+    const pos = memNode.position.toArray()
 
     // Focus camera on node
     focusOn(pos)
@@ -223,6 +257,14 @@ onMounted(() => {
     containerRef.value.addEventListener('dblclick', onDoubleClick)
   }
 
+  // Preload agent GLB models (non-blocking — spheres used until loaded)
+  agentModels.preloadAll().then(() => {
+    // Rebuild with models if scene is ready and has data
+    if (isInitialized.value && store.filteredNodes.length > 0) {
+      buildVisualization()
+    }
+  })
+
   // Build visualization when scene is ready
   if (isInitialized.value) {
     buildVisualization()
@@ -252,6 +294,7 @@ onUnmounted(() => {
     ambientSystem.dispose()
     ambientSystem = null
   }
+  agentModels.disposeAll()
 })
 
 // Expose methods
