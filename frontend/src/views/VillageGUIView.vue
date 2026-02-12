@@ -3,7 +3,7 @@
  * VillageGUIView - Village GUI Dashboard
  *
  * The main view for watching agents work in the village.
- * Supports 2D Canvas and 3D Isometric views with task tickers.
+ * Supports 2D Canvas, 3D Isometric, and 3D Perspective views with task tickers.
  *
  * "Where invisible computation becomes visible movement"
  */
@@ -13,6 +13,7 @@ import { useRouter } from 'vue-router'
 import { useSound } from '@/composables/useSound'
 import VillageCanvas from '@/components/village/VillageCanvas.vue'
 import VillageIsometric from '@/components/village/VillageIsometric.vue'
+import Village3D from '@/components/village/Village3D.vue'
 import TaskTickerBar from '@/components/village/TaskTickerBar.vue'
 import TaskDetailPanel from '@/components/village/TaskDetailPanel.vue'
 import { ZONES, AGENT_COLORS } from '@/composables/useVillage'
@@ -27,28 +28,31 @@ function handleAgentClick(agentId) {
   router.push({ path: '/chat', query: { agent: agentId } })
 }
 
-// View mode
-const viewMode = ref(localStorage.getItem('village-view-mode') || '2d')
+// View mode — migrate old '3d' value to 'iso' (isometric)
+const storedMode = localStorage.getItem('village-view-mode')
+const viewMode = ref(storedMode === '3d' ? 'iso' : (storedMode || '2d'))
 const showTaskPanel = ref(true)
 
 // Child component refs for layout reset
 const canvasRef = ref(null)
 const isometricRef = ref(null)
+const village3dRef = ref(null)
 
 // Layout reset support
 const layoutResetKey = ref(0)
 const canResetLayout = computed(() => {
-  // Re-evaluate when layoutResetKey changes (after reset)
   layoutResetKey.value
-  const key = viewMode.value === '3d' ? 'village-layout-3d' : 'village-layout-2d'
-  return !!localStorage.getItem(key)
+  const keys = { '2d': 'village-layout-2d', 'iso': 'village-layout-3d', '3d': 'village-layout-perspective' }
+  return !!localStorage.getItem(keys[viewMode.value] || 'village-layout-2d')
 })
 
 function handleResetLayout() {
   if (viewMode.value === '2d' && canvasRef.value) {
     canvasRef.value.resetLayout()
-  } else if (viewMode.value === '3d' && isometricRef.value) {
+  } else if (viewMode.value === 'iso' && isometricRef.value) {
     isometricRef.value.resetLayout()
+  } else if (viewMode.value === '3d' && village3dRef.value) {
+    village3dRef.value.resetLayout()
   }
   layoutResetKey.value++
 }
@@ -69,13 +73,14 @@ const activeTasks = ref([])
 const completedTasks = ref([])
 
 // Zone configs based on view mode
-const zoneConfig = computed(() => viewMode.value === '3d' ? ZONES_3D : ZONES)
-const agentColors = computed(() => viewMode.value === '3d' ? AGENT_COLORS_3D : AGENT_COLORS)
+const zoneConfig = computed(() => viewMode.value === '2d' ? ZONES : ZONES_3D)
+const agentColors = computed(() => viewMode.value === '2d' ? AGENT_COLORS : AGENT_COLORS_3D)
 
 // Save view mode preference
+const MODE_TONES = { '2d': 440, 'iso': 550, '3d': 660 }
 watch(viewMode, (mode) => {
   localStorage.setItem('village-view-mode', mode)
-  playTone(mode === '3d' ? 660 : 440, 0.05, 'sine', 0.1)
+  playTone(MODE_TONES[mode] || 440, 0.05, 'sine', 0.1)
 })
 
 // WebSocket connection with backoff
@@ -243,9 +248,14 @@ function handleTaskClick(task) {
 }
 
 function handleWebGLError(error) {
-  console.warn('WebGL not available, falling back to 2D mode')
-  viewMode.value = '2d'
-  localStorage.setItem('village-view-mode', '2d')
+  console.warn('WebGL not available, falling back')
+  // 3D perspective falls back to isometric, isometric falls back to 2D
+  if (viewMode.value === '3d') {
+    viewMode.value = 'iso'
+  } else {
+    viewMode.value = '2d'
+  }
+  localStorage.setItem('village-view-mode', viewMode.value)
 }
 
 onMounted(() => {
@@ -273,18 +283,13 @@ onUnmounted(() => {
         <!-- View Toggle -->
         <div class="flex bg-white/5 rounded-lg p-0.5">
           <button
-            @click="viewMode = '2d'"
+            v-for="m in [{ id: '2d', label: '2D' }, { id: 'iso', label: 'Iso' }, { id: '3d', label: '3D' }]"
+            :key="m.id"
+            @click="viewMode = m.id"
             class="px-3 py-1 text-xs rounded transition-colors"
-            :class="viewMode === '2d' ? 'bg-gold text-black' : 'text-gray-400 hover:text-white'"
+            :class="viewMode === m.id ? 'bg-gold text-black' : 'text-gray-400 hover:text-white'"
           >
-            2D
-          </button>
-          <button
-            @click="viewMode = '3d'"
-            class="px-3 py-1 text-xs rounded transition-colors"
-            :class="viewMode === '3d' ? 'bg-gold text-black' : 'text-gray-400 hover:text-white'"
-          >
-            3D
+            {{ m.label }}
           </button>
         </div>
 
@@ -329,12 +334,24 @@ onUnmounted(() => {
         </div>
 
         <!-- 3D Isometric View -->
-        <div v-if="viewMode === '3d'" class="w-full h-full">
+        <div v-if="viewMode === 'iso'" class="w-full h-full">
           <VillageIsometric
             ref="isometricRef"
             :events="eventLog"
             :status="status"
             @agent-click="handleAgentClick"
+            @webgl-error="handleWebGLError"
+          />
+        </div>
+
+        <!-- 3D Perspective View -->
+        <div v-if="viewMode === '3d'" class="w-full h-full">
+          <Village3D
+            ref="village3dRef"
+            :events="eventLog"
+            :status="status"
+            @agent-click="handleAgentClick"
+            @zone-click="(zone) => {}"
             @webgl-error="handleWebGLError"
           />
         </div>
