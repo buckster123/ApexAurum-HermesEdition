@@ -52,6 +52,12 @@ function handleAgentClick(agentId) {
 // Zone click opens task dialog (Phase E)
 function handleZoneClick(zone) {
   playTone(550, 0.04, 'sine', 0.08)
+  // If agents are selected in the scene, pass them to the dialog
+  const sceneSelected = village3dRef.value?.selectedSceneAgents?.value
+  if (sceneSelected?.length > 0) {
+    zone.preSelectedAgents = [...sceneSelected]
+    village3dRef.value.clearSceneSelection()
+  }
   taskDialogZone.value = zone
   showTaskDialog.value = true
 }

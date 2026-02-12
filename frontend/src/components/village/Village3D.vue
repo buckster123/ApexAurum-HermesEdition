@@ -67,6 +67,7 @@ const {
   handleToolComplete,
   handleToolError,
   showBubble,
+  selectedSceneAgents,
   cameraMode,
   focusTarget,
   returnToOverview,
@@ -78,6 +79,7 @@ const {
 defineExpose({
   hasCustomLayout,
   resetLayout,
+  selectedSceneAgents,
   // Task animation: parent calls these when village tasks execute
   triggerTaskStart(agentId, zone) {
     handleToolStart(agentId, 'village_task', zone || 'village_square')
@@ -87,6 +89,9 @@ defineExpose({
   },
   triggerBubble(agentId, message, type, duration) {
     showBubble(agentId, message, type, duration)
+  },
+  clearSceneSelection() {
+    selectedSceneAgents.value = []
   },
 })
 
@@ -276,6 +281,20 @@ watch(() => props.events, (newEvents) => {
         </div>
       </div>
     </div>
+
+    <!-- Scene selection badge -->
+    <transition name="fade">
+      <div
+        v-if="selectedSceneAgents.length > 0"
+        class="absolute top-12 right-3 bg-gold/20 backdrop-blur border border-gold/30 rounded-lg px-3 py-1.5 flex items-center gap-2"
+      >
+        <span class="text-xs text-gold">{{ selectedSceneAgents.length }} agent{{ selectedSceneAgents.length > 1 ? 's' : '' }} selected</span>
+        <button
+          @click="selectedSceneAgents.length = 0"
+          class="text-gold/60 hover:text-gold text-xs"
+        >Clear</button>
+      </div>
+    </transition>
 
     <!-- Hover tooltip -->
     <div

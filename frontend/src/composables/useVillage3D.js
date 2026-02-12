@@ -369,6 +369,7 @@ export function useVillage3D(containerRef, options = {}) {
   const activeZone = ref(null)
   const cameraMode = ref('orbit') // 'orbit' | 'focus-zone' | 'focus-agent'
   const focusTarget = ref(null)
+  const selectedSceneAgents = ref([]) // Agent IDs selected via scene click (gold ring)
 
   // --- Three.js objects (shallowRef to avoid Proxy conflicts) ---
   const sceneRef = shallowRef(null)
@@ -873,6 +874,18 @@ export function useVillage3D(containerRef, options = {}) {
       glowRing.position.y = 0.05
       group.add(glowRing)
 
+      // --- Selection ring (visible when scene-selected, gold, larger) ---
+      const selGeo = new THREE.TorusGeometry(1.1, 0.06, 8, 32)
+      const selMat = new THREE.MeshBasicMaterial({
+        color: 0xffd700,
+        transparent: true,
+        opacity: 0,
+      })
+      const selectionRing = new THREE.Mesh(selGeo, selMat)
+      selectionRing.rotation.x = -Math.PI / 2
+      selectionRing.position.y = 0.03
+      group.add(selectionRing)
+
       // --- Name label ---
       const nameSprite = _createAgentNameSprite(id)
       nameSprite.position.y = 2.2
@@ -894,6 +907,7 @@ export function useVillage3D(containerRef, options = {}) {
         group,
         mesh: sphere,
         glowRing,
+        selectionRing,
         nameSprite,
         position: group.position,
         targetPosition: null,
@@ -1335,15 +1349,21 @@ export function useVillage3D(containerRef, options = {}) {
     }
 
     if (agent.state === 'idle') {
-      // Gentle hover bob
-      agent.group.children.forEach((child) => {
-        if (child === agent.glowRing || child === agent.nameSprite) return
-        // Only bob the mesh/model, not the glow ring or label
-      })
       // Bob the main mesh subtly
       if (agent.mesh) {
         const baseY = agent.glbSwapped ? 0 : 0.8
         agent.mesh.position.y = baseY + Math.sin(time * 1.5 + agents.size) * 0.05
+      }
+    }
+
+    // Selection ring (independent of work state)
+    if (agent.selectionRing) {
+      const isSelected = selectedSceneAgents.value.includes(agent.id)
+      if (isSelected) {
+        agent.selectionRing.material.opacity = 0.6 + Math.sin(time * 2.5) * 0.3
+        agent.selectionRing.rotation.z = time * 0.8
+      } else {
+        agent.selectionRing.material.opacity = 0
       }
     }
 
@@ -1449,6 +1469,17 @@ export function useVillage3D(containerRef, options = {}) {
     glowRing.position.y = 0.05
     group.add(glowRing)
 
+    const selGeo = new THREE.TorusGeometry(1.1, 0.06, 8, 32)
+    const selMat = new THREE.MeshBasicMaterial({
+      color: 0xffd700,
+      transparent: true,
+      opacity: 0,
+    })
+    const selectionRing = new THREE.Mesh(selGeo, selMat)
+    selectionRing.rotation.x = -Math.PI / 2
+    selectionRing.position.y = 0.03
+    group.add(selectionRing)
+
     const nameSprite = _createAgentNameSprite(agentId)
     nameSprite.position.y = 2.2
     group.add(nameSprite)
@@ -1462,6 +1493,7 @@ export function useVillage3D(containerRef, options = {}) {
       group,
       mesh: sphere,
       glowRing,
+      selectionRing,
       nameSprite,
       position: group.position,
       targetPosition: null,
@@ -1632,6 +1664,15 @@ export function useVillage3D(containerRef, options = {}) {
 
     if (userData.type === 'agent') {
       selectedAgent.value = userData.id
+
+      // Toggle scene selection (gold ring)
+      const idx = selectedSceneAgents.value.indexOf(userData.id)
+      if (idx > -1) {
+        selectedSceneAgents.value.splice(idx, 1)
+      } else {
+        selectedSceneAgents.value.push(userData.id)
+      }
+
       onAgentClick?.(userData.id, agents.get(userData.id))
     } else if (userData.type === 'zone') {
       onZoneClick?.(userData.name, VILLAGE_LAYOUT[userData.name]?.label)
@@ -1882,6 +1923,7 @@ export function useVillage3D(containerRef, options = {}) {
     isInitialized,
     webglError,
     selectedAgent,
+    selectedSceneAgents,
     hoveredObject,
     activeZone,
 

@@ -100,10 +100,16 @@ watch(() => props.show, async (visible) => {
     mode.value = 'single'
     useTools.value = true
 
-    // Pre-select agent: from agent-task event or zone-affinity default
+    // Pre-select agents: from scene selection, agent-task event, or zone-affinity default
+    const sceneAgents = props.zone?.preSelectedAgents
     const preSelected = props.zone?.preSelectedAgent
-    const defaultAgent = preSelected || ZONE_DEFAULT_AGENTS[zoneName.value] || 'AZOTH'
-    selectedAgents.value = [defaultAgent]
+    if (sceneAgents?.length > 0) {
+      selectedAgents.value = [...sceneAgents]
+      if (sceneAgents.length > 1) mode.value = 'council'
+    } else {
+      const defaultAgent = preSelected || ZONE_DEFAULT_AGENTS[zoneName.value] || 'AZOTH'
+      selectedAgents.value = [defaultAgent]
+    }
 
     // Focus textarea
     await nextTick()
