@@ -39,6 +39,26 @@ class ToolResult(BaseModel):
     def to_claude_format(self) -> dict:
         """Format result for Claude's tool_result content block."""
         if self.success:
+            # Image results → multi-block content with image + text caption
+            if self.metadata.get("data_type") == "image_base64":
+                media_type = self.metadata.get("media_type", "image/jpeg")
+                caption = self.metadata.get("caption", "Image captured from SensorHead")
+                return {
+                    "type": "tool_result",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": self.result,
+                            },
+                        },
+                        {"type": "text", "text": caption},
+                    ],
+                    "is_error": False,
+                }
+
             # Convert result to string for Claude
             if isinstance(self.result, (dict, list)):
                 import json

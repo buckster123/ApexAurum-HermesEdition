@@ -49,14 +49,23 @@ async def _bridge_command(
         result = await manager.send_command(
             conn.device_id, action, params or {}, timeout=timeout
         )
+        data_type = result.get("data_type", "json")
+        metadata = {
+            "device_name": conn.device_name,
+            "data_type": data_type,
+            "device_duration_ms": result.get("duration_ms", 0),
+        }
+
+        # Image results: set metadata so ToolResult.to_claude_format()
+        # generates a proper image content block for Claude vision
+        if data_type == "image_base64":
+            metadata["media_type"] = "image/jpeg"
+            metadata["caption"] = f"Image from SensorHead '{conn.device_name}' ({action})"
+
         return ToolResult(
             success=True,
             result=result.get("data"),
-            metadata={
-                "device_name": conn.device_name,
-                "data_type": result.get("data_type", "json"),
-                "device_duration_ms": result.get("duration_ms", 0),
-            },
+            metadata=metadata,
         )
     except asyncio.TimeoutError:
         return ToolResult(
