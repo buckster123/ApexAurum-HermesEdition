@@ -94,12 +94,14 @@ git add <changed files> && git commit -m "message" && git push origin main
 
 ### Frontend (`frontend/src/`)
 
-**Build:** Vite 5 + Vue 3.4 + Vue Router 4 + Pinia stores + Tailwind CSS + Monaco Editor + Three.js (Village 3D)
+**Build:** Vite 5 + Vue 3.4 + Vue Router 4 + Pinia stores + Tailwind CSS + Monaco Editor + Three.js (Village 3D, Neural 3D, Dream 3D)
 
 **Key modules:**
-- `stores/` - 12 Pinia stores managing chat, auth, billing, agents, music, council, village state
-- `views/` - 19 page components (Chat, Village, Council, Music, Jam, Agora, Billing, Files, Nursery, Settings, etc.)
+- `stores/` - 13 Pinia stores managing chat, auth, billing, agents, music, council, village, dream state
+- `views/` - 20 page components (Chat, Village, Council, Music, Jam, Agora, Billing, Files, Nursery, Dream, Settings, etc.)
 - `services/api.js` - Axios client with HTTPS auto-prefix, JWT interceptor, graceful 401 handling
+- `composables/useThreeScene.js` - Three.js scene lifecycle, animation loop, raycasting, camera focus
+- `composables/useAgentModels.js` - GLTFLoader singleton cache for agent avatar GLBs
 - `composables/useDevMode.js` - Konami code and AZOTH incantation activation
 - `router/index.js` - Auth guards, tier-gated routes
 
@@ -110,7 +112,28 @@ git add <changed files> && git commit -m "message" && git push origin main
 
 ### Admin Dashboard
 
-**Edit `backend/admin_static/index.html`** (NOT `admin/index.html`). Single-file 89KB app served from Docker. Requires `is_admin=true`. Tabs: Users, Stats, Usage, Reports, Grants, Errors, Agora moderation.
+**Edit `backend/admin_static/index.html`** (NOT `admin/index.html`). Single-file 89KB app served from Docker. Requires `is_admin=true`. Tabs: Users, Stats, Usage, Reports, Grants, Errors, Agora, Dream Engine.
+
+### 3D Pipeline (Blender MCP)
+
+**Architecture:** Blender (Windows, LAN at 192.168.0.104:9876) -> MCP Server (Pi) -> Claude Code. Models generated via Hyper3D Rodin, PolyHaven, Sketchfab, or BlenderKit, exported as GLB, transferred via HTTP (port 9880), loaded in Vue with GLTFLoader.
+
+**Key composables:**
+- `useThreeScene.js` - Scene lifecycle (init, animate, dispose), OrbitControls, raycasting, camera focus
+- `useAgentModels.js` - GLTFLoader singleton cache, auto-scaling clones, progressive enhancement
+- `useNeuralAmbient.js` - Particle effects for Neural Space
+- `usePixelSprites.js` - Retro 16x24 pixel sprites for Village 2D mode
+
+**Three.js patterns:**
+- Always use `shallowRef()` for Three.js objects (prevents Vue Proxy conflicts)
+- GLB models in `frontend/public/models/` (agents, village, council, dream, ui)
+- Progressive enhancement: primitives first, GLBs replace when loaded
+- `findMemoryNode()` walks parent chain for raycasting Groups (GLB clones)
+- Delta time clamped to 0.1s max (prevents physics explosion after tab switch)
+
+**File transfer (Windows Blender -> Pi):** Export to Windows Desktop, serve via `http.server` with `translate_path` override on port 9880, download via curl. See `BLENDER-SKILL.md` at `/home/hailo/claude-root/Projects/airlock/BLENDER-SKILL.md`.
+
+**3D Masterplan:** See `MASTERPLAN-3D.md` for the 6-feature roadmap (Landing Hero, Village Buildings, Council Chamber, Dream Alchemy, Tool Constellation, Alchemical Loader).
 
 ## Key Patterns
 

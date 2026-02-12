@@ -9,6 +9,8 @@ import { useSound } from '@/composables/useSound'
 import { useHaptic } from '@/composables/useHaptic'
 import { useSwipe } from '@/composables/useSwipe'
 import { usePullToRefresh } from '@/composables/usePullToRefresh'
+import { isWebGLAvailable } from '@/composables/useThreeScene'
+import ToolConstellation from '@/components/chat/ToolConstellation.vue'
 import { marked } from 'marked'
 import api from '@/services/api'
 import { useToast } from '@/composables/useToast'
@@ -910,35 +912,29 @@ function renderMarkdown(content) {
           </div>
 
           <!-- Welcome message if no messages (authenticated) -->
-          <div v-else-if="chat.messages.length === 0" class="text-center py-20">
-            <div class="text-6xl font-serif font-bold text-gold mb-4">Au</div>
-            <h2 class="text-2xl font-bold mb-2">Welcome to ApexAurum Cloud</h2>
-            <p class="text-gray-400 mb-8">68 Tools. Four Alchemists. One Village.</p>
+          <div v-else-if="chat.messages.length === 0" class="text-center py-8">
+            <div class="text-6xl font-serif font-bold text-gold mb-2">Au</div>
+            <h2 class="text-2xl font-bold mb-1">Welcome to ApexAurum Cloud</h2>
+            <p class="text-gray-400 mb-4">68 Tools. Four Alchemists. One Village.</p>
+
+            <!-- 3D Tool Constellation (WebGL) or static buttons (fallback) -->
+            <ToolConstellation
+              v-if="isWebGLAvailable()"
+              @select="(cat) => inputMessage = `Show me the ${cat} tools`"
+              class="mb-4"
+            />
+            <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-xl mx-auto text-sm mb-4">
+              <button @click="inputMessage = 'What can you help me with?'" class="btn-secondary text-left">What can you do?</button>
+              <button @click="inputMessage = 'Tell me about the Village Protocol'" class="btn-secondary text-left">Village Protocol</button>
+              <button @click="inputMessage = 'Generate some music for me'" class="btn-secondary text-left">Generate Music</button>
+              <button @click="inputMessage = 'Spawn a research agent'" class="btn-secondary text-left">Spawn Agent</button>
+            </div>
+
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-xl mx-auto text-sm">
-              <button
-                @click="inputMessage = 'What can you help me with?'"
-                class="btn-secondary text-left"
-              >
-                What can you do?
-              </button>
-              <button
-                @click="inputMessage = 'Tell me about the Village Protocol'"
-                class="btn-secondary text-left"
-              >
-                Village Protocol
-              </button>
-              <button
-                @click="inputMessage = 'Generate some music for me'"
-                class="btn-secondary text-left"
-              >
-                Generate Music
-              </button>
-              <button
-                @click="inputMessage = 'Spawn a research agent'"
-                class="btn-secondary text-left"
-              >
-                Spawn Agent
-              </button>
+              <button @click="inputMessage = 'What can you help me with?'" class="btn-secondary text-left">What can you do?</button>
+              <button @click="inputMessage = 'Tell me about the Village Protocol'" class="btn-secondary text-left">Village Protocol</button>
+              <button @click="inputMessage = 'Generate some music for me'" class="btn-secondary text-left">Generate Music</button>
+              <button @click="inputMessage = 'Spawn a research agent'" class="btn-secondary text-left">Spawn Agent</button>
             </div>
           </div>
 
