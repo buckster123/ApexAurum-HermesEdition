@@ -142,32 +142,46 @@ Notable tool results, council insights, music drops, and community posts flow in
 
 ## Pricing Tiers
 
-### Seeker — Free
+### Seeker
 *Begin the journey*
-- 50 messages/month
-- Haiku model (fast, efficient)
-- Core tools
-- Village access
-- **$0/month**
-
-### Alchemist — Pro
-*Transform your workflow*
-- 1,000 messages/month
+- 200 messages/month
 - Haiku + Sonnet models
-- Full tool access
-- Council deliberation
-- Music generation
-- SensorHead integration
+- All 68 tools
+- 3 Council sessions/month
+- 10 Suno generations/month
 - **$10/month**
 
-### Adept — Opus
-*Transcend limits*
-- Unlimited messages
-- All models including Opus
-- Priority execution
-- Advanced tools
-- Everything unlocked
+### Adept — Popular
+*Master the Athanor*
+- 1,000 messages/month
+- All models + 50 Opus messages/month
+- 10 Council sessions, 50 Suno/month
+- 3 Jam sessions/month
+- BYOK (OSS providers)
+- Nursery Data Garden (browse)
+- PAC Mode
 - **$30/month**
+
+### Opus
+*Unlimited mastery*
+- 5,000 messages + 500 Opus/month
+- All models including legacy
+- Unlimited Council, 200 Suno/month
+- Full Nursery access (training)
+- Dev Mode + PAC Mode
+- BYOK (all providers)
+- 5GB vault storage
+- **$100/month**
+
+### Azothic
+*The Philosopher's Stone*
+- 20,000 messages + 2,000 Opus/month
+- Everything in Opus tier
+- Unlimited Council, Jam, 500 Suno/month
+- 5 training jobs/month included
+- 20GB vault storage
+- Priority routing
+- **$300/month**
 
 ---
 
@@ -283,7 +297,7 @@ Enter the Village: [link]
 - "50+ tools. Zero configuration."
 
 ### Section 8: Pricing
-- Three tiers: Seeker / Alchemist / Adept
+- Four tiers: Seeker ($10) / Adept ($30) / Opus ($100) / Azothic ($300)
 - Feature comparison table
 
 ### Section 9: Footer CTA
@@ -361,8 +375,8 @@ Enter the Village: [link]
 **Body:** SensorHead connects a Raspberry Pi sensor array to your ApexAurum village. Temperature, cameras, thermal imaging — all accessible from your dashboard. The digital meets the physical.
 
 ### Email 5: Upgrade (Day 14)
-**Subject:** Ready to become an Alchemist?
-**Body:** You've explored the Village as a Seeker. Unlock Sonnet, Council deliberation, music generation, and 1,000 messages/month. The transmutation continues at $10/month.
+**Subject:** Ready to become an Adept?
+**Body:** You've explored the Village as a Seeker. Unlock all models, 50 Opus messages, BYOK providers, and 1,000 messages/month. Master the Athanor at $30/month.
 
 ---
 
@@ -379,7 +393,7 @@ Enter the Village: [link]
 
 **Founded:** 2025
 **Stack:** FastAPI, Vue 3, PostgreSQL, Kotlin/Jetpack Compose
-**Pricing:** Free tier (Seeker), $10/mo (Alchemist), $30/mo (Adept)
+**Pricing:** $10/mo (Seeker), $30/mo (Adept), $100/mo (Opus), $300/mo (Azothic)
 **URL:** apexaurum.com
 
 *"The Athanor's flame burns through complexity."*

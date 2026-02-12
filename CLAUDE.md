@@ -142,9 +142,10 @@ function getValidToken(key) {
 
 | Tier | ID | Price | Messages | Models |
 |------|----|-------|----------|--------|
-| Seeker | free | $3/mo | 50 | Haiku |
-| Alchemist | pro | $10/mo | 1000 | Haiku, Sonnet |
-| Adept | opus | $30/mo | Unlimited | All + Opus |
+| Seeker | seeker | $10/mo | 200 | Haiku, Sonnet |
+| Adept | adept | $30/mo | 1,000 | All + 50 Opus/mo |
+| Opus | opus | $100/mo | 5,000 | All + 500 Opus/mo |
+| Azothic | azothic | $300/mo | 20,000 | All + 2,000 Opus/mo |
 
 ## Common Issues & Solutions
 
