@@ -14,6 +14,7 @@ import { useFilesStore } from '@/stores/files'
 import { useSound } from '@/composables/useSound'
 import { useDevMode } from '@/composables/useDevMode'
 import CortexDiver from '@/components/cortex/CortexDiver.vue'
+import AlchemicalLoader from '@/components/ui/AlchemicalLoader.vue'
 import { useToast } from '@/composables/useToast'
 
 const route = useRoute()
@@ -624,7 +625,7 @@ function exitCortexMode() {
 
       <!-- Loading state -->
       <div v-if="store.loading" class="flex items-center justify-center py-20">
-        <div class="animate-spin rounded-full h-8 w-8 border-2 border-gold border-t-transparent"></div>
+        <AlchemicalLoader size="md" variant="ouroboros" />
       </div>
 
       <!-- Error state -->

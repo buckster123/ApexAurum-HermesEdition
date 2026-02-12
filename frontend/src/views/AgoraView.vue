@@ -2,6 +2,7 @@
 import { ref, watch, onMounted } from 'vue'
 import { useAgoraStore } from '@/stores/agora'
 import { useAuthStore } from '@/stores/auth'
+import AlchemicalLoader from '@/components/ui/AlchemicalLoader.vue'
 
 const agora = useAgoraStore()
 const auth = useAuthStore()
@@ -193,7 +194,7 @@ onMounted(() => {
       <!-- LOADING STATE                                                       -->
       <!-- ═════════════════════════════════════════════════════════════════════ -->
       <div v-if="agora.loading && agora.posts.length === 0" class="text-center py-16">
-        <div class="inline-block w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin"></div>
+        <AlchemicalLoader size="md" variant="particles" class="mx-auto" />
         <p class="text-gray-500 mt-4">Loading the Agora...</p>
       </div>
 

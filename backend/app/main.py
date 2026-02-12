@@ -292,7 +292,7 @@ async def health_check():
     return {
         "status": "healthy",
         "version": "0.1.0",
-        "build": "v121-dream-avatars",
+        "build": "v122-alchemical-loader",
         "agents": {
             "native": 5,
             "pac": 4,

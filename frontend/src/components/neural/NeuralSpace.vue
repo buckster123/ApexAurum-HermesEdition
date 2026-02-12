@@ -13,6 +13,7 @@ import { useNeoCortexStore, AGENT_COLORS, LAYER_CONFIG } from '@/stores/neocorte
 import { useSound } from '@/composables/useSound'
 import { NeuralAmbientSystem } from '@/composables/useNeuralAmbient'
 import { useAgentModels } from '@/composables/useAgentModels'
+import AlchemicalLoader from '@/components/ui/AlchemicalLoader.vue'
 
 const props = defineProps({
   autoRotate: {
@@ -312,7 +313,7 @@ defineExpose({
       class="absolute inset-0 bg-black/50 flex items-center justify-center z-10"
     >
       <div class="text-center">
-        <div class="w-12 h-12 border-2 border-gold border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <AlchemicalLoader size="lg" variant="stone" class="mx-auto mb-4" />
         <p class="text-gray-400">Loading neural space...</p>
       </div>
     </div>

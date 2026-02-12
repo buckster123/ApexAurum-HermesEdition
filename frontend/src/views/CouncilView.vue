@@ -10,6 +10,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useCouncilStore, AGENT_COLORS, AVAILABLE_AGENTS, AVAILABLE_MODELS, COUNCIL_MODELS, DEPRECATED_MODELS, TOOL_CATEGORIES, COUNCIL_DEFAULT_CATEGORY_IDS } from '@/stores/council'
 import AgentCard from '@/components/council/AgentCard.vue'
+import AlchemicalLoader from '@/components/ui/AlchemicalLoader.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -834,10 +835,7 @@ function getStateClass(state) {
           <!-- Loading Indicator (for manual mode, when not streaming) -->
           <div v-if="council.isExecutingRound && !council.isAutoDeliberating && !council.streamingRound" class="flex items-center justify-center py-8">
             <div class="flex items-center gap-3 text-gold">
-              <svg class="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
+              <AlchemicalLoader size="sm" variant="stone" />
               <span>Agents are deliberating...</span>
             </div>
           </div>
