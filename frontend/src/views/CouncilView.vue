@@ -11,6 +11,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useCouncilStore, AGENT_COLORS, AVAILABLE_AGENTS, AVAILABLE_MODELS, COUNCIL_MODELS, DEPRECATED_MODELS, TOOL_CATEGORIES, COUNCIL_DEFAULT_CATEGORY_IDS } from '@/stores/council'
 import AgentCard from '@/components/council/AgentCard.vue'
 import AlchemicalLoader from '@/components/ui/AlchemicalLoader.vue'
+import CouncilChamber from '@/components/council/CouncilChamber.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -24,6 +25,14 @@ const showAddAgentDropdown = ref(false)
 
 // Computed
 const hasSession = computed(() => council.currentSession !== null)
+
+// Active speaking agent (for 3D chamber)
+const currentSpeaker = computed(() => {
+  if (!council.streamingRound) return null
+  const agents = Object.keys(council.streamingAgents)
+  // Find agent that is streaming but not done
+  return agents.find(id => !council.streamingAgentsDone[id]) || null
+})
 
 // Agents available to add (not already in session)
 const availableAgentsToAdd = computed(() => {
@@ -743,6 +752,14 @@ function getStateClass(state) {
           <p class="text-xs text-gray-500 mt-1">
             Your message will be included in the context for all agents in the next round.
           </p>
+        </div>
+
+        <!-- 3D Council Chamber -->
+        <div class="px-4 pt-4">
+          <CouncilChamber
+            :activeAgent="currentSpeaker"
+            :round="council.currentSession?.current_round || 0"
+          />
         </div>
 
         <!-- Rounds Display -->

@@ -1,6 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { isWebGLAvailable } from '@/composables/useThreeScene'
+import AthanorHero from '@/components/landing/AthanorHero.vue'
 
 const router = useRouter()
 
@@ -47,8 +49,9 @@ function formatType(type) {
 
     <!-- ═══ Hero ═══════════════════════════════════════════════════════ -->
     <section class="relative min-h-screen flex flex-col items-center justify-center px-4 text-center">
-      <!-- Subtle radial glow -->
-      <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(212,175,55,0.08)_0%,transparent_70%)]"></div>
+      <!-- 3D Athanor forge background (with gradient fallback) -->
+      <AthanorHero v-if="isWebGLAvailable()" />
+      <div v-else class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(212,175,55,0.08)_0%,transparent_70%)]"></div>
 
       <div class="relative z-10 max-w-3xl mx-auto">
         <div class="text-8xl sm:text-9xl font-serif font-bold text-gold mb-6 tracking-tight">Au</div>
