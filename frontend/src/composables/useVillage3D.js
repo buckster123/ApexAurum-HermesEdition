@@ -540,6 +540,9 @@ export function useVillage3D(containerRef, options = {}) {
 
     isInitialized.value = true
 
+    // --- Start render loop ---
+    _animate()
+
     // --- Progressive enhancement: load GLBs ---
     _loadGLBModels()
 
