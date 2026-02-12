@@ -39,6 +39,7 @@ const chatInput = ref(null)
 // Scene state
 const isReady = ref(false)
 const showInstructions = ref(true)
+const isMobile = ref(false)
 
 // First-person state (will be populated after init)
 const isLocked = ref(false)
@@ -560,6 +561,11 @@ function handleResize() {
 // ═══════════════════════════════════════════════════════════════
 
 onMounted(() => {
+  // Detect mobile/touch-only devices — Athanor requires pointer lock (desktop only)
+  isMobile.value = /Android|iPhone|iPad|iPod|webOS|BlackBerry/i.test(navigator.userAgent)
+    || (navigator.maxTouchPoints > 0 && !window.matchMedia('(pointer: fine)').matches)
+  if (isMobile.value) return
+
   window.addEventListener('keydown', onKeyDown)
 
   if (initScene()) {
@@ -951,9 +957,30 @@ onUnmounted(() => {
       </div>
     </Transition>
 
+    <!-- ═══ MOBILE GATE ═══ -->
+    <div v-if="isMobile" class="instructions-overlay">
+      <div class="text-center max-w-sm mx-auto px-6">
+        <h1 class="text-2xl font-bold text-gold mb-3" style="text-shadow: 0 0 20px rgba(212,175,55,0.5)">
+          The Athanor
+        </h1>
+        <p class="text-gray-400 text-sm mb-4">
+          The immersive forge requires a keyboard and mouse.
+        </p>
+        <p class="text-gray-600 text-xs mb-6">
+          WASD movement + pointer lock are desktop-only.
+        </p>
+        <router-link
+          to="/chat"
+          class="inline-block px-6 py-2.5 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded-lg text-gold text-sm font-semibold transition-all"
+        >
+          Enter the Chat instead
+        </router-link>
+      </div>
+    </div>
+
     <!-- ═══ INSTRUCTIONS OVERLAY ═══ -->
     <Transition name="fade">
-      <div v-if="showInstructions && isReady" class="instructions-overlay">
+      <div v-if="showInstructions && isReady && !isMobile" class="instructions-overlay">
         <div class="text-center max-w-md mx-auto">
           <h1 class="text-3xl font-bold text-gold mb-2" style="text-shadow: 0 0 20px rgba(212,175,55,0.5)">
             The Athanor

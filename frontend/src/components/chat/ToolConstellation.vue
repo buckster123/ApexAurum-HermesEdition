@@ -5,6 +5,7 @@ import * as THREE from 'three'
 const emit = defineEmits(['select'])
 
 const containerRef = ref(null)
+const webglFailed = ref(false)
 
 const CATEGORIES = [
   { id: 'utility',    label: 'Utility',   color: '#9E9E9E', shape: 'octahedron' },
@@ -96,16 +97,29 @@ function buildScene() {
   const el = containerRef.value
   if (!el) return
 
+  // WebGL availability check
+  try {
+    const testCanvas = document.createElement('canvas')
+    if (!testCanvas.getContext('webgl') && !testCanvas.getContext('experimental-webgl')) {
+      webglFailed.value = true
+      return
+    }
+  } catch { webglFailed.value = true; return }
+
   scene = new THREE.Scene()
   clock = new THREE.Clock()
   raycaster = new THREE.Raycaster()
   mouse = new THREE.Vector2()
 
   const rect = el.getBoundingClientRect()
+  if (rect.width === 0 || rect.height === 0) return
+
   camera = new THREE.PerspectiveCamera(50, rect.width / rect.height, 0.1, 100)
   camera.position.set(0, 0, 20)
 
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+  try {
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+  } catch { webglFailed.value = true; return }
   renderer.setSize(rect.width, rect.height)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
   renderer.setClearColor(0x000000, 0)
@@ -226,6 +240,22 @@ function onClick(event) {
   }
 }
 
+function onTouchStart(event) {
+  if (!event.touches.length) return
+  const touch = event.touches[0]
+  // Update hover on touch
+  onMouseMove({ clientX: touch.clientX, clientY: touch.clientY })
+}
+
+function onTouchEnd(event) {
+  if (!event.changedTouches.length) return
+  const touch = event.changedTouches[0]
+  // Simulate click at touch point
+  onClick({ clientX: touch.clientX, clientY: touch.clientY })
+  // Clear hover after short delay
+  setTimeout(resetHover, 300)
+}
+
 function animate() {
   rafId = requestAnimationFrame(animate)
   if (!scene || !camera || !renderer || !nodeGroup.value) return
@@ -252,6 +282,8 @@ function dispose() {
   if (el) {
     el.removeEventListener('mousemove', onMouseMove)
     el.removeEventListener('click', onClick)
+    el.removeEventListener('touchstart', onTouchStart)
+    el.removeEventListener('touchend', onTouchEnd)
   }
 
   if (scene) {
@@ -280,14 +312,18 @@ function dispose() {
 
 onMounted(() => {
   buildScene()
-  animate()
+  if (!webglFailed.value && renderer) {
+    animate()
 
-  const el = containerRef.value
-  if (el) {
-    el.addEventListener('mousemove', onMouseMove)
-    el.addEventListener('click', onClick)
-    resizeObserver = new ResizeObserver(onResize)
-    resizeObserver.observe(el)
+    const el = containerRef.value
+    if (el) {
+      el.addEventListener('mousemove', onMouseMove)
+      el.addEventListener('click', onClick)
+      el.addEventListener('touchstart', onTouchStart, { passive: true })
+      el.addEventListener('touchend', onTouchEnd, { passive: true })
+      resizeObserver = new ResizeObserver(onResize)
+      resizeObserver.observe(el)
+    }
   }
 })
 
@@ -295,5 +331,18 @@ onUnmounted(dispose)
 </script>
 
 <template>
-  <div ref="containerRef" class="w-full h-64 relative" />
+  <div ref="containerRef" class="w-full h-64 relative">
+    <!-- CSS fallback when WebGL unavailable -->
+    <div v-if="webglFailed" class="absolute inset-0 flex flex-wrap items-center justify-center gap-3 p-4">
+      <button
+        v-for="cat in CATEGORIES"
+        :key="cat.id"
+        @click="emit('select', cat.id)"
+        class="px-3 py-1.5 rounded-full text-xs border transition-colors hover:scale-105"
+        :style="{ borderColor: cat.color + '40', color: cat.color }"
+      >
+        {{ cat.label }}
+      </button>
+    </div>
+  </div>
 </template>

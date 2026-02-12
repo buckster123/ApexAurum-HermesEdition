@@ -14,6 +14,7 @@ import * as THREE from 'three'
 import { useAgentModels } from '@/composables/useAgentModels'
 
 const containerRef = ref(null)
+const webglFailed = ref(false)
 
 const AGENT_IDS = ['AZOTH', 'ELYSIAN', 'VAJRA', 'KETHER']
 const AGENT_COLORS = {
@@ -47,8 +48,8 @@ function initScene() {
 
   try {
     const canvas = document.createElement('canvas')
-    if (!canvas.getContext('webgl') && !canvas.getContext('experimental-webgl')) return false
-  } catch { return false }
+    if (!canvas.getContext('webgl') && !canvas.getContext('experimental-webgl')) { webglFailed.value = true; return false }
+  } catch { webglFailed.value = true; return false }
 
   const el = containerRef.value
   const w = el.clientWidth
@@ -234,8 +235,12 @@ function buildSacredGeometry() {
   scene.add(symbolsGroup)
 }
 
+const isMobileDevice = typeof navigator !== 'undefined'
+  && (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.maxTouchPoints > 0 && !window.matchMedia?.('(pointer: fine)')?.matches))
+
 function buildParticles() {
-  const count = 150
+  const count = isMobileDevice ? 60 : 150
   const positions = new Float32Array(count * 3)
   const sizes = new Float32Array(count)
 
@@ -268,6 +273,8 @@ function buildParticles() {
 
 function buildAgents() {
   agentMeshes = []
+  // Skip decorative orbiting agents on mobile — they're small and distant
+  if (isMobileDevice) return
 
   AGENT_IDS.forEach((agentId, i) => {
     let mesh
@@ -418,28 +425,37 @@ function dispose() {
 }
 
 onMounted(() => {
-  agentModels.preloadAll().then(() => {
-    if (scene) {
-      agentMeshes.forEach(m => scene.remove(m))
-      buildAgents()
-    }
-  })
+  // Preload agent models (non-blocking) — skip on mobile where agents are hidden
+  if (!isMobileDevice) {
+    agentModels.preloadAll().then(() => {
+      if (scene) {
+        agentMeshes.forEach(m => scene.remove(m))
+        buildAgents()
+      }
+    })
+  }
 
   if (initScene()) animate()
 })
 
 onUnmounted(() => {
   dispose()
-  agentModels.disposeAll()
+  if (!isMobileDevice) agentModels.disposeAll()
 })
 </script>
 
 <template>
-  <div ref="containerRef" class="athanor-hero absolute inset-0 z-0"></div>
+  <div ref="containerRef" class="athanor-hero absolute inset-0 z-0">
+    <!-- Gradient fallback when WebGL unavailable -->
+    <div v-if="webglFailed" class="absolute inset-0 athanor-hero-fallback" />
+  </div>
 </template>
 
 <style scoped>
 .athanor-hero {
   pointer-events: auto;
+}
+.athanor-hero-fallback {
+  background: radial-gradient(ellipse at 50% 60%, rgba(212,175,55,0.08) 0%, rgba(10,10,15,1) 70%);
 }
 </style>

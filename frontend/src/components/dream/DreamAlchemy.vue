@@ -25,6 +25,7 @@ const props = defineProps({
 })
 
 const containerRef = ref(null)
+const webglFailed = ref(false)
 
 // Phase definitions matching DreamView
 const PHASES = [
@@ -54,14 +55,17 @@ const agentModels = useAgentModels()
 
 const ORB_SPACING = 6
 const ORB_Y = 0
+const isMobileDevice = typeof navigator !== 'undefined'
+  && (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.maxTouchPoints > 0 && !window.matchMedia?.('(pointer: fine)')?.matches))
 
 function initScene() {
   if (!containerRef.value) return false
 
   try {
     const canvas = document.createElement('canvas')
-    if (!canvas.getContext('webgl') && !canvas.getContext('experimental-webgl')) return false
-  } catch { return false }
+    if (!canvas.getContext('webgl') && !canvas.getContext('experimental-webgl')) { webglFailed.value = true; return false }
+  } catch { webglFailed.value = true; return false }
 
   const el = containerRef.value
   const w = el.clientWidth
@@ -191,6 +195,8 @@ function buildConduits() {
 
 function buildAgents() {
   agentMeshes = []
+  // Skip decorative background agents on mobile — they float far above the pipeline
+  if (isMobileDevice) return
 
   AGENT_IDS.forEach((agentId, i) => {
     let mesh
@@ -341,21 +347,22 @@ watch(() => props.activePhase, (newPhase, oldPhase) => {
 })
 
 onMounted(() => {
-  // Preload agent models (non-blocking)
-  agentModels.preloadAll().then(() => {
-    // Rebuild agents with loaded models
-    if (scene) {
-      agentMeshes.forEach(m => scene.remove(m))
-      buildAgents()
-    }
-  })
+  // Preload agent models (non-blocking) — skip on mobile where agents are hidden
+  if (!isMobileDevice) {
+    agentModels.preloadAll().then(() => {
+      if (scene) {
+        agentMeshes.forEach(m => scene.remove(m))
+        buildAgents()
+      }
+    })
+  }
 
   if (initScene()) animate()
 })
 
 onUnmounted(() => {
   dispose()
-  agentModels.disposeAll()
+  if (!isMobileDevice) agentModels.disposeAll()
 })
 </script>
 
@@ -365,6 +372,20 @@ onUnmounted(() => {
     class="dream-alchemy w-full relative overflow-hidden rounded-lg border border-apex-border"
     style="height: 250px"
   >
+    <!-- WebGL fallback: CSS phase dots -->
+    <div v-if="webglFailed" class="absolute inset-0 flex items-center justify-center gap-3 bg-gradient-to-b from-[#0a0612] to-[#080810]">
+      <div
+        v-for="(phase, i) in PHASES"
+        :key="phase.key"
+        class="w-6 h-6 rounded-full transition-all duration-300"
+        :class="{ 'scale-125': isRunning && i === activePhase }"
+        :style="{
+          backgroundColor: phase.color + (isRunning && i === activePhase ? '' : '60'),
+          boxShadow: isRunning && i === activePhase ? '0 0 16px ' + phase.color : 'none',
+        }"
+      />
+    </div>
+
     <!-- Phase label overlay -->
     <div
       v-if="isRunning && activePhase >= 0 && activePhase < PHASES.length"

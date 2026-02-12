@@ -25,6 +25,7 @@ const props = defineProps({
 })
 
 const containerRef = ref(null)
+const webglFailed = ref(false)
 
 const AGENTS = [
   { id: 'AZOTH', color: 0xd4af37, angle: 0 },
@@ -52,8 +53,8 @@ function initScene() {
 
   try {
     const canvas = document.createElement('canvas')
-    if (!canvas.getContext('webgl') && !canvas.getContext('experimental-webgl')) return false
-  } catch { return false }
+    if (!canvas.getContext('webgl') && !canvas.getContext('experimental-webgl')) { webglFailed.value = true; return false }
+  } catch { webglFailed.value = true; return false }
 
   const el = containerRef.value
   const w = el.clientWidth
@@ -365,6 +366,18 @@ onUnmounted(() => {
     class="council-chamber w-full relative overflow-hidden rounded-lg border border-apex-border"
     style="height: 200px"
   >
+    <!-- WebGL fallback -->
+    <div v-if="webglFailed" class="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-[#0a0810] to-[#080810]">
+      <div class="flex gap-4">
+        <div
+          v-for="agent in AGENTS"
+          :key="agent.id"
+          class="w-8 h-8 rounded-full opacity-60"
+          :style="{ backgroundColor: '#' + agent.color.toString(16).padStart(6, '0'), boxShadow: '0 0 12px ' + '#' + agent.color.toString(16).padStart(6, '0') + '40' }"
+        />
+      </div>
+    </div>
+
     <!-- Active speaker label -->
     <div
       v-if="activeAgent"
