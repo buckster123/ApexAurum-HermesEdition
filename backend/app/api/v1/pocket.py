@@ -2067,8 +2067,9 @@ async def pocket_sensor_environment(
     if not conn:
         raise HTTPException(503, detail="No SensorHead connected")
 
+    from app.api.v1.sensors import _normalize_env
     result = await _send_sensor_command(conn.device_id, "sense_environment", timeout=15)
-    return {"data": result.get("data"), "duration_ms": result.get("duration_ms", 0)}
+    return {"data": _normalize_env(result.get("data")), "duration_ms": result.get("duration_ms", 0)}
 
 
 @router.post("/sensors/capture/{camera}")
@@ -2136,8 +2137,10 @@ async def pocket_sensor_snapshot(
         ("thermal_base64", "sense_thermal", 15),
     ]:
         try:
+            from app.api.v1.sensors import _normalize_env
             result = await manager.send_command(conn.device_id, action, {}, timeout=timeout)
-            snapshot[key] = result.get("data")
+            data = result.get("data")
+            snapshot[key] = _normalize_env(data) if key == "environment" else data
         except Exception as e:
             errors.append(f"{action}: {e}")
 
