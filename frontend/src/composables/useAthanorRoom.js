@@ -46,6 +46,30 @@ const STATIONS = {
   },
 }
 
+// Mirror definitions
+const MIRRORS = {
+  SENSOR_HEAD: {
+    position: new THREE.Vector3(-9.8, 2.5, -4),
+    rotation: new THREE.Euler(0, Math.PI / 2, 0), // faces +X into room
+    width: 1.6,
+    height: 2.4,
+    color: 0x4fc3f7,
+    glowColor: 0x4fc3f7,
+    label: 'Scrying Glass',
+    action: 'gaze',
+  },
+  BACKROOMS: {
+    position: new THREE.Vector3(0, 2.5, 7.7),
+    rotation: new THREE.Euler(0, Math.PI, 0), // faces -Z into room
+    width: 2.0,
+    height: 3.0,
+    color: 0x8b5cf6,
+    glowColor: 0x8b5cf6,
+    label: 'Dream Portal',
+    action: 'enter',
+  },
+}
+
 // Shared materials (created once)
 const STONE_DARK = () => new THREE.MeshStandardMaterial({
   color: 0x2a2222,
@@ -85,7 +109,15 @@ export function useAthanorRoom(scene) {
   let cauldronGlow = null
   let agentMeshes = {}
   let stationEffects = {} // per-agent animated elements
+  let mirrorEffects = {} // per-mirror animated elements
+  let roomObjects = [] // all objects added to scene (for hide/show)
   let allDisposables = [] // track everything for cleanup
+
+  // Helper: add to scene AND track for hide/show
+  function addToRoom(obj) {
+    scene.add(obj)
+    roomObjects.push(obj)
+  }
 
   function buildRoom() {
     buildFloor()
@@ -96,6 +128,7 @@ export function useAthanorRoom(scene) {
     buildCandles()
     buildDustParticles()
     buildAgentStations()
+    buildMirrors()
     buildLighting()
   }
 
@@ -768,21 +801,119 @@ export function useAthanorRoom(scene) {
     allDisposables.push(deskGeo, deskMat)
   }
 
+  // ─── Mirrors ───
+
+  function buildMirrors() {
+    Object.entries(MIRRORS).forEach(([id, mirror]) => {
+      const { position, rotation, width, height, color, glowColor } = mirror
+      const group = new THREE.Group()
+      group.position.copy(position)
+      group.rotation.copy(rotation)
+
+      // Reflective surface
+      const surfaceGeo = new THREE.PlaneGeometry(width, height)
+      const surfaceMat = new THREE.MeshStandardMaterial({
+        color: 0x111111,
+        metalness: 0.95,
+        roughness: 0.05,
+        envMapIntensity: 1.0,
+      })
+      const surface = new THREE.Mesh(surfaceGeo, surfaceMat)
+      group.add(surface)
+
+      // Glow plane behind surface
+      const glowGeo = new THREE.PlaneGeometry(width * 0.85, height * 0.85)
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: glowColor,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+      })
+      const glow = new THREE.Mesh(glowGeo, glowMat)
+      glow.position.z = 0.01
+      group.add(glow)
+
+      // Gold frame — 4 bars
+      const frameMat = GOLD_METAL()
+      frameMat.emissiveIntensity = 0.1
+      const barThick = 0.06
+      const hw = width / 2
+      const hh = height / 2
+
+      // Top + bottom bars
+      const hBarGeo = new THREE.BoxGeometry(width + barThick * 2, barThick, barThick)
+      const topBar = new THREE.Mesh(hBarGeo, frameMat)
+      topBar.position.set(0, hh, 0)
+      group.add(topBar)
+      const botBar = new THREE.Mesh(hBarGeo, frameMat)
+      botBar.position.set(0, -hh, 0)
+      group.add(botBar)
+
+      // Left + right bars
+      const vBarGeo = new THREE.BoxGeometry(barThick, height, barThick)
+      const leftBar = new THREE.Mesh(vBarGeo, frameMat)
+      leftBar.position.set(-hw, 0, 0)
+      group.add(leftBar)
+      const rightBar = new THREE.Mesh(vBarGeo, frameMat)
+      rightBar.position.set(hw, 0, 0)
+      group.add(rightBar)
+
+      // Mirror light
+      const mirrorLight = new THREE.PointLight(glowColor, 0.6, 6)
+      mirrorLight.position.set(0, 0, 0.5)
+      group.add(mirrorLight)
+
+      addToRoom(group)
+
+      mirrorEffects[id] = { group, glow, light: mirrorLight, surface }
+      allDisposables.push(surfaceGeo, surfaceMat, glowGeo, glowMat, frameMat, hBarGeo, vBarGeo)
+    })
+  }
+
+  // ─── Mirror proximity ───
+
+  function getMirrorAtPosition(cameraPos, threshold = 3) {
+    let closest = null
+    let closestDist = threshold
+
+    Object.entries(MIRRORS).forEach(([id, mirror]) => {
+      const dx = cameraPos.x - mirror.position.x
+      const dz = cameraPos.z - mirror.position.z
+      const dist = Math.sqrt(dx * dx + dz * dz)
+      if (dist < closestDist) {
+        closestDist = dist
+        closest = id
+      }
+    })
+
+    return closest
+  }
+
+  // ─── Hide / Show (for Backrooms transition) ───
+
+  function hideAll() {
+    roomObjects.forEach(obj => { obj.visible = false })
+  }
+
+  function showAll() {
+    roomObjects.forEach(obj => { obj.visible = true })
+  }
+
   // ─── Lighting ───
 
   function buildLighting() {
     // Hemisphere light — warm sky, cool ground fill
     const hemi = new THREE.HemisphereLight(0xffeedd, 0x1a1020, 0.5)
-    scene.add(hemi)
+    addToRoom(hemi)
 
     // Ambient — warm base fill
     const ambient = new THREE.AmbientLight(0x332211, 0.8)
-    scene.add(ambient)
+    addToRoom(ambient)
 
     // Directional — subtle overhead moonlight through skylight
     const dir = new THREE.DirectionalLight(0xccbbaa, 0.3)
     dir.position.set(2, ROOM_H, -1)
-    scene.add(dir)
+    addToRoom(dir)
 
     // Fog — gentle, not suffocating
     scene.fog = new THREE.FogExp2(0x0a0612, 0.018)
@@ -874,6 +1005,17 @@ export function useAthanorRoom(scene) {
       stationEffects.KETHER.astrolabe.rotation.y = elapsed * 0.2
       stationEffects.KETHER.astrolabe.rotation.x = Math.sin(elapsed * 0.15) * 0.3
     }
+
+    // Mirror animations
+    if (mirrorEffects.SENSOR_HEAD?.glow) {
+      mirrorEffects.SENSOR_HEAD.glow.material.opacity = 0.08 + Math.sin(elapsed * 1.5) * 0.06
+      mirrorEffects.SENSOR_HEAD.light.intensity = 0.4 + Math.sin(elapsed * 2) * 0.2
+    }
+    if (mirrorEffects.BACKROOMS?.glow) {
+      mirrorEffects.BACKROOMS.glow.material.opacity = 0.1 + Math.sin(elapsed * 0.8) * 0.08
+      mirrorEffects.BACKROOMS.glow.rotation.z = elapsed * 0.15
+      mirrorEffects.BACKROOMS.light.intensity = 0.5 + Math.sin(elapsed * 1.2) * 0.3
+    }
   }
 
   // ─── Agent glow control ───
@@ -928,6 +1070,8 @@ export function useAthanorRoom(scene) {
     sacredGeometry = []
     agentMeshes = {}
     stationEffects = {}
+    mirrorEffects = {}
+    roomObjects = []
     cauldronGlow = null
     particles = null
     forgeParticles = null
@@ -936,11 +1080,15 @@ export function useAthanorRoom(scene) {
   return {
     buildRoom,
     getAgentAtPosition,
+    getMirrorAtPosition,
     updateAnimations,
     updateAgentGlow,
     rebuildAgents,
+    hideAll,
+    showAll,
     agentMeshes,
     STATIONS,
+    MIRRORS,
     dispose,
     agentModels,
   }

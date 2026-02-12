@@ -12,8 +12,8 @@ import { ref } from 'vue'
 import * as THREE from 'three'
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'
 
-// Room bounds (half-extents) — player stays inside
-const BOUNDS = { x: 9, z: 7 }
+// Default room bounds (half-extents) — player stays inside
+const DEFAULT_BOUNDS = { x: 9, z: 7 }
 const MOVE_SPEED = 5 // units per second
 const EYE_HEIGHT = 1.6 // camera Y position (standing eye level)
 
@@ -22,6 +22,8 @@ export function useFirstPerson(camera, domElement) {
   const keys = new Set()
 
   let controls = null
+  let currentBounds = { ...DEFAULT_BOUNDS }
+  let externalClamp = null // optional external position clamp function
   const direction = new THREE.Vector3()
   const right = new THREE.Vector3()
 
@@ -95,12 +97,24 @@ export function useFirstPerson(camera, domElement) {
       camera.position.addScaledVector(right, speed)
     }
 
-    // Clamp to room bounds
-    camera.position.x = Math.max(-BOUNDS.x, Math.min(BOUNDS.x, camera.position.x))
-    camera.position.z = Math.max(-BOUNDS.z, Math.min(BOUNDS.z, camera.position.z))
+    // Clamp position — external clamp or room bounds
+    if (externalClamp) {
+      externalClamp(camera.position)
+    } else if (currentBounds) {
+      camera.position.x = Math.max(-currentBounds.x, Math.min(currentBounds.x, camera.position.x))
+      camera.position.z = Math.max(-currentBounds.z, Math.min(currentBounds.z, camera.position.z))
+    }
 
     // Lock Y to eye height (no flying)
     camera.position.y = EYE_HEIGHT
+  }
+
+  function setBounds(bounds) {
+    currentBounds = bounds // null = no bounds
+  }
+
+  function setClampFunction(fn) {
+    externalClamp = fn // for backrooms corridor collision
   }
 
   function dispose() {
@@ -121,6 +135,8 @@ export function useFirstPerson(camera, domElement) {
     lock,
     unlock,
     update,
+    setBounds,
+    setClampFunction,
     dispose,
   }
 }
