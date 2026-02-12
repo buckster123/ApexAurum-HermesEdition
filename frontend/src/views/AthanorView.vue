@@ -346,11 +346,31 @@ async function openSensorPanel() {
 
 async function fetchSensorData(deviceId) {
   try {
-    const { data } = await api.get(`/api/v1/devices/${deviceId}/telemetry`)
+    const { data } = await api.get(`/api/v1/devices/${deviceId}/sensors`)
     sensorData.value = data
   } catch {
-    // Endpoint may not exist yet — show dormant
     sensorData.value = null
+  }
+}
+
+function iaqLabel(iaq) {
+  if (iaq <= 50) return { text: 'Excellent', color: '#4ade80' }
+  if (iaq <= 100) return { text: 'Good', color: '#86efac' }
+  if (iaq <= 150) return { text: 'Moderate', color: '#facc15' }
+  if (iaq <= 200) return { text: 'Poor', color: '#fb923c' }
+  return { text: 'Hazardous', color: '#f87171' }
+}
+
+async function takeSensorSnapshot() {
+  if (!sensorDevice.value) return
+  sensorLoading.value = true
+  try {
+    const { data } = await api.post(`/api/v1/devices/${sensorDevice.value.id}/sensors/snapshot`)
+    sensorData.value = { ...sensorData.value, snapshot: data }
+  } catch (err) {
+    console.error('[Athanor] Snapshot failed:', err)
+  } finally {
+    sensorLoading.value = false
   }
 }
 
@@ -813,35 +833,115 @@ onUnmounted(() => {
 
           <!-- Sensor data -->
           <div v-else class="space-y-3">
-            <div class="text-xs text-gray-500 mb-3">
-              {{ sensorDevice.device_name }}
-              <span v-if="sensorDevice.last_seen_at" class="text-gray-600 ml-2">
-                Last seen: {{ new Date(sensorDevice.last_seen_at).toLocaleTimeString() }}
-              </span>
+            <!-- Device status header -->
+            <div class="flex items-center gap-2 mb-3">
+              <div
+                class="w-2 h-2 rounded-full"
+                :class="sensorData?.online ? 'bg-green-400 animate-pulse' : 'bg-gray-500'"
+              />
+              <span class="text-xs text-gray-400">{{ sensorData?.device_name || sensorDevice.device_name }}</span>
+              <span v-if="sensorData?.online" class="text-[10px] text-green-400/60 ml-auto">LIVE</span>
+              <span v-else class="text-[10px] text-yellow-500/60 ml-auto">CACHED</span>
             </div>
 
-            <!-- Sensor gauges -->
-            <template v-if="sensorData">
-              <div
-                v-for="(value, key) in sensorData"
-                :key="key"
-                class="sensor-gauge"
-              >
+            <!-- Telemetry readings -->
+            <template v-if="sensorData?.telemetry?.readings">
+              <!-- Temperature -->
+              <div v-if="sensorData.telemetry.readings.temperature_c != null" class="sensor-gauge">
                 <div class="flex items-center justify-between">
-                  <span class="text-xs text-gray-400 uppercase tracking-wider">{{ key }}</span>
-                  <span class="text-sm font-mono text-cyan-300">{{ typeof value === 'number' ? value.toFixed(1) : value }}</span>
+                  <span class="text-xs text-gray-400 uppercase tracking-wider">Temperature</span>
+                  <span class="text-sm font-mono text-cyan-300">{{ sensorData.telemetry.readings.temperature_c.toFixed(1) }}&deg;C</span>
                 </div>
                 <div class="mt-1 h-1 bg-white/5 rounded-full overflow-hidden">
-                  <div
-                    class="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-full transition-all duration-500"
-                    :style="{ width: typeof value === 'number' ? Math.min(100, Math.max(5, value)) + '%' : '50%' }"
-                  />
+                  <div class="h-full bg-gradient-to-r from-blue-600 to-red-400 rounded-full transition-all duration-500"
+                    :style="{ width: Math.min(100, Math.max(5, (sensorData.telemetry.readings.temperature_c / 50) * 100)) + '%' }" />
+                </div>
+              </div>
+
+              <!-- Humidity -->
+              <div v-if="sensorData.telemetry.readings.humidity_pct != null" class="sensor-gauge">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-400 uppercase tracking-wider">Humidity</span>
+                  <span class="text-sm font-mono text-cyan-300">{{ Math.round(sensorData.telemetry.readings.humidity_pct) }}%</span>
+                </div>
+                <div class="mt-1 h-1 bg-white/5 rounded-full overflow-hidden">
+                  <div class="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-full transition-all duration-500"
+                    :style="{ width: sensorData.telemetry.readings.humidity_pct + '%' }" />
+                </div>
+              </div>
+
+              <!-- Pressure -->
+              <div v-if="sensorData.telemetry.readings.pressure_hpa != null" class="sensor-gauge">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-400 uppercase tracking-wider">Pressure</span>
+                  <span class="text-sm font-mono text-cyan-300">{{ Math.round(sensorData.telemetry.readings.pressure_hpa) }} hPa</span>
+                </div>
+              </div>
+
+              <!-- IAQ (color-coded) -->
+              <div v-if="sensorData.telemetry.readings.iaq != null" class="sensor-gauge">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-400 uppercase tracking-wider">Air Quality</span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] font-medium" :style="{ color: iaqLabel(sensorData.telemetry.readings.iaq).color }">
+                      {{ iaqLabel(sensorData.telemetry.readings.iaq).text }}
+                    </span>
+                    <span class="text-sm font-mono text-cyan-300">{{ Math.round(sensorData.telemetry.readings.iaq) }}</span>
+                  </div>
+                </div>
+                <div class="mt-1 h-1 bg-white/5 rounded-full overflow-hidden">
+                  <div class="h-full rounded-full transition-all duration-500"
+                    :style="{ width: Math.min(100, (sensorData.telemetry.readings.iaq / 300) * 100) + '%', backgroundColor: iaqLabel(sensorData.telemetry.readings.iaq).color }" />
+                </div>
+              </div>
+
+              <!-- CO2 -->
+              <div v-if="sensorData.telemetry.readings.co2_ppm != null" class="sensor-gauge">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-400 uppercase tracking-wider">CO2</span>
+                  <span class="text-sm font-mono text-cyan-300">{{ Math.round(sensorData.telemetry.readings.co2_ppm) }} ppm</span>
+                </div>
+              </div>
+
+              <!-- VOC -->
+              <div v-if="sensorData.telemetry.readings.voc_ppm != null" class="sensor-gauge">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-400 uppercase tracking-wider">VOC</span>
+                  <span class="text-sm font-mono text-cyan-300">{{ sensorData.telemetry.readings.voc_ppm.toFixed(2) }} ppm</span>
+                </div>
+              </div>
+
+              <!-- Data age -->
+              <div v-if="sensorData.telemetry.age_s != null" class="text-[10px] text-gray-600 text-right mt-2">
+                {{ sensorData.telemetry.age_s < 60 ? sensorData.telemetry.age_s + 's ago' : Math.round(sensorData.telemetry.age_s / 60) + 'm ago' }}
+                <span class="ml-1 text-gray-700">({{ sensorData.telemetry.source }})</span>
+              </div>
+            </template>
+
+            <!-- Snapshot images -->
+            <template v-if="sensorData?.snapshot">
+              <div class="border-t border-cyan-500/10 pt-3 mt-3">
+                <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Vision</div>
+                <div class="space-y-2">
+                  <img v-if="sensorData.snapshot.visual_base64" :src="'data:image/jpeg;base64,' + sensorData.snapshot.visual_base64" class="w-full rounded border border-cyan-500/10 aspect-[4/3] object-cover" />
+                  <img v-if="sensorData.snapshot.night_base64" :src="'data:image/jpeg;base64,' + sensorData.snapshot.night_base64" class="w-full rounded border border-green-500/10 aspect-[4/3] object-cover" />
+                  <img v-if="sensorData.snapshot.thermal_base64" :src="'data:image/jpeg;base64,' + sensorData.snapshot.thermal_base64" class="w-full rounded border border-red-500/10 aspect-[4/3] object-cover" />
                 </div>
               </div>
             </template>
 
+            <!-- Snapshot button -->
+            <button
+              v-if="sensorData?.online"
+              @click="takeSensorSnapshot"
+              :disabled="sensorLoading"
+              class="w-full mt-3 px-3 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/15 rounded-lg text-xs text-cyan-300 disabled:opacity-30 transition-colors"
+            >
+              {{ sensorLoading ? 'Capturing...' : 'Capture Snapshot' }}
+            </button>
+
             <!-- No telemetry data yet -->
-            <div v-else class="text-center py-8">
+            <div v-if="!sensorData?.telemetry?.readings" class="text-center py-8">
               <p class="text-gray-500 text-xs">Device connected but no telemetry received yet.</p>
             </div>
           </div>
