@@ -18,6 +18,7 @@ import { ref, shallowRef, onMounted, onUnmounted } from 'vue'
 import * as THREE from 'three'
 import { usePixelSprites } from '@/composables/usePixelSprites'
 import { useDraggableZones } from '@/composables/useDraggableZones'
+import { useVillageModels } from '@/composables/useVillageModels'
 
 // Polyfill for roundRect (not available in all browsers)
 if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
@@ -583,6 +584,20 @@ export function useVillageIsometric(containerRef, options = {}) {
   const { initSpriteCache, getSprite, getBuildingSprite, getTerrainTile, SPRITE_SCALE } = usePixelSprites()
   const pixelSprites = { getSprite, getBuildingSprite, getTerrainTile, SPRITE_SCALE }
 
+  // GLB building models (progressive enhancement)
+  const villageModels = useVillageModels()
+  // Map zone names to GLB model IDs
+  const ZONE_MODEL_MAP = {
+    village_square: 'market',
+    dj_booth: 'tavern',
+    memory_garden: 'garden',
+    file_shed: 'library',
+    workshop: 'workshop',
+    bridge_portal: 'temple',
+    library: 'observatory',
+    watchtower: 'forge',
+  }
+
   // Drag layout persistence
   const { loadLayout, saveLayout, resetLayout, hasCustomLayout } =
     useDraggableZones('village-layout-3d', ZONES_3D)
@@ -829,25 +844,40 @@ export function useVillageIsometric(containerRef, options = {}) {
   function createZoneBuilding(name, config) {
     const { position, size, color, label } = config
 
-    const buildingCanvas = pixelSprites.getBuildingSprite(name)
     const WORLD_BUILD_W = Math.max(size.w, 6)
     const WORLD_BUILD_H = Math.max(size.h, 6)
 
     let mesh
     let spriteMaterial = null
 
-    if (buildingCanvas) {
-      // Pixel art billboard
-      mesh = new THREE.Group()
-      const buildingSprite = createBillboardSprite(buildingCanvas, WORLD_BUILD_W, WORLD_BUILD_H)
-      if (buildingSprite) {
-        buildingSprite.position.y = WORLD_BUILD_H / 2
-        mesh.add(buildingSprite)
-        spriteMaterial = buildingSprite.material
+    // Tier 1: Try GLB model (progressive enhancement)
+    const modelId = ZONE_MODEL_MAP[name]
+    if (modelId && villageModels.isLoaded(modelId)) {
+      mesh = villageModels.getZoneClone(modelId, Math.max(size.w, size.d))
+      if (mesh) {
+        mesh.position.set(position.x, 0, position.z)
+        mesh.castShadow = true
+        mesh.receiveShadow = true
       }
-      mesh.position.set(position.x, 0, position.z)
-    } else {
-      // Fallback: colored box
+    }
+
+    // Tier 2: Pixel art billboard
+    if (!mesh) {
+      const buildingCanvas = pixelSprites.getBuildingSprite(name)
+      if (buildingCanvas) {
+        mesh = new THREE.Group()
+        const buildingSprite = createBillboardSprite(buildingCanvas, WORLD_BUILD_W, WORLD_BUILD_H)
+        if (buildingSprite) {
+          buildingSprite.position.y = WORLD_BUILD_H / 2
+          mesh.add(buildingSprite)
+          spriteMaterial = buildingSprite.material
+        }
+        mesh.position.set(position.x, 0, position.z)
+      }
+    }
+
+    // Tier 3: Colored box fallback
+    if (!mesh) {
       const geometry = new THREE.BoxGeometry(size.w, size.h, size.d)
       const material = new THREE.MeshStandardMaterial({
         color: new THREE.Color(color),
@@ -1247,11 +1277,27 @@ export function useVillageIsometric(containerRef, options = {}) {
     if (init()) {
       animate()
       window.addEventListener('resize', onResize)
+
+      // Preload GLB building models (non-blocking — pixel art/boxes used until loaded)
+      villageModels.preloadAll().then(() => {
+        if (isInitialized.value) {
+          // Rebuild zones with GLB models
+          for (const [name, zone] of Object.entries(zones)) {
+            const modelId = ZONE_MODEL_MAP[name]
+            if (modelId && villageModels.isLoaded(modelId)) {
+              scene.remove(zone.mesh)
+              const newZone = createZoneBuilding(name, ZONES_3D[name])
+              zones[name] = newZone
+            }
+          }
+        }
+      })
     }
   })
 
   onUnmounted(() => {
     window.removeEventListener('resize', onResize)
+    villageModels.disposeAll()
     dispose()
   })
 
