@@ -113,6 +113,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/athanor',
+      name: 'athanor',
+      component: () => import('@/views/AthanorView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/village-gui',
       name: 'village-gui',
       component: () => import('@/views/VillageGUIView.vue'),
