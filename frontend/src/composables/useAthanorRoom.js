@@ -141,7 +141,7 @@ export function useAthanorRoom(scene) {
     floor.rotation.x = -Math.PI / 2
     floor.position.y = 0
     floor.receiveShadow = true
-    scene.add(floor)
+    addToRoom(floor)
     allDisposables.push(geo, mat)
 
     // Central alchemical circle
@@ -150,7 +150,7 @@ export function useAthanorRoom(scene) {
     const ring = new THREE.Mesh(ringGeo, ringMat)
     ring.rotation.x = Math.PI / 2
     ring.position.y = 0.01
-    scene.add(ring)
+    addToRoom(ring)
     allDisposables.push(ringGeo, ringMat)
 
     // Inner circle
@@ -160,7 +160,7 @@ export function useAthanorRoom(scene) {
     const inner = new THREE.Mesh(innerGeo, innerMat)
     inner.rotation.x = Math.PI / 2
     inner.position.y = 0.01
-    scene.add(inner)
+    addToRoom(inner)
     allDisposables.push(innerGeo, innerMat)
 
     // Center symbol disc
@@ -169,7 +169,7 @@ export function useAthanorRoom(scene) {
     const symbol = new THREE.Mesh(symbolGeo, symbolMat)
     symbol.rotation.x = -Math.PI / 2
     symbol.position.y = 0.02
-    scene.add(symbol)
+    addToRoom(symbol)
     allDisposables.push(symbolGeo, symbolMat)
   }
 
@@ -194,7 +194,7 @@ export function useAthanorRoom(scene) {
       const geo = new THREE.BoxGeometry(w, h, d)
       const mesh = new THREE.Mesh(geo, wallMat)
       mesh.position.set(...pos)
-      scene.add(mesh)
+      addToRoom(mesh)
       allDisposables.push(geo)
     })
 
@@ -223,18 +223,18 @@ export function useAthanorRoom(scene) {
 
       const leftBar = new THREE.Mesh(barGeo, archMat)
       leftBar.position.set(pos[0], pos[1] - 0.5, pos[2] - 0.8)
-      scene.add(leftBar)
+      addToRoom(leftBar)
 
       const rightBar = new THREE.Mesh(barGeo, archMat)
       rightBar.position.set(pos[0], pos[1] - 0.5, pos[2] + 0.8)
-      scene.add(rightBar)
+      addToRoom(rightBar)
 
       // Arch top
       const archGeo = new THREE.TorusGeometry(0.8, 0.04, 6, 12, Math.PI)
       const arch = new THREE.Mesh(archGeo, archMat)
       arch.position.set(pos[0], pos[1] + 1, pos[2])
       arch.rotation.set(0, Math.PI / 2, 0)
-      scene.add(arch)
+      addToRoom(arch)
 
       allDisposables.push(barGeo, archGeo)
     })
@@ -265,7 +265,7 @@ export function useAthanorRoom(scene) {
         mesh.rotation.y = pos[2] > 0 ? Math.PI : 0
       }
 
-      scene.add(mesh)
+      addToRoom(mesh)
       allDisposables.push(geo)
     })
   }
@@ -282,7 +282,7 @@ export function useAthanorRoom(scene) {
     const ceiling = new THREE.Mesh(geo, mat)
     ceiling.rotation.x = Math.PI / 2
     ceiling.position.y = ROOM_H
-    scene.add(ceiling)
+    addToRoom(ceiling)
     allDisposables.push(geo, mat)
 
     // Hanging lanterns
@@ -309,7 +309,7 @@ export function useAthanorRoom(scene) {
       const chainGeo = new THREE.CylinderGeometry(0.02, 0.02, 2, 4)
       const chain = new THREE.Mesh(chainGeo, chainMat)
       chain.position.set(x, ROOM_H - 1, z)
-      scene.add(chain)
+      addToRoom(chain)
 
       // Lantern body
       const lanternGeo = new THREE.SphereGeometry(0.2, 8, 8)
@@ -320,12 +320,12 @@ export function useAthanorRoom(scene) {
       })
       const lantern = new THREE.Mesh(lanternGeo, lanternMat)
       lantern.position.set(x, ROOM_H - 2.1, z)
-      scene.add(lantern)
+      addToRoom(lantern)
 
       // Lantern light
       const light = new THREE.PointLight(0xff9922, 1.0, 12)
       light.position.set(x, ROOM_H - 2, z)
-      scene.add(light)
+      addToRoom(light)
 
       candles.push({ flame: lantern, light })
 
@@ -352,21 +352,21 @@ export function useAthanorRoom(scene) {
       const colGeo = new THREE.CylinderGeometry(0.35, 0.4, ROOM_H, 8)
       const col = new THREE.Mesh(colGeo, pillarMat)
       col.position.set(x, ROOM_H / 2, z)
-      scene.add(col)
+      addToRoom(col)
 
       // Gold band at top
       const topBand = new THREE.TorusGeometry(0.38, 0.04, 6, 12)
       const topMesh = new THREE.Mesh(topBand, bandMat)
       topMesh.position.set(x, ROOM_H - 0.3, z)
       topMesh.rotation.x = Math.PI / 2
-      scene.add(topMesh)
+      addToRoom(topMesh)
 
       // Gold band at bottom
       const botBand = new THREE.TorusGeometry(0.42, 0.04, 6, 12)
       const botMesh = new THREE.Mesh(botBand, bandMat)
       botMesh.position.set(x, 0.3, z)
       botMesh.rotation.x = Math.PI / 2
-      scene.add(botMesh)
+      addToRoom(botMesh)
 
       allDisposables.push(colGeo, topBand, botBand)
     })
@@ -386,7 +386,7 @@ export function useAthanorRoom(scene) {
     })
     const base = new THREE.Mesh(baseGeo, baseMat)
     base.position.set(0, 0.2, 0)
-    scene.add(base)
+    addToRoom(base)
 
     // Cauldron bowl (inverted half-sphere)
     const bowlGeo = new THREE.SphereGeometry(0.9, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2)
@@ -399,7 +399,7 @@ export function useAthanorRoom(scene) {
     const bowl = new THREE.Mesh(bowlGeo, bowlMat)
     bowl.rotation.x = Math.PI
     bowl.position.set(0, 0.9, 0)
-    scene.add(bowl)
+    addToRoom(bowl)
 
     // Glowing liquid surface
     const glowGeo = new THREE.CircleGeometry(0.8, 16)
@@ -412,12 +412,12 @@ export function useAthanorRoom(scene) {
     cauldronGlow = new THREE.Mesh(glowGeo, glowMat)
     cauldronGlow.rotation.x = -Math.PI / 2
     cauldronGlow.position.set(0, 0.55, 0)
-    scene.add(cauldronGlow)
+    addToRoom(cauldronGlow)
 
     // Cauldron light — the forge's heart
     const cauldronLight = new THREE.PointLight(0xffd700, 2.5, 12)
     cauldronLight.position.set(0, 1.5, 0)
-    scene.add(cauldronLight)
+    addToRoom(cauldronLight)
 
     // Sacred geometry floating above
     buildSacredGeometry()
@@ -454,7 +454,7 @@ export function useAthanorRoom(scene) {
       allDisposables.push(geo, mat)
     })
 
-    scene.add(group)
+    addToRoom(group)
   }
 
   function buildForgeParticles() {
@@ -486,7 +486,7 @@ export function useAthanorRoom(scene) {
 
     forgeParticles = new THREE.Points(geo, mat)
     forgeParticles.userData.velocities = velocities
-    scene.add(forgeParticles)
+    addToRoom(forgeParticles)
     allDisposables.push(geo, mat)
   }
 
@@ -512,7 +512,7 @@ export function useAthanorRoom(scene) {
       const stickGeo = new THREE.CylinderGeometry(0.03, 0.04, 0.5, 5)
       const stick = new THREE.Mesh(stickGeo, stickMat)
       stick.position.set(x, y, z)
-      scene.add(stick)
+      addToRoom(stick)
 
       const flameGeo = new THREE.SphereGeometry(0.04, 6, 6)
       const flameMat = new THREE.MeshBasicMaterial({
@@ -522,11 +522,11 @@ export function useAthanorRoom(scene) {
       })
       const flame = new THREE.Mesh(flameGeo, flameMat)
       flame.position.set(x, y + 0.28, z)
-      scene.add(flame)
+      addToRoom(flame)
 
       const light = new THREE.PointLight(0xff9922, 0.5, 6)
       light.position.set(x, y + 0.3, z)
-      scene.add(light)
+      addToRoom(light)
 
       candles.push({ flame, light, index: i })
       allDisposables.push(stickGeo, flameGeo, flameMat)
@@ -557,7 +557,7 @@ export function useAthanorRoom(scene) {
     })
 
     particles = new THREE.Points(geo, mat)
-    scene.add(particles)
+    addToRoom(particles)
     allDisposables.push(geo, mat)
   }
 
@@ -607,7 +607,7 @@ export function useAthanorRoom(scene) {
     // Face center
     avatar.lookAt(0, avatar.position.y, 0)
     avatar.userData = { agentId: id, _currentEmissive: 0.2 }
-    scene.add(avatar)
+    addToRoom(avatar)
     agentMeshes[id] = avatar
 
     // Glow ring at feet (sized for larger avatars)
@@ -620,13 +620,13 @@ export function useAthanorRoom(scene) {
     const ring = new THREE.Mesh(ringGeo, ringMat)
     ring.rotation.x = Math.PI / 2
     ring.position.set(position.x, 0.02, position.z)
-    scene.add(ring)
+    addToRoom(ring)
     allDisposables.push(ringGeo, ringMat)
 
     // Station light — agent's color aura
     const stationLight = new THREE.PointLight(lightColor, 1.0, 8)
     stationLight.position.set(position.x, 2.5, position.z)
-    scene.add(stationLight)
+    addToRoom(stationLight)
 
     stationEffects[id] = { ring, light: stationLight }
 
@@ -661,14 +661,14 @@ export function useAthanorRoom(scene) {
     })
     const anvil = new THREE.Mesh(anvilGeo, anvilMat)
     anvil.position.set(pos.x + 1.2, 0.25, pos.z + 0.5)
-    scene.add(anvil)
+    addToRoom(anvil)
 
     // Small tool rack
     const rackGeo = new THREE.BoxGeometry(0.1, 1.5, 0.8)
     const rackMat = STONE_DARK()
     const rack = new THREE.Mesh(rackGeo, rackMat)
     rack.position.set(pos.x - 1.2, 0.75, pos.z)
-    scene.add(rack)
+    addToRoom(rack)
 
     allDisposables.push(anvilGeo, anvilMat, rackGeo, rackMat)
   }
@@ -694,7 +694,7 @@ export function useAthanorRoom(scene) {
         pos.z + (Math.random() - 0.5) * 0.5,
       )
       crystal.rotation.set(Math.random(), Math.random(), Math.random())
-      scene.add(crystal)
+      addToRoom(crystal)
       allDisposables.push(geo, mat)
     }
 
@@ -703,7 +703,7 @@ export function useAthanorRoom(scene) {
     const tableMat = STONE_DARK()
     const table = new THREE.Mesh(tableGeo, tableMat)
     table.position.set(pos.x + 1, 0.3, pos.z)
-    scene.add(table)
+    addToRoom(table)
     allDisposables.push(tableGeo, tableMat)
   }
 
@@ -717,7 +717,7 @@ export function useAthanorRoom(scene) {
     })
     const rod = new THREE.Mesh(rodGeo, rodMat)
     rod.position.set(pos.x - 1, 1.5, pos.z)
-    scene.add(rod)
+    addToRoom(rod)
 
     // Arc ring at top
     const arcGeo = new THREE.TorusGeometry(0.3, 0.03, 6, 16)
@@ -728,20 +728,20 @@ export function useAthanorRoom(scene) {
     })
     const arc = new THREE.Mesh(arcGeo, arcMat)
     arc.position.set(pos.x - 1, 3.1, pos.z)
-    scene.add(arc)
+    addToRoom(arc)
 
     // Training dummy (simple figure)
     const bodyGeo = new THREE.CylinderGeometry(0.15, 0.15, 1, 6)
     const bodyMat = STONE_DARK()
     const body = new THREE.Mesh(bodyGeo, bodyMat)
     body.position.set(pos.x + 1.2, 0.8, pos.z + 0.5)
-    scene.add(body)
+    addToRoom(body)
 
     // Dummy head
     const headGeo = new THREE.SphereGeometry(0.12, 6, 6)
     const head = new THREE.Mesh(headGeo, bodyMat)
     head.position.set(pos.x + 1.2, 1.4, pos.z + 0.5)
-    scene.add(head)
+    addToRoom(head)
 
     allDisposables.push(rodGeo, rodMat, arcGeo, arcMat, bodyGeo, bodyMat, headGeo)
   }
@@ -772,7 +772,7 @@ export function useAthanorRoom(scene) {
       allDisposables.push(geo, mat)
     })
 
-    scene.add(astrolabe)
+    addToRoom(astrolabe)
     stationEffects.KETHER.astrolabe = astrolabe
 
     // Book stack
@@ -785,7 +785,7 @@ export function useAthanorRoom(scene) {
       const book = new THREE.Mesh(bookGeo, bookMat)
       book.position.set(pos.x + 1, 0.04 + i * 0.09, pos.z - 0.3)
       book.rotation.y = (i * 0.2) - 0.1
-      scene.add(book)
+      addToRoom(book)
       allDisposables.push(bookGeo, bookMat)
     }
 
@@ -797,7 +797,7 @@ export function useAthanorRoom(scene) {
     })
     const desk = new THREE.Mesh(deskGeo, deskMat)
     desk.position.set(pos.x + 1, 0.3, pos.z - 0.3)
-    scene.add(desk)
+    addToRoom(desk)
     allDisposables.push(deskGeo, deskMat)
   }
 

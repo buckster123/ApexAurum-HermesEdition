@@ -4,9 +4,10 @@
  *
  * Full-screen first-person alchemical laboratory.
  * Walk around with WASD + mouse, approach agents, chat via side panel.
+ * Two interactive mirrors: SensorHead (IoT data) and Dream Portal (Backrooms).
  * Desktop-only. The Athanor made manifest.
  *
- * "Enter the Athanor. Walk among the agents. Speak, and be heard."
+ * "Enter the Athanor. Walk among the agents. Gaze into the mirrors. Go deeper."
  */
 
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
@@ -14,8 +15,12 @@ import * as THREE from 'three'
 import { marked } from 'marked'
 import { useChatStore } from '@/stores/chat'
 import { useAuthStore } from '@/stores/auth'
+import { useDevicesStore } from '@/stores/devices'
+import { useDreamStore } from '@/stores/dream'
 import { useFirstPerson } from '@/composables/useFirstPerson'
 import { useAthanorRoom } from '@/composables/useAthanorRoom'
+import { useBackrooms } from '@/composables/useBackrooms'
+import api from '@/services/api'
 import AlchemicalLoader from '@/components/ui/AlchemicalLoader.vue'
 
 // ═══════════════════════════════════════════════════════════════
@@ -24,6 +29,8 @@ import AlchemicalLoader from '@/components/ui/AlchemicalLoader.vue'
 
 const chat = useChatStore()
 const auth = useAuthStore()
+const devicesStore = useDevicesStore()
+const dreamStore = useDreamStore()
 
 const canvasContainer = ref(null)
 const messagesContainer = ref(null)
@@ -36,11 +43,26 @@ const showInstructions = ref(true)
 // First-person state (will be populated after init)
 const isLocked = ref(false)
 
-// Interaction state
+// Interaction state — Agents
 const nearbyAgent = ref(null)
 const isChatOpen = ref(false)
 const chattingWith = ref(null)
 const inputMessage = ref('')
+
+// Interaction state — Mirrors
+const nearbyMirror = ref(null) // 'SENSOR_HEAD' | 'BACKROOMS' | null
+
+// SensorHead panel
+const isSensorOpen = ref(false)
+const sensorData = ref(null)
+const sensorLoading = ref(false)
+const sensorDevice = ref(null)
+
+// Backrooms state
+const isInBackrooms = ref(false)
+const backroomsDepth = ref(0)
+const backroomsFading = ref(false)
+const nearExitMirror = ref(false)
 
 // Three.js refs (not reactive — no Vue Proxy)
 let renderer = null
@@ -52,8 +74,10 @@ let resizeObserver = null
 
 let firstPerson = null
 let athanorRoom = null
+let backrooms = null
 let headlamp = null
 let headlampTarget = null
+let sensorRefreshTimer = null
 
 // Agent metadata
 const AGENT_INFO = {
@@ -61,6 +85,12 @@ const AGENT_INFO = {
   ELYSIAN: { name: 'Elysian', color: '#E8B4FF', title: 'The Ethereal Healer' },
   VAJRA: { name: 'Vajra', color: '#4FC3F7', title: 'The Lightning Warrior' },
   KETHER: { name: 'Kether', color: '#AB47BC', title: 'The Mystic Sage' },
+}
+
+// Mirror display info
+const MIRROR_INFO = {
+  SENSOR_HEAD: { label: 'Scrying Glass', action: 'gaze', color: '#4FC3F7' },
+  BACKROOMS: { label: 'Dream Portal', action: 'enter', color: '#8B5CF6' },
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -77,6 +107,18 @@ const agentName = computed(() => {
 
 const chattingAgentInfo = computed(() => {
   return chattingWith.value ? AGENT_INFO[chattingWith.value] : null
+})
+
+const mirrorColor = computed(() => {
+  return nearbyMirror.value ? MIRROR_INFO[nearbyMirror.value]?.color : '#fff'
+})
+
+const mirrorLabel = computed(() => {
+  return nearbyMirror.value ? MIRROR_INFO[nearbyMirror.value]?.label : ''
+})
+
+const mirrorAction = computed(() => {
+  return nearbyMirror.value ? MIRROR_INFO[nearbyMirror.value]?.action : ''
 })
 
 // ═══════════════════════════════════════════════════════════════
@@ -163,34 +205,50 @@ function animate() {
   // Movement
   firstPerson.update(delta)
 
-  // Room animations
-  athanorRoom.updateAnimations(delta, elapsed)
+  if (isInBackrooms.value) {
+    // ── Backrooms mode ──
+    if (backrooms) {
+      backrooms.update(delta, elapsed, camera.position)
+      backroomsDepth.value = backrooms.getCurrentDepth()
 
-  // Proximity check
-  if (isLocked.value) {
-    nearbyAgent.value = athanorRoom.getAgentAtPosition(camera.position)
+      // Check exit mirror proximity
+      nearExitMirror.value = !!backrooms.getExitMirrorAtPosition(camera.position)
+    }
+  } else {
+    // ── Athanor mode ──
+    athanorRoom.updateAnimations(delta, elapsed)
+
+    // Proximity check — agents take priority over mirrors
+    if (isLocked.value && !isChatOpen.value && !isSensorOpen.value) {
+      const agent = athanorRoom.getAgentAtPosition(camera.position)
+      nearbyAgent.value = agent
+      nearbyMirror.value = agent ? null : athanorRoom.getMirrorAtPosition(camera.position)
+    } else if (!isLocked.value) {
+      nearbyAgent.value = null
+      nearbyMirror.value = null
+    }
+
+    // Agent glow updates
+    Object.keys(AGENT_INFO).forEach(id => {
+      const isSpeaking = chat.isStreaming && chattingWith.value === id
+      const isNearby = nearbyAgent.value === id
+      const isChatTarget = isChatOpen.value && chattingWith.value === id
+
+      let target = 0.2 // idle
+      if (isSpeaking) target = 1.5
+      else if (isChatTarget) target = 0.8
+      else if (isNearby) target = 0.6
+
+      const speed = isSpeaking ? 0.08 : 0.04
+      athanorRoom.updateAgentGlow(id, target, speed)
+    })
   }
-
-  // Agent glow updates
-  Object.keys(AGENT_INFO).forEach(id => {
-    const isSpeaking = chat.isStreaming && chattingWith.value === id
-    const isNearby = nearbyAgent.value === id
-    const isChatTarget = isChatOpen.value && chattingWith.value === id
-
-    let target = 0.2 // idle
-    if (isSpeaking) target = 1.5
-    else if (isChatTarget) target = 0.8
-    else if (isNearby) target = 0.6
-
-    const speed = isSpeaking ? 0.08 : 0.04
-    athanorRoom.updateAgentGlow(id, target, speed)
-  })
 
   renderer.render(scene, camera)
 }
 
 // ═══════════════════════════════════════════════════════════════
-// INTERACTION
+// INTERACTION — Agents
 // ═══════════════════════════════════════════════════════════════
 
 function enterAthanor() {
@@ -199,7 +257,7 @@ function enterAthanor() {
 }
 
 function handleCanvasClick() {
-  if (!isChatOpen.value && !showInstructions.value && !isLocked.value) {
+  if (!isChatOpen.value && !isSensorOpen.value && !showInstructions.value && !isLocked.value) {
     firstPerson.lock()
   }
 }
@@ -227,7 +285,7 @@ function closeChat() {
 
   // Small delay before re-locking to avoid instant re-open
   setTimeout(() => {
-    if (!showInstructions.value) {
+    if (!showInstructions.value && !isSensorOpen.value) {
       firstPerson.lock()
     }
   }, 100)
@@ -251,10 +309,161 @@ function renderMarkdown(content) {
   return marked(content, { breaks: true })
 }
 
-// ─── Keyboard shortcuts ───
+// ═══════════════════════════════════════════════════════════════
+// INTERACTION — SensorHead Mirror
+// ═══════════════════════════════════════════════════════════════
+
+async function openSensorPanel() {
+  isSensorOpen.value = true
+  firstPerson.unlock()
+  sensorLoading.value = true
+
+  // Check for sensor_head device
+  try {
+    await devicesStore.fetchDevices()
+    const device = devicesStore.devices.find(
+      d => d.device_type === 'sensor_head' && d.status === 'active'
+    )
+
+    if (device) {
+      sensorDevice.value = device
+      await fetchSensorData(device.id)
+
+      // Auto-refresh every 30s
+      sensorRefreshTimer = setInterval(() => fetchSensorData(device.id), 30000)
+    } else {
+      sensorDevice.value = null
+      sensorData.value = null
+    }
+  } catch (err) {
+    console.error('[Athanor] Sensor fetch failed:', err)
+    sensorDevice.value = null
+    sensorData.value = null
+  } finally {
+    sensorLoading.value = false
+  }
+}
+
+async function fetchSensorData(deviceId) {
+  try {
+    const { data } = await api.get(`/api/v1/devices/${deviceId}/telemetry`)
+    sensorData.value = data
+  } catch {
+    // Endpoint may not exist yet — show dormant
+    sensorData.value = null
+  }
+}
+
+function closeSensorPanel() {
+  isSensorOpen.value = false
+  sensorData.value = null
+  sensorDevice.value = null
+  if (sensorRefreshTimer) {
+    clearInterval(sensorRefreshTimer)
+    sensorRefreshTimer = null
+  }
+
+  setTimeout(() => {
+    if (!showInstructions.value && !isChatOpen.value) {
+      firstPerson.lock()
+    }
+  }, 100)
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INTERACTION — Dream Portal / Backrooms
+// ═══════════════════════════════════════════════════════════════
+
+async function enterBackrooms() {
+  backroomsFading.value = true
+
+  // Fade to black
+  await new Promise(r => setTimeout(r, 600))
+
+  // Hide Athanor geometry (not dispose — we'll restore it)
+  athanorRoom.hideAll()
+
+  // Fetch dream log for wall text
+  let fragments = []
+  try {
+    await dreamStore.fetchLog(50)
+    fragments = dreamStore.log
+      .filter(entry => entry.notes)
+      .map(entry => entry.notes)
+      .concat(
+        dreamStore.log
+          .filter(entry => entry.phase)
+          .map(entry => entry.phase.replace(/_/g, ' '))
+      )
+  } catch (err) {
+    console.error('[Athanor] Dream log fetch failed:', err)
+  }
+
+  // Build the backrooms
+  backrooms = useBackrooms(scene)
+  backrooms.build(fragments)
+
+  // Reset camera to corridor start
+  camera.position.set(0, 1.6, 0)
+
+  // Disable room bounds, use corridor collision instead
+  firstPerson.setBounds(null)
+  firstPerson.setClampFunction((pos) => backrooms.clampPosition(pos))
+
+  // Dim headlamp for backrooms atmosphere
+  if (headlamp) headlamp.intensity = 1.0
+
+  isInBackrooms.value = true
+  backroomsDepth.value = 0
+  backroomsFading.value = false
+
+  // Re-lock pointer
+  setTimeout(() => firstPerson.lock(), 100)
+}
+
+function exitBackrooms() {
+  backroomsFading.value = true
+
+  setTimeout(() => {
+    // Dispose backrooms geometry
+    if (backrooms) {
+      backrooms.dispose()
+      backrooms = null
+    }
+
+    // Restore Athanor
+    athanorRoom.showAll()
+
+    // Reset camera near the portal
+    camera.position.set(0, 1.6, 6)
+
+    // Restore room bounds
+    firstPerson.setBounds({ x: 9, z: 7 })
+    firstPerson.setClampFunction(null)
+
+    // Restore Athanor fog + background
+    scene.fog = new THREE.FogExp2(0x0a0612, 0.018)
+    scene.background = new THREE.Color(0x0a0612)
+
+    // Restore headlamp intensity
+    if (headlamp) headlamp.intensity = 2.0
+
+    isInBackrooms.value = false
+    backroomsDepth.value = 0
+    nearExitMirror.value = false
+    backroomsFading.value = false
+
+    // Re-lock pointer
+    setTimeout(() => firstPerson.lock(), 100)
+  }, 600)
+}
+
+// ═══════════════════════════════════════════════════════════════
+// KEYBOARD
+// ═══════════════════════════════════════════════════════════════
 
 function onKeyDown(e) {
-  // Don't handle when typing
+  // Don't handle when typing in inputs
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
     if (e.key === 'Escape') {
       closeChat()
@@ -264,15 +473,35 @@ function onKeyDown(e) {
   }
 
   if (e.key === 'e' || e.key === 'E') {
-    if (isLocked.value && nearbyAgent.value && !isChatOpen.value) {
-      openChat(nearbyAgent.value)
-      e.preventDefault()
+    if (!isLocked.value) return
+
+    if (isInBackrooms.value) {
+      // In backrooms: E on exit mirror → leave
+      if (nearExitMirror.value) {
+        exitBackrooms()
+        e.preventDefault()
+      }
+    } else {
+      // In Athanor: agents > mirrors
+      if (nearbyAgent.value && !isChatOpen.value && !isSensorOpen.value) {
+        openChat(nearbyAgent.value)
+        e.preventDefault()
+      } else if (nearbyMirror.value === 'SENSOR_HEAD' && !isChatOpen.value && !isSensorOpen.value) {
+        openSensorPanel()
+        e.preventDefault()
+      } else if (nearbyMirror.value === 'BACKROOMS' && !isChatOpen.value && !isSensorOpen.value) {
+        enterBackrooms()
+        e.preventDefault()
+      }
     }
   }
 
   if (e.key === 'Escape') {
     if (isChatOpen.value) {
       closeChat()
+      e.preventDefault()
+    } else if (isSensorOpen.value) {
+      closeSensorPanel()
       e.preventDefault()
     }
   }
@@ -321,9 +550,11 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown)
 
+  if (sensorRefreshTimer) clearInterval(sensorRefreshTimer)
   if (animId) cancelAnimationFrame(animId)
   if (resizeObserver) resizeObserver.disconnect()
 
+  if (backrooms) backrooms.dispose()
   if (firstPerson) firstPerson.dispose()
   if (athanorRoom) {
     athanorRoom.dispose()
@@ -363,16 +594,19 @@ onUnmounted(() => {
       @click="handleCanvasClick"
     />
 
-    <!-- Crosshair -->
+    <!-- Crosshair (changes color in backrooms) -->
     <div
-      v-if="isLocked && !nearbyAgent"
+      v-if="isLocked && !nearbyAgent && !nearbyMirror && !nearExitMirror"
       class="crosshair"
+      :class="{ 'crosshair--backrooms': isInBackrooms }"
     />
+
+    <!-- ═══ ATHANOR MODE HUD ═══ -->
 
     <!-- Agent proximity prompt -->
     <div
-      v-if="isLocked && nearbyAgent && !isChatOpen"
-      class="agent-prompt"
+      v-if="isLocked && nearbyAgent && !isChatOpen && !isSensorOpen && !isInBackrooms"
+      class="interaction-prompt"
     >
       <div
         class="text-lg font-bold tracking-wide"
@@ -381,11 +615,58 @@ onUnmounted(() => {
         {{ agentName }}
       </div>
       <div class="text-gray-400 text-sm mt-1">
-        Press <kbd class="px-1.5 py-0.5 bg-white/10 rounded text-xs text-gold border border-gold/20">E</kbd> to talk
+        Press <kbd class="kbd">E</kbd> to talk
       </div>
     </div>
 
-    <!-- Chat Side Panel -->
+    <!-- Mirror proximity prompt -->
+    <div
+      v-if="isLocked && nearbyMirror && !nearbyAgent && !isChatOpen && !isSensorOpen && !isInBackrooms"
+      class="interaction-prompt"
+    >
+      <div
+        class="text-lg font-bold tracking-wide"
+        :style="{ color: mirrorColor, textShadow: `0 0 12px ${mirrorColor}` }"
+      >
+        {{ mirrorLabel }}
+      </div>
+      <div class="text-gray-400 text-sm mt-1">
+        Press <kbd class="kbd">E</kbd> to {{ mirrorAction }}
+      </div>
+    </div>
+
+    <!-- ═══ BACKROOMS MODE HUD ═══ -->
+
+    <!-- Depth counter -->
+    <div v-if="isInBackrooms && isLocked" class="backrooms-hud">
+      <div class="backrooms-depth">DEPTH {{ backroomsDepth }}</div>
+      <div v-if="backroomsDepth >= 5 && !nearExitMirror" class="backrooms-hint">
+        "find the mirror"
+      </div>
+    </div>
+
+    <!-- Exit mirror prompt -->
+    <div
+      v-if="isInBackrooms && isLocked && nearExitMirror"
+      class="interaction-prompt"
+    >
+      <div
+        class="text-lg font-bold tracking-wide"
+        style="color: #8B5CF6; text-shadow: 0 0 16px #8B5CF6"
+      >
+        Exit Portal
+      </div>
+      <div class="text-gray-400 text-sm mt-1">
+        Press <kbd class="kbd kbd--violet">E</kbd> to return to the Athanor
+      </div>
+    </div>
+
+    <!-- ═══ FADE OVERLAY (Backrooms transition) ═══ -->
+    <Transition name="fade-fast">
+      <div v-if="backroomsFading" class="fade-overlay" />
+    </Transition>
+
+    <!-- ═══ CHAT SIDE PANEL (right) ═══ -->
     <Transition name="slide-right">
       <div v-if="isChatOpen" class="chat-panel">
         <!-- Header -->
@@ -493,7 +774,82 @@ onUnmounted(() => {
       </div>
     </Transition>
 
-    <!-- Instructions overlay -->
+    <!-- ═══ SENSOR PANEL (left) ═══ -->
+    <Transition name="slide-left">
+      <div v-if="isSensorOpen" class="sensor-panel">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-4 py-3 border-b border-cyan-500/10">
+          <div class="flex items-center gap-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-400" style="box-shadow: 0 0 8px #4fc3f7" />
+            <div>
+              <div class="text-sm font-semibold text-white">Scrying Glass</div>
+              <div class="text-[10px] text-gray-500">SensorHead Telemetry</div>
+            </div>
+          </div>
+          <button
+            @click="closeSensorPanel"
+            class="text-gray-500 hover:text-white transition-colors text-xs px-2 py-1 rounded bg-white/5 hover:bg-white/10"
+          >
+            ESC
+          </button>
+        </div>
+
+        <!-- Content -->
+        <div class="flex-1 overflow-y-auto px-4 py-4">
+          <!-- Loading -->
+          <div v-if="sensorLoading" class="flex flex-col items-center justify-center h-full">
+            <AlchemicalLoader size="md" variant="ouroboros" />
+            <p class="text-gray-500 text-xs mt-3">Scrying...</p>
+          </div>
+
+          <!-- No device -->
+          <div v-else-if="!sensorDevice" class="flex flex-col items-center justify-center h-full text-center">
+            <div class="text-4xl mb-4 opacity-30">&#x1f56e;</div>
+            <p class="text-gray-400 text-sm font-medium">Mirror Dormant</p>
+            <p class="text-gray-600 text-xs mt-2 max-w-[200px]">
+              Connect a SensorHead device to awaken the scrying glass.
+            </p>
+          </div>
+
+          <!-- Sensor data -->
+          <div v-else class="space-y-3">
+            <div class="text-xs text-gray-500 mb-3">
+              {{ sensorDevice.device_name }}
+              <span v-if="sensorDevice.last_seen_at" class="text-gray-600 ml-2">
+                Last seen: {{ new Date(sensorDevice.last_seen_at).toLocaleTimeString() }}
+              </span>
+            </div>
+
+            <!-- Sensor gauges -->
+            <template v-if="sensorData">
+              <div
+                v-for="(value, key) in sensorData"
+                :key="key"
+                class="sensor-gauge"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-400 uppercase tracking-wider">{{ key }}</span>
+                  <span class="text-sm font-mono text-cyan-300">{{ typeof value === 'number' ? value.toFixed(1) : value }}</span>
+                </div>
+                <div class="mt-1 h-1 bg-white/5 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-full transition-all duration-500"
+                    :style="{ width: typeof value === 'number' ? Math.min(100, Math.max(5, value)) + '%' : '50%' }"
+                  />
+                </div>
+              </div>
+            </template>
+
+            <!-- No telemetry data yet -->
+            <div v-else class="text-center py-8">
+              <p class="text-gray-500 text-xs">Device connected but no telemetry received yet.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- ═══ INSTRUCTIONS OVERLAY ═══ -->
     <Transition name="fade">
       <div v-if="showInstructions && isReady" class="instructions-overlay">
         <div class="text-center max-w-md mx-auto">
@@ -515,7 +871,7 @@ onUnmounted(() => {
             </div>
             <div class="bg-white/5 rounded-lg p-3 border border-white/5">
               <div class="text-white font-mono mb-1">E</div>
-              <div>Talk to agent</div>
+              <div>Talk / Interact</div>
             </div>
             <div class="bg-white/5 rounded-lg p-3 border border-white/5">
               <div class="text-white font-mono mb-1">ESC</div>
@@ -551,7 +907,7 @@ onUnmounted(() => {
       to="/chat"
       class="fixed top-4 left-4 z-[60] px-3 py-1.5 bg-black/60 backdrop-blur border border-white/10 rounded-lg text-xs text-gray-400 hover:text-white hover:border-white/20 transition-colors"
     >
-      Exit Athanor
+      {{ isInBackrooms ? 'Find the mirror...' : 'Exit Athanor' }}
     </router-link>
   </div>
 </template>
@@ -570,8 +926,12 @@ onUnmounted(() => {
   pointer-events: none;
   z-index: 55;
 }
+.crosshair--backrooms {
+  background: rgba(204, 170, 68, 0.5);
+  box-shadow: 0 0 4px rgba(204, 170, 68, 0.3);
+}
 
-.agent-prompt {
+.interaction-prompt {
   position: absolute;
   bottom: 28%;
   left: 50%;
@@ -581,6 +941,20 @@ onUnmounted(() => {
   z-index: 55;
 }
 
+.kbd {
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #d4af37;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+}
+.kbd--violet {
+  color: #8b5cf6;
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+/* ── Chat panel (slides from right) ── */
 .chat-panel {
   position: absolute;
   top: 0;
@@ -597,6 +971,30 @@ onUnmounted(() => {
   z-index: 56;
 }
 
+/* ── Sensor panel (slides from left) ── */
+.sensor-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 35%;
+  max-width: 400px;
+  min-width: 280px;
+  background: rgba(6, 12, 18, 0.94);
+  backdrop-filter: blur(16px);
+  border-right: 1px solid rgba(79, 195, 247, 0.1);
+  display: flex;
+  flex-direction: column;
+  z-index: 56;
+}
+
+.sensor-gauge {
+  padding: 8px 10px;
+  background: rgba(79, 195, 247, 0.03);
+  border: 1px solid rgba(79, 195, 247, 0.06);
+  border-radius: 6px;
+}
+
 .instructions-overlay {
   position: absolute;
   inset: 0;
@@ -608,7 +1006,43 @@ onUnmounted(() => {
   z-index: 58;
 }
 
-/* Transitions */
+/* ── Backrooms HUD ── */
+.backrooms-hud {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  text-align: right;
+  pointer-events: none;
+  z-index: 55;
+}
+.backrooms-depth {
+  font-family: monospace;
+  font-size: 14px;
+  color: rgba(204, 170, 68, 0.6);
+  letter-spacing: 0.15em;
+  text-shadow: 0 0 8px rgba(204, 170, 68, 0.2);
+}
+.backrooms-hint {
+  font-family: monospace;
+  font-size: 11px;
+  color: rgba(139, 92, 246, 0.5);
+  margin-top: 4px;
+  animation: hint-pulse 3s ease-in-out infinite;
+}
+@keyframes hint-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; }
+}
+
+/* ── Fade overlay for backrooms transition ── */
+.fade-overlay {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  z-index: 57;
+}
+
+/* ── Transitions ── */
 .slide-right-enter-active,
 .slide-right-leave-active {
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -616,6 +1050,15 @@ onUnmounted(() => {
 .slide-right-enter-from,
 .slide-right-leave-to {
   transform: translateX(100%);
+}
+
+.slide-left-enter-active,
+.slide-left-leave-active {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.slide-left-enter-from,
+.slide-left-leave-to {
+  transform: translateX(-100%);
 }
 
 .fade-enter-active,
@@ -627,7 +1070,18 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-/* Prose overrides for dark theme */
+.fade-fast-enter-active {
+  transition: opacity 0.4s ease;
+}
+.fade-fast-leave-active {
+  transition: opacity 0.3s ease;
+}
+.fade-fast-enter-from,
+.fade-fast-leave-to {
+  opacity: 0;
+}
+
+/* ── Prose overrides ── */
 .chat-panel :deep(pre) {
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.05);
