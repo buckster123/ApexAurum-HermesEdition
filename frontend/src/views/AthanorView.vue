@@ -106,7 +106,7 @@ function initScene() {
     renderer.setSize(w, h)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 0.8
+    renderer.toneMappingExposure = 1.4
     el.appendChild(renderer.domElement)
 
     // First-person controls

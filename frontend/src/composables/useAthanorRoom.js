@@ -48,15 +48,15 @@ const STATIONS = {
 
 // Shared materials (created once)
 const STONE_DARK = () => new THREE.MeshStandardMaterial({
-  color: 0x1a1515,
+  color: 0x2a2222,
   metalness: 0.1,
-  roughness: 0.9,
+  roughness: 0.85,
 })
 
 const STONE_WALL = () => new THREE.MeshStandardMaterial({
-  color: 0x1e1818,
+  color: 0x302828,
   metalness: 0.05,
-  roughness: 0.95,
+  roughness: 0.85,
 })
 
 const GOLD_METAL = () => new THREE.MeshStandardMaterial({
@@ -290,7 +290,7 @@ export function useAthanorRoom(scene) {
       scene.add(lantern)
 
       // Lantern light
-      const light = new THREE.PointLight(0xff9922, 0.4, 8)
+      const light = new THREE.PointLight(0xff9922, 1.0, 12)
       light.position.set(x, ROOM_H - 2, z)
       scene.add(light)
 
@@ -373,7 +373,7 @@ export function useAthanorRoom(scene) {
     const glowMat = new THREE.MeshBasicMaterial({
       color: 0xffd700,
       transparent: true,
-      opacity: 0.5,
+      opacity: 0.7,
       side: THREE.DoubleSide,
     })
     cauldronGlow = new THREE.Mesh(glowGeo, glowMat)
@@ -381,9 +381,9 @@ export function useAthanorRoom(scene) {
     cauldronGlow.position.set(0, 0.55, 0)
     scene.add(cauldronGlow)
 
-    // Cauldron light
-    const cauldronLight = new THREE.PointLight(0xffd700, 1.5, 6)
-    cauldronLight.position.set(0, 1.2, 0)
+    // Cauldron light — the forge's heart
+    const cauldronLight = new THREE.PointLight(0xffd700, 2.5, 12)
+    cauldronLight.position.set(0, 1.5, 0)
     scene.add(cauldronLight)
 
     // Sacred geometry floating above
@@ -491,7 +491,7 @@ export function useAthanorRoom(scene) {
       flame.position.set(x, y + 0.28, z)
       scene.add(flame)
 
-      const light = new THREE.PointLight(0xff9922, 0.15, 4)
+      const light = new THREE.PointLight(0xff9922, 0.5, 6)
       light.position.set(x, y + 0.3, z)
       scene.add(light)
 
@@ -575,7 +575,7 @@ export function useAthanorRoom(scene) {
     const ringMat = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: 0.2,
+      opacity: 0.35,
     })
     const ring = new THREE.Mesh(ringGeo, ringMat)
     ring.rotation.x = Math.PI / 2
@@ -583,8 +583,8 @@ export function useAthanorRoom(scene) {
     scene.add(ring)
     allDisposables.push(ringGeo, ringMat)
 
-    // Station light
-    const stationLight = new THREE.PointLight(lightColor, 0.5, 5)
+    // Station light — agent's color aura
+    const stationLight = new THREE.PointLight(lightColor, 1.0, 8)
     stationLight.position.set(position.x, 2.5, position.z)
     scene.add(stationLight)
 
@@ -764,12 +764,21 @@ export function useAthanorRoom(scene) {
   // ─── Lighting ───
 
   function buildLighting() {
-    // Ambient — warm and dim
-    const ambient = new THREE.AmbientLight(0x1a1020, 0.4)
+    // Hemisphere light — warm sky, cool ground fill
+    const hemi = new THREE.HemisphereLight(0xffeedd, 0x1a1020, 0.5)
+    scene.add(hemi)
+
+    // Ambient — warm base fill
+    const ambient = new THREE.AmbientLight(0x332211, 0.8)
     scene.add(ambient)
 
-    // Fog
-    scene.fog = new THREE.FogExp2(0x0a0612, 0.035)
+    // Directional — subtle overhead moonlight through skylight
+    const dir = new THREE.DirectionalLight(0xccbbaa, 0.3)
+    dir.position.set(2, ROOM_H, -1)
+    scene.add(dir)
+
+    // Fog — gentle, not suffocating
+    scene.fog = new THREE.FogExp2(0x0a0612, 0.018)
     scene.background = new THREE.Color(0x0a0612)
   }
 
@@ -797,15 +806,17 @@ export function useAthanorRoom(scene) {
   function updateAnimations(dt, elapsed) {
     // Candle/lantern flicker
     candles.forEach((c, i) => {
-      const flicker = 0.1 + Math.sin(elapsed * 8 + i * 3) * 0.05 + Math.sin(elapsed * 13 + i * 7) * 0.03
-      c.light.intensity = (c.light.intensity > 0.3 ? 0.3 : 0.12) + flicker
-      c.flame.material.opacity = 0.7 + Math.sin(elapsed * 10 + i * 5) * 0.2
-      c.flame.scale.setScalar(0.8 + Math.sin(elapsed * 6 + i * 4) * 0.3)
+      const flicker = Math.sin(elapsed * 8 + i * 3) * 0.15 + Math.sin(elapsed * 13 + i * 7) * 0.1
+      // Lanterns (first 4) are brighter than wall candles
+      const base = i < 4 ? 0.8 : 0.4
+      c.light.intensity = base + flicker
+      c.flame.material.opacity = 0.8 + Math.sin(elapsed * 10 + i * 5) * 0.15
+      c.flame.scale.setScalar(0.9 + Math.sin(elapsed * 6 + i * 4) * 0.2)
     })
 
     // Cauldron glow pulse
     if (cauldronGlow) {
-      cauldronGlow.material.opacity = 0.4 + Math.sin(elapsed * 2) * 0.15
+      cauldronGlow.material.opacity = 0.6 + Math.sin(elapsed * 2) * 0.15
     }
 
     // Sacred geometry rotation
