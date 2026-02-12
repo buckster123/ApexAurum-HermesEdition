@@ -52,6 +52,8 @@ let resizeObserver = null
 
 let firstPerson = null
 let athanorRoom = null
+let headlamp = null
+let headlampTarget = null
 
 // Agent metadata
 const AGENT_INFO = {
@@ -119,6 +121,16 @@ function initScene() {
     // Build the room
     athanorRoom = useAthanorRoom(scene)
     athanorRoom.buildRoom()
+
+    // Headlamp — SpotLight attached to camera, lights wherever you look
+    headlamp = new THREE.SpotLight(0xffeedd, 2.0, 20, Math.PI / 5, 0.4, 1.5)
+    headlampTarget = new THREE.Object3D()
+    headlampTarget.position.set(0, 0, -1) // forward from camera
+    camera.add(headlamp)
+    camera.add(headlampTarget)
+    headlamp.target = headlampTarget
+    headlamp.position.set(0, 0, 0)
+    scene.add(camera) // camera must be in scene for children to render
 
     // Preload agent GLBs then rebuild
     athanorRoom.agentModels.preloadAll().then(() => {

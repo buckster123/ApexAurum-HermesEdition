@@ -542,36 +542,43 @@ export function useAthanorRoom(scene) {
   function buildStation(id, station) {
     const { position, color, lightColor } = station
 
-    // Agent avatar (GLB or fallback sphere)
+    // Agent avatar (GLB or fallback sphere) — 3.6 units tall (~human scale)
+    const AVATAR_SIZE = 3.6
     let avatar
     if (agentModels.isLoaded(id)) {
-      avatar = agentModels.getAgentClone(id, 1.8)
+      avatar = agentModels.getAgentClone(id, AVATAR_SIZE)
     }
     if (!avatar) {
-      const geo = new THREE.SphereGeometry(0.4, 12, 12)
+      const geo = new THREE.SphereGeometry(0.8, 12, 12)
       const mat = new THREE.MeshStandardMaterial({
         color,
         emissive: color,
-        emissiveIntensity: 0.2,
+        emissiveIntensity: 0.3,
         metalness: 0.3,
         roughness: 0.4,
         transparent: true,
         opacity: 0.85,
       })
       avatar = new THREE.Mesh(geo, mat)
+      avatar.position.y = 0.8 // sphere radius above ground
       allDisposables.push(geo, mat)
     }
 
-    avatar.position.copy(position)
-    avatar.position.y = 0
+    avatar.position.x = position.x
+    avatar.position.z = position.z
+    // Ground the avatar — getAgentClone centers on bbox, so bottom is underground
+    if (avatar.children?.length) {
+      const box = new THREE.Box3().setFromObject(avatar)
+      avatar.position.y = -box.min.y // lift so feet touch ground
+    }
     // Face center
-    avatar.lookAt(0, 0, 0)
+    avatar.lookAt(0, avatar.position.y, 0)
     avatar.userData = { agentId: id, _currentEmissive: 0.2 }
     scene.add(avatar)
     agentMeshes[id] = avatar
 
-    // Glow ring at feet
-    const ringGeo = new THREE.TorusGeometry(0.6, 0.03, 6, 24)
+    // Glow ring at feet (sized for larger avatars)
+    const ringGeo = new THREE.TorusGeometry(1.0, 0.04, 6, 24)
     const ringMat = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
