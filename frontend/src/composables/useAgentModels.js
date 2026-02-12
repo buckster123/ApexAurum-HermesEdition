@@ -94,10 +94,10 @@ function getAgentClone(agentId, targetSize = 2) {
     clone.scale.setScalar(scale)
   }
 
-  // Center the model on its origin
+  // Center horizontally, place bottom at y=0 (prevents sinking into ground)
   const centeredBox = new THREE.Box3().setFromObject(clone)
   const center = centeredBox.getCenter(new THREE.Vector3())
-  clone.position.sub(center)
+  clone.position.set(-center.x, -centeredBox.min.y, -center.z)
 
   // Wrap in a group so position/userData work cleanly
   const group = new THREE.Group()
