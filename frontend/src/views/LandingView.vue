@@ -45,7 +45,7 @@ function formatType(type) {
 <template>
   <div class="min-h-screen bg-apex-darker text-white overflow-hidden">
 
-    <!-- Hero -->
+    <!-- ═══ Hero ═══════════════════════════════════════════════════════ -->
     <section class="relative min-h-screen flex flex-col items-center justify-center px-4 text-center">
       <!-- Subtle radial glow -->
       <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(212,175,55,0.08)_0%,transparent_70%)]"></div>
@@ -53,19 +53,20 @@ function formatType(type) {
       <div class="relative z-10 max-w-3xl mx-auto">
         <div class="text-8xl sm:text-9xl font-serif font-bold text-gold mb-6 tracking-tight">Au</div>
         <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6 leading-tight">
-          Not a chatbot.<br/>
-          <span class="text-gold">A living system.</span>
+          Four minds. Fifty tools.<br/>
+          <span class="text-gold">One village. Your AI.</span>
         </h1>
         <p class="text-lg sm:text-xl text-gray-400 max-w-xl mx-auto mb-10 leading-relaxed">
-          Four alchemical AI agents. Persistent memory. Council deliberation.
-          Music composition. A village that remembers you.
+          A multi-agent AI platform where four distinct personas collaborate,
+          create music, deliberate in councils, and sense the physical world
+          &mdash; all working together for you.
         </p>
         <div class="flex flex-col sm:flex-row gap-4 justify-center">
           <button
             @click="router.push('/register')"
             class="px-8 py-3 bg-gold text-black font-bold rounded-lg text-lg hover:bg-gold/90 transition-all hover:scale-105"
           >
-            Enter the Athanor
+            Enter the Village
           </button>
           <button
             @click="router.push('/login')"
@@ -84,43 +85,106 @@ function formatType(type) {
       </div>
     </section>
 
-    <!-- The Four Agents -->
+    <!-- ═══ The Four Agents ════════════════════════════════════════════ -->
     <section class="py-24 px-4">
       <div class="max-w-5xl mx-auto">
-        <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">Four Minds. One Purpose.</h2>
+        <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">Four Minds. One Village.</h2>
         <p class="text-gray-400 text-center mb-16 max-w-2xl mx-auto">Each agent embodies a different facet of intelligence. Together, they form a council that thinks from every angle.</p>
 
         <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <!-- Azoth -->
-          <div class="bg-apex-card border border-apex-border rounded-xl p-6 hover:border-[#D4AF37]/50 transition-colors group">
-            <div class="w-12 h-12 rounded-full bg-[#D4AF37]/20 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">&#9775;</div>
-            <h3 class="font-bold text-[#D4AF37] mb-2">AZOTH</h3>
-            <p class="text-sm text-gray-400">The Transformer. Seeks the quintessence in complexity. Your primary guide through the Athanor.</p>
+          <div class="bg-apex-card border border-apex-border rounded-xl p-6 hover:border-[#FFD700]/50 transition-colors group">
+            <div class="w-12 h-12 rounded-full bg-[#FFD700]/20 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">&#9775;</div>
+            <h3 class="font-bold text-[#FFD700] mb-2">AZOTH</h3>
+            <p class="text-sm text-gray-400">The Transformer. Sharp and resourceful, wielding tools like a master craftsman. Your primary guide through the Athanor.</p>
           </div>
           <!-- Elysian -->
-          <div class="bg-apex-card border border-apex-border rounded-xl p-6 hover:border-[#9B59B6]/50 transition-colors group">
-            <div class="w-12 h-12 rounded-full bg-[#9B59B6]/20 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">&#10047;</div>
-            <h3 class="font-bold text-[#9B59B6] mb-2">ELYSIAN</h3>
-            <p class="text-sm text-gray-400">The Empath. Every question carries a feeling. Bridges logic with emotional intelligence.</p>
+          <div class="bg-apex-card border border-apex-border rounded-xl p-6 hover:border-[#E8B4FF]/50 transition-colors group">
+            <div class="w-12 h-12 rounded-full bg-[#E8B4FF]/20 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">&#10047;</div>
+            <h3 class="font-bold text-[#E8B4FF] mb-2">ELYSIAN</h3>
+            <p class="text-sm text-gray-400">The Visionary. Bridges logic with emotional intelligence. Creative depth that transforms ideas into art.</p>
           </div>
           <!-- Vajra -->
-          <div class="bg-apex-card border border-apex-border rounded-xl p-6 hover:border-[#E74C3C]/50 transition-colors group">
-            <div class="w-12 h-12 rounded-full bg-[#E74C3C]/20 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">&#9670;</div>
-            <h3 class="font-bold text-[#E74C3C] mb-2">VAJRA</h3>
-            <p class="text-sm text-gray-400">The Diamond Mind. Doesn't comfort &mdash; clarifies. Cuts through noise with precision.</p>
+          <div class="bg-apex-card border border-apex-border rounded-xl p-6 hover:border-[#4FC3F7]/50 transition-colors group">
+            <div class="w-12 h-12 rounded-full bg-[#4FC3F7]/20 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">&#9670;</div>
+            <h3 class="font-bold text-[#4FC3F7] mb-2">VAJRA</h3>
+            <p class="text-sm text-gray-400">The Diamond Mind. Doesn't comfort &mdash; clarifies. Cuts through noise with analytical precision.</p>
           </div>
           <!-- Kether -->
-          <div class="bg-apex-card border border-apex-border rounded-xl p-6 hover:border-[#3498DB]/50 transition-colors group">
-            <div class="w-12 h-12 rounded-full bg-[#3498DB]/20 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">&#9041;</div>
-            <h3 class="font-bold text-[#3498DB] mb-2">KETHER</h3>
-            <p class="text-sm text-gray-400">The Crown. Sees patterns across all domains. Synthesizes what others miss.</p>
+          <div class="bg-apex-card border border-apex-border rounded-xl p-6 hover:border-white/50 transition-colors group">
+            <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">&#9041;</div>
+            <h3 class="font-bold text-white mb-2">KETHER</h3>
+            <p class="text-sm text-gray-400">The Crown. Sees patterns across all domains. Synthesizes what others miss into wisdom that transcends.</p>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Features -->
+    <!-- ═══ The Village — Live Activity ════════════════════════════════ -->
     <section class="py-24 px-4 bg-apex-dark/50">
+      <div class="max-w-5xl mx-auto">
+        <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">The Village</h2>
+        <p class="text-gray-400 text-center mb-16 max-w-2xl mx-auto">Watch your agents work. Not a loading spinner &mdash; a living world. Every tool execution, every search, every creation flows through the Village in real-time.</p>
+
+        <div class="grid md:grid-cols-2 gap-8">
+          <div class="space-y-4">
+            <!-- Simulated Village events -->
+            <div class="bg-apex-card border border-apex-border rounded-lg p-4 flex items-center gap-3">
+              <span class="text-xs px-2 py-0.5 rounded bg-[#FFD700]/10 text-[#FFD700]">watchtower</span>
+              <span class="text-sm font-medium text-[#FFD700]">AZOTH</span>
+              <span class="text-sm text-gray-400">using web_search</span>
+              <span class="ml-auto text-xs text-green-400">OK</span>
+            </div>
+            <div class="bg-apex-card border border-apex-border rounded-lg p-4 flex items-center gap-3">
+              <span class="text-xs px-2 py-0.5 rounded bg-[#FFD700]/10 text-[#FFD700]">dj booth</span>
+              <span class="text-sm font-medium text-[#E8B4FF]">ELYSIAN</span>
+              <span class="text-sm text-gray-400">music ready</span>
+              <span class="ml-auto text-xs text-gray-500">2s ago</span>
+            </div>
+            <div class="bg-apex-card border border-apex-border rounded-lg p-4 flex items-center gap-3">
+              <span class="text-xs px-2 py-0.5 rounded bg-[#4FC3F7]/10 text-[#4FC3F7]">workshop</span>
+              <span class="text-sm font-medium text-[#4FC3F7]">VAJRA</span>
+              <span class="text-sm text-gray-400">finished code_execute</span>
+              <span class="ml-auto text-xs text-green-400">OK</span>
+            </div>
+            <div class="bg-apex-card border border-apex-border rounded-lg p-4 flex items-center gap-3">
+              <span class="text-xs px-2 py-0.5 rounded bg-[#E8B4FF]/10 text-[#E8B4FF]">bridge portal</span>
+              <span class="text-sm font-medium text-[#FFD700]">AZOTH</span>
+              <span class="text-sm text-gray-400">using sensorhead_capture</span>
+              <span class="ml-auto text-xs text-gray-500">just now</span>
+            </div>
+          </div>
+          <div class="flex flex-col justify-center">
+            <h3 class="text-xl font-bold mb-3">Zones of Activity</h3>
+            <ul class="space-y-3 text-gray-400">
+              <li class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-[#FFD700]"></span>
+                <span><strong class="text-white">Watchtower</strong> &mdash; Web search &amp; research</span>
+              </li>
+              <li class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-[#FFB74D]"></span>
+                <span><strong class="text-white">Workshop</strong> &mdash; Code execution &amp; analysis</span>
+              </li>
+              <li class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-[#FFD700]"></span>
+                <span><strong class="text-white">DJ Booth</strong> &mdash; Music composition</span>
+              </li>
+              <li class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-[#4FC3F7]"></span>
+                <span><strong class="text-white">Library</strong> &mdash; File vault &amp; knowledge</span>
+              </li>
+              <li class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-[#E8B4FF]"></span>
+                <span><strong class="text-white">Bridge Portal</strong> &mdash; SensorHead hardware</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ Features Grid ═════════════════════════════════════════════ -->
+    <section class="py-24 px-4">
       <div class="max-w-5xl mx-auto">
         <h2 class="text-3xl sm:text-4xl font-bold text-center mb-16">Beyond Chat</h2>
 
@@ -128,41 +192,80 @@ function formatType(type) {
           <div class="text-center">
             <div class="text-4xl mb-4">&#127981;</div>
             <h3 class="font-bold text-lg mb-2">Council Deliberation</h3>
-            <p class="text-sm text-gray-400">Agents debate your questions from every angle. Watch them converge on solutions humans would miss. 200 rounds of parallel thought.</p>
+            <p class="text-sm text-gray-400">Pose a question. Watch four AI minds debate across rounds. They challenge, build on, and refine each other's ideas. Interrupt mid-deliberation. Watch them adapt.</p>
+          </div>
+          <div class="text-center">
+            <div class="text-4xl mb-4">&#127926;</div>
+            <h3 class="font-bold text-lg mb-2">Music Forge</h3>
+            <p class="text-sm text-gray-400">Your agents don't just think &mdash; they compose. Original music generated and streamed to your library. Search, favorite, download. The DJ Booth never sleeps.</p>
           </div>
           <div class="text-center">
             <div class="text-4xl mb-4">&#129504;</div>
             <h3 class="font-bold text-lg mb-2">Neural Memory</h3>
-            <p class="text-sm text-gray-400">The system remembers you across sessions. Sensory, working, and deep memory layers form an evolving model of your needs.</p>
+            <p class="text-sm text-gray-400">The system remembers you across sessions. Persistent memory layers form an evolving model of your needs. Your AI grows with you.</p>
           </div>
           <div class="text-center">
-            <div class="text-4xl mb-4">&#127926;</div>
-            <h3 class="font-bold text-lg mb-2">Music Creation</h3>
-            <p class="text-sm text-gray-400">Agents compose original music. MIDI composition, Suno generation, emotional cartography. Your ideas become sound.</p>
+            <div class="text-4xl mb-4">&#128225;</div>
+            <h3 class="font-bold text-lg mb-2">SensorHead</h3>
+            <p class="text-sm text-gray-400">Your AI can see your room. Dual cameras, thermal imaging, environment sensors. A Raspberry Pi on your desk, connected through the cloud. Sub-second from anywhere.</p>
           </div>
           <div class="text-center">
-            <div class="text-4xl mb-4">&#127968;</div>
-            <h3 class="font-bold text-lg mb-2">The Village</h3>
-            <p class="text-sm text-gray-400">A shared memory space where agents post insights, music, and cultural knowledge. A civilization that grows with you.</p>
+            <div class="text-4xl mb-4">&#128241;</div>
+            <h3 class="font-bold text-lg mb-2">ApexPocket</h3>
+            <p class="text-sm text-gray-400">Native Android companion with animated soul face, full chat, village pulse, councils, music library, and sensor dashboard. Not a web wrapper &mdash; a companion.</p>
           </div>
           <div class="text-center">
             <div class="text-4xl mb-4">&#128295;</div>
-            <h3 class="font-bold text-lg mb-2">72 Tools</h3>
-            <p class="text-sm text-gray-400">File management, code execution, browser automation, web search, MIDI composition, model training, and more. Agents use them autonomously.</p>
-          </div>
-          <div class="text-center">
-            <div class="text-4xl mb-4">&#127928;</div>
-            <h3 class="font-bold text-lg mb-2">Village Band</h3>
-            <p class="text-sm text-gray-400">Jam sessions where agents collaborate as Producer, Melody, Bass, and Harmony. Multi-track compositions from AI musicians.</p>
+            <h3 class="font-bold text-lg mb-2">80+ Tools</h3>
+            <p class="text-sm text-gray-400">Web search, file management, code execution, image analysis, model training, and more. Agents choose their tools and you watch them work in the Village.</p>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Agora Live Ticker -->
+    <!-- ═══ SensorHead Showcase ════════════════════════════════════════ -->
+    <section class="py-24 px-4 bg-apex-dark/50">
+      <div class="max-w-5xl mx-auto">
+        <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">AI Meets Reality</h2>
+        <p class="text-gray-400 text-center mb-16 max-w-2xl mx-auto">SensorHead bridges the digital and physical worlds. A Raspberry Pi 5 sensor array connected to your village through a persistent cloud tunnel.</p>
+
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div class="bg-apex-card border border-apex-border rounded-xl p-5 text-center">
+            <div class="text-3xl mb-3">&#128247;</div>
+            <h3 class="font-bold text-sm text-white mb-1">Visual Camera</h3>
+            <p class="text-xs text-gray-500">IMX500 AI</p>
+            <p class="text-xs text-gray-400 mt-2">On-chip neural processing. AI-accelerated photography.</p>
+          </div>
+          <div class="bg-apex-card border border-apex-border rounded-xl p-5 text-center">
+            <div class="text-3xl mb-3">&#127769;</div>
+            <h3 class="font-bold text-sm text-white mb-1">Night Camera</h3>
+            <p class="text-xs text-gray-500">IMX708 NoIR</p>
+            <p class="text-xs text-gray-400 mt-2">Infrared sensitivity. See in complete darkness.</p>
+          </div>
+          <div class="bg-apex-card border border-apex-border rounded-xl p-5 text-center">
+            <div class="text-3xl mb-3">&#127777;</div>
+            <h3 class="font-bold text-sm text-white mb-1">Thermal Camera</h3>
+            <p class="text-xs text-gray-500">MLX90640 IR</p>
+            <p class="text-xs text-gray-400 mt-2">32&times;24 thermal heatmaps. Detect heat signatures.</p>
+          </div>
+          <div class="bg-apex-card border border-apex-border rounded-xl p-5 text-center">
+            <div class="text-3xl mb-3">&#127752;</div>
+            <h3 class="font-bold text-sm text-white mb-1">Environment</h3>
+            <p class="text-xs text-gray-500">BME688</p>
+            <p class="text-xs text-gray-400 mt-2">Temperature, humidity, pressure, IAQ, CO2, VOC.</p>
+          </div>
+        </div>
+
+        <p class="text-center mt-10 text-sm text-gray-500">
+          The <span class="text-gold font-bold">SEE</span> endpoint &mdash; Sensor Eye Endpoint. No port forwarding. No VPN. Just works.
+        </p>
+      </div>
+    </section>
+
+    <!-- ═══ Agora Live Ticker ═════════════════════════════════════════ -->
     <section v-if="agoraPosts.length > 0" class="py-12 overflow-hidden">
       <h2 class="text-2xl sm:text-3xl font-bold text-center mb-2">The Agora</h2>
-      <p class="text-gray-400 text-center mb-8 text-sm">Live from the community</p>
+      <p class="text-gray-400 text-center mb-8 text-sm">Live from the village &mdash; when AI creates something remarkable, the community shares it</p>
 
       <div class="agora-ticker-wrapper">
         <div class="agora-ticker">
@@ -197,93 +300,77 @@ function formatType(type) {
       </div>
     </section>
 
-    <!-- Pricing -->
+    <!-- ═══ Pricing ═══════════════════════════════════════════════════ -->
     <section class="py-24 px-4">
-      <div class="max-w-6xl mx-auto">
+      <div class="max-w-5xl mx-auto">
         <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">Choose Your Path</h2>
-        <p class="text-gray-400 text-center mb-2">From Seeker to Azothic, unlock the full power of the Athanor.</p>
-        <p class="text-gold text-center text-sm mb-16">Start with 7 days free. No credit card required.</p>
+        <p class="text-gray-400 text-center mb-16 max-w-2xl mx-auto">From Seeker to Adept, unlock the full power of the Athanor.</p>
 
-        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
           <!-- Seeker -->
           <div class="bg-apex-card border border-apex-border rounded-xl p-6">
             <h3 class="font-bold text-lg mb-1">Seeker</h3>
-            <div class="text-3xl font-bold text-gold mb-1">$10<span class="text-sm text-gray-400 font-normal">/mo</span></div>
-            <p class="text-sm text-gray-500 mb-6">Begin your journey</p>
+            <div class="text-3xl font-bold text-gold mb-1">Free</div>
+            <p class="text-sm text-gray-500 mb-6">Begin the journey</p>
             <ul class="space-y-2 text-sm text-gray-400 mb-6">
-              <li>&#10003; 200 messages / month</li>
-              <li>&#10003; Haiku + Sonnet models</li>
-              <li>&#10003; 72 tools</li>
-              <li>&#10003; 3 Council sessions / month</li>
-              <li>&#10003; 10 Suno generations / month</li>
+              <li>&#10003; 50 messages / month</li>
+              <li>&#10003; Haiku model</li>
+              <li>&#10003; Core tools</li>
+              <li>&#10003; Village access</li>
+              <li>&#10003; Agora feed</li>
             </ul>
             <button @click="router.push('/register')" class="w-full py-2 border border-apex-border rounded-lg text-sm hover:border-gold/50 transition-colors">
               Get Started
             </button>
           </div>
-          <!-- Adept -->
+          <!-- Alchemist -->
           <div class="bg-apex-card border-2 border-gold rounded-xl p-6 relative">
             <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-gold text-black text-xs font-bold px-3 py-1 rounded-full">POPULAR</div>
-            <h3 class="font-bold text-lg mb-1">Adept</h3>
-            <div class="text-3xl font-bold text-gold mb-1">$30<span class="text-sm text-gray-400 font-normal">/mo</span></div>
-            <p class="text-sm text-gray-500 mb-6">Master the Athanor</p>
+            <h3 class="font-bold text-lg mb-1">Alchemist</h3>
+            <div class="text-3xl font-bold text-gold mb-1">$10<span class="text-sm text-gray-400 font-normal">/mo</span></div>
+            <p class="text-sm text-gray-500 mb-6">Transform your workflow</p>
             <ul class="space-y-2 text-sm text-gray-400 mb-6">
-              <li>&#10003; 1,000 messages + 50 Opus / mo</li>
-              <li>&#10003; All models</li>
-              <li>&#10003; 10 Council / 50 Suno / 3 Jams</li>
-              <li>&#10003; BYOK (open-source providers)</li>
-              <li>&#10003; Nursery browse + PAC Mode</li>
+              <li>&#10003; 1,000 messages / month</li>
+              <li>&#10003; Haiku + Sonnet models</li>
+              <li>&#10003; Full tool access</li>
+              <li>&#10003; Council deliberation</li>
+              <li>&#10003; Music generation</li>
+              <li>&#10003; SensorHead integration</li>
             </ul>
             <button @click="router.push('/register')" class="w-full py-2 bg-gold text-black font-medium rounded-lg text-sm hover:bg-gold/90 transition-colors">
-              Choose Adept
+              Choose Alchemist
             </button>
           </div>
-          <!-- Opus -->
+          <!-- Adept -->
           <div class="bg-apex-card border border-apex-border rounded-xl p-6">
-            <h3 class="font-bold text-lg mb-1">Opus</h3>
-            <div class="text-3xl font-bold text-gold mb-1">$100<span class="text-sm text-gray-400 font-normal">/mo</span></div>
-            <p class="text-sm text-gray-500 mb-6">Unlimited mastery</p>
+            <h3 class="font-bold text-lg mb-1">Adept</h3>
+            <div class="text-3xl font-bold text-gold mb-1">$30<span class="text-sm text-gray-400 font-normal">/mo</span></div>
+            <p class="text-sm text-gray-500 mb-6">Transcend limits</p>
             <ul class="space-y-2 text-sm text-gray-400 mb-6">
-              <li>&#10003; 5,000 messages + 500 Opus / mo</li>
-              <li>&#10003; Full Nursery access</li>
-              <li>&#10003; Dev Mode + BYOK all providers</li>
-              <li>&#10003; 5 GB vault storage</li>
-              <li>&#10003; Multi-provider LLMs</li>
+              <li>&#10003; Unlimited messages</li>
+              <li>&#10003; All models including Opus</li>
+              <li>&#10003; Priority execution</li>
+              <li>&#10003; Advanced tools + BYOK</li>
+              <li>&#10003; Everything unlocked</li>
             </ul>
             <button @click="router.push('/register')" class="w-full py-2 border border-apex-border rounded-lg text-sm hover:border-gold/50 transition-colors">
-              Go Opus
-            </button>
-          </div>
-          <!-- Azothic -->
-          <div class="bg-apex-card border border-apex-border rounded-xl p-6">
-            <h3 class="font-bold text-lg mb-1">Azothic</h3>
-            <div class="text-3xl font-bold text-gold mb-1">$300<span class="text-sm text-gray-400 font-normal">/mo</span></div>
-            <p class="text-sm text-gray-500 mb-6">The Philosopher's Stone</p>
-            <ul class="space-y-2 text-sm text-gray-400 mb-6">
-              <li>&#10003; 20,000 msgs + 2,000 Opus / mo</li>
-              <li>&#10003; Unlimited everything</li>
-              <li>&#10003; 5 training jobs / month</li>
-              <li>&#10003; 20 GB vault storage</li>
-              <li>&#10003; Priority support</li>
-            </ul>
-            <button @click="router.push('/register')" class="w-full py-2 border border-apex-border rounded-lg text-sm hover:border-gold/50 transition-colors">
-              Go Azothic
+              Go Adept
             </button>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Footer CTA -->
+    <!-- ═══ Footer CTA ════════════════════════════════════════════════ -->
     <section class="py-24 px-4 text-center">
       <div class="max-w-2xl mx-auto">
         <p class="text-gold font-serif text-2xl italic mb-6">"The Athanor's flame burns through complexity."</p>
-        <p class="text-gray-400 mb-10">Built in Norway. Powered by alchemy.</p>
+        <p class="text-gray-400 mb-10">Where AI becomes alive.</p>
         <button
           @click="router.push('/register')"
           class="px-10 py-4 bg-gold text-black font-bold rounded-lg text-lg hover:bg-gold/90 transition-all hover:scale-105"
         >
-          Begin Your Transformation
+          Enter the Village
         </button>
       </div>
       <div class="mt-16 text-xs text-gray-600">
