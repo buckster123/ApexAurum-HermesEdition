@@ -471,7 +471,7 @@ onUnmounted(() => {
                   v-if="images.thermal"
                   :src="'data:image/jpeg;base64,' + images.thermal"
                   class="w-full h-full object-cover"
-                  style="transform: rotate(90deg) scale(1.34)"
+                  style=""
                   alt="Thermal heatmap"
                 />
                 <div v-else-if="capturing.thermal" class="text-gray-500 text-sm animate-pulse">

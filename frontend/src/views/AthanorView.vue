@@ -932,7 +932,7 @@ onUnmounted(() => {
                   <img v-if="sensorData.snapshot.visual_base64" :src="'data:image/jpeg;base64,' + sensorData.snapshot.visual_base64" class="w-full rounded border border-cyan-500/10 aspect-[4/3] object-cover" />
                   <img v-if="sensorData.snapshot.night_base64" :src="'data:image/jpeg;base64,' + sensorData.snapshot.night_base64" class="w-full rounded border border-green-500/10 aspect-[4/3] object-cover" />
                   <div v-if="sensorData.snapshot.thermal_base64" class="overflow-hidden rounded border border-red-500/10 aspect-[4/3]">
-                    <img :src="'data:image/jpeg;base64,' + sensorData.snapshot.thermal_base64" class="w-full h-full object-cover" style="transform: rotate(90deg) scale(1.34)" alt="Thermal heatmap" />
+                    <img :src="'data:image/jpeg;base64,' + sensorData.snapshot.thermal_base64" class="w-full h-full object-cover" style="" alt="Thermal heatmap" />
                   </div>
                 </div>
               </div>
