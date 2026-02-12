@@ -2023,3 +2023,122 @@ async def pocket_pending_messages(
     ]
 
     return {"messages": messages}
+
+
+# ─── SensorHead Dashboard (direct sensor access, no LLM) ────────────
+
+
+@router.get("/sensors")
+async def pocket_sensor_status(
+    device_and_user: tuple = Depends(get_device_and_user),
+):
+    """SensorHead connection status + cached telemetry for mobile dashboard."""
+    device, user = device_and_user
+    from app.services.bridge_manager import get_bridge_manager
+
+    manager = get_bridge_manager()
+    conn = manager.find_device_for_user(user.id)
+
+    if not conn:
+        return {"online": False, "telemetry": None, "device_name": None}
+
+    telemetry = manager.get_telemetry(conn.device_id)
+    return {
+        "online": True,
+        "device_name": conn.device_name,
+        "device_id": str(conn.device_id),
+        "connected_at": conn.connected_at,
+        "uptime_s": round(time.time() - conn.connected_at, 1),
+        "telemetry": telemetry,
+    }
+
+
+@router.post("/sensors/environment")
+async def pocket_sensor_environment(
+    device_and_user: tuple = Depends(get_device_and_user),
+):
+    """Live BME688 environment read via bridge tunnel."""
+    device, user = device_and_user
+    from app.api.v1.sensors import _send_sensor_command
+    from app.services.bridge_manager import get_bridge_manager
+
+    manager = get_bridge_manager()
+    conn = manager.find_device_for_user(user.id)
+    if not conn:
+        raise HTTPException(503, detail="No SensorHead connected")
+
+    result = await _send_sensor_command(conn.device_id, "sense_environment", timeout=15)
+    return {"data": result.get("data"), "duration_ms": result.get("duration_ms", 0)}
+
+
+@router.post("/sensors/capture/{camera}")
+async def pocket_sensor_capture(
+    camera: str,
+    device_and_user: tuple = Depends(get_device_and_user),
+):
+    """Camera capture via bridge tunnel. Returns base64 JPEG."""
+    if camera not in ("visual", "night"):
+        raise HTTPException(400, detail="Camera must be 'visual' or 'night'")
+
+    device, user = device_and_user
+    from app.api.v1.sensors import _send_sensor_command
+    from app.services.bridge_manager import get_bridge_manager
+
+    manager = get_bridge_manager()
+    conn = manager.find_device_for_user(user.id)
+    if not conn:
+        raise HTTPException(503, detail="No SensorHead connected")
+
+    action = "capture_visual" if camera == "visual" else "capture_night"
+    result = await _send_sensor_command(conn.device_id, action, timeout=20)
+    return {"image_base64": result.get("data"), "camera": camera, "duration_ms": result.get("duration_ms", 0)}
+
+
+@router.post("/sensors/thermal")
+async def pocket_sensor_thermal(
+    device_and_user: tuple = Depends(get_device_and_user),
+):
+    """Thermal heatmap via bridge tunnel. Returns base64 JPEG."""
+    device, user = device_and_user
+    from app.api.v1.sensors import _send_sensor_command
+    from app.services.bridge_manager import get_bridge_manager
+
+    manager = get_bridge_manager()
+    conn = manager.find_device_for_user(user.id)
+    if not conn:
+        raise HTTPException(503, detail="No SensorHead connected")
+
+    result = await _send_sensor_command(conn.device_id, "sense_thermal", timeout=15)
+    return {"image_base64": result.get("data"), "sensor": "thermal", "duration_ms": result.get("duration_ms", 0)}
+
+
+@router.post("/sensors/snapshot")
+async def pocket_sensor_snapshot(
+    device_and_user: tuple = Depends(get_device_and_user),
+):
+    """Composite snapshot: environment + all 3 cameras."""
+    device, user = device_and_user
+    from app.services.bridge_manager import get_bridge_manager
+
+    manager = get_bridge_manager()
+    conn = manager.find_device_for_user(user.id)
+    if not conn:
+        raise HTTPException(503, detail="No SensorHead connected")
+
+    start = time.time()
+    errors = []
+    snapshot = {"environment": None, "visual_base64": None, "night_base64": None, "thermal_base64": None}
+
+    for key, action, timeout in [
+        ("environment", "sense_environment", 15),
+        ("visual_base64", "capture_visual", 20),
+        ("night_base64", "capture_night", 20),
+        ("thermal_base64", "sense_thermal", 15),
+    ]:
+        try:
+            result = await manager.send_command(conn.device_id, action, {}, timeout=timeout)
+            snapshot[key] = result.get("data")
+        except Exception as e:
+            errors.append(f"{action}: {e}")
+
+    return {**snapshot, "errors": errors, "total_duration_ms": int((time.time() - start) * 1000)}
