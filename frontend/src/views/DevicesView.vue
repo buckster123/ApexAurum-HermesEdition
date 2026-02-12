@@ -7,8 +7,11 @@
  */
 
 import { ref, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useDevicesStore } from '@/stores/devices'
 import QRCode from 'qrcode'
+
+const router = useRouter()
 
 const store = useDevicesStore()
 
@@ -209,7 +212,7 @@ function soulStateColor(soul) {
               <span class="w-2.5 h-2.5 rounded-full" :class="statusDotClass(device)"></span>
               <div>
                 <h3 class="font-medium text-white">{{ device.device_name }}</h3>
-                <span class="text-xs text-gray-500">{{ device.device_type === 'apex_pocket' ? 'ApexPocket' : device.device_type }}</span>
+                <span class="text-xs text-gray-500">{{ device.device_type === 'apex_pocket' ? 'ApexPocket' : device.device_type === 'sensor_head' ? 'SensorHead' : device.device_type }}</span>
               </div>
             </div>
             <!-- Status badge -->
@@ -261,6 +264,13 @@ function soulStateColor(soul) {
 
           <!-- Actions -->
           <div class="mt-4 pt-3 border-t border-white/5 flex gap-2">
+            <button
+              v-if="device.device_type === 'sensor_head' && device.status === 'active'"
+              @click="router.push('/devices/' + device.id + '/sensors')"
+              class="text-xs px-3 py-1.5 bg-gold/20 hover:bg-gold/30 text-gold rounded transition-colors font-medium"
+            >
+              Sensors
+            </button>
             <button
               v-if="device.status === 'active'"
               @click="confirmRevoke(device)"

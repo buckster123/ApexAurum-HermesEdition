@@ -95,6 +95,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/devices/:id/sensors',
+      name: 'sensor-dashboard',
+      component: () => import('@/views/SensorDashboardView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/neural',
       name: 'neural',
       component: () => import('@/views/NeuralView.vue'),
