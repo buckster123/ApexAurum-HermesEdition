@@ -165,7 +165,7 @@ class SpeechBubble {
     this.message = message
     this.type = type
     this.age = 0
-    this.maxAge = type === 'approval' ? 30 : 5
+    this.maxAge = type === 'approval' ? 30 : type === 'success' ? 10 : 5
     this.agentId = null
 
     this._createSprite(position)
@@ -179,18 +179,21 @@ class SpeechBubble {
 
     const bgColors = {
       info: 'rgba(40, 40, 60, 0.9)',
+      success: 'rgba(30, 60, 40, 0.9)',
       approval: 'rgba(255, 200, 0, 0.95)',
       error: 'rgba(255, 60, 60, 0.9)',
       input: 'rgba(100, 100, 255, 0.9)',
     }
     const borderColors = {
       info: '#667788',
+      success: '#66bb6a',
       approval: '#ffaa00',
       error: '#ff3333',
       input: '#4488ff',
     }
     const textColors = {
       info: '#ffffff',
+      success: '#a5d6a7',
       approval: '#000000',
       error: '#ffffff',
       input: '#ffffff',

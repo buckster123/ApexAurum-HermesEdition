@@ -100,8 +100,9 @@ watch(() => props.show, async (visible) => {
     mode.value = 'single'
     useTools.value = true
 
-    // Pre-select zone-affinity agent
-    const defaultAgent = ZONE_DEFAULT_AGENTS[zoneName.value] || 'AZOTH'
+    // Pre-select agent: from agent-task event or zone-affinity default
+    const preSelected = props.zone?.preSelectedAgent
+    const defaultAgent = preSelected || ZONE_DEFAULT_AGENTS[zoneName.value] || 'AZOTH'
     selectedAgents.value = [defaultAgent]
 
     // Focus textarea

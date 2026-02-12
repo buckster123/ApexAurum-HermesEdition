@@ -69,13 +69,35 @@ function handleAgentTask({ agentId, zone }) {
   showTaskDialog.value = true
 }
 
-// Execute task from dialog
+// Execute task from dialog — drives 3D scene animations
 async function handleTaskExecute(task) {
   showTaskDialog.value = false
   showResultPanel.value = true // Show immediately to display streaming
   playTone(770, 0.05, 'sine', 0.1)
 
+  // Trigger 3D scene: agent walks to zone + glow ring
+  if (viewMode.value === '3d' && village3dRef.value) {
+    const agentId = task.agents[0] || 'AZOTH'
+    village3dRef.value.triggerTaskStart(agentId, task.zone)
+    village3dRef.value.triggerBubble(agentId, 'Working on it...', 'info', 3)
+  }
+
   const result = await executeTask(task)
+
+  // Trigger 3D scene: completion effects
+  if (viewMode.value === '3d' && village3dRef.value) {
+    const agentId = task.agents[0] || 'AZOTH'
+    village3dRef.value.triggerTaskComplete(agentId, task.zone, !!result)
+
+    // Show result excerpt as speech bubble
+    if (result?.content) {
+      const excerpt = result.content.slice(0, 120) + (result.content.length > 120 ? '...' : '')
+      village3dRef.value.triggerBubble(agentId, excerpt, 'success', 8)
+    } else if (taskError.value) {
+      village3dRef.value.triggerBubble(agentId, taskError.value.slice(0, 80), 'error', 6)
+    }
+  }
+
   if (result) {
     sounds.toolCompleteJingle()
   } else {

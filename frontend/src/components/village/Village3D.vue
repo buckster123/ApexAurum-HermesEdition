@@ -74,7 +74,21 @@ const {
   resetLayout
 } = useVillage3D(containerRef, villageOptions)
 
-defineExpose({ hasCustomLayout, resetLayout })
+// Expose scene control methods for parent (VillageGUIView) to drive animations
+defineExpose({
+  hasCustomLayout,
+  resetLayout,
+  // Task animation: parent calls these when village tasks execute
+  triggerTaskStart(agentId, zone) {
+    handleToolStart(agentId, 'village_task', zone || 'village_square')
+  },
+  triggerTaskComplete(agentId, zone, success = true) {
+    handleToolComplete(agentId, 'village_task', zone || 'village_square', success)
+  },
+  triggerBubble(agentId, message, type, duration) {
+    showBubble(agentId, message, type, duration)
+  },
+})
 
 onMounted(() => {
   // Wait one tick for container to have dimensions
@@ -119,7 +133,7 @@ function assignAgentTask() {
   closeAgentPopup()
 }
 
-// Watch for new events
+// Watch for new WebSocket events and unpack into composable calls
 watch(() => props.events, (newEvents) => {
   if (newEvents.length === 0) return
 
@@ -127,11 +141,11 @@ watch(() => props.events, (newEvents) => {
   if (!latest) return
 
   if (latest.type === 'tool_start') {
-    handleToolStart(latest)
+    handleToolStart(latest.agent_id, latest.tool, latest.zone || 'village_square')
   } else if (latest.type === 'tool_complete') {
-    handleToolComplete(latest)
+    handleToolComplete(latest.agent_id, latest.tool, latest.zone || 'village_square', latest.success)
   } else if (latest.type === 'tool_error') {
-    handleToolError(latest)
+    handleToolError(latest.agent_id, latest.tool, latest.zone || 'village_square')
   } else if (latest.type === 'approval_needed') {
     showBubble(latest.agent_id, latest.message || 'Approval needed', 'approval')
   } else if (latest.type === 'input_needed') {
