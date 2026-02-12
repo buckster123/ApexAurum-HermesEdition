@@ -23,7 +23,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['zone-click', 'agent-click', 'webgl-error'])
+const emit = defineEmits(['zone-click', 'agent-click', 'agent-task', 'webgl-error'])
 
 const containerRef = ref(null)
 const showAgentPopup = ref(false)
@@ -43,7 +43,11 @@ const villageOptions = {
     }
   },
   onZoneClick: (zoneName, label) => {
-    emit('zone-click', { name: zoneName, label })
+    emit('zone-click', {
+      name: zoneName,
+      label,
+      color: VILLAGE_LAYOUT[zoneName]?.color || '#2d3436',
+    })
   },
   onWebGLError: (error) => {
     emit('webgl-error', error)
@@ -102,6 +106,17 @@ const isDivedIn = computed(() => cameraMode.value !== 'orbit')
 function closeAgentPopup() {
   showAgentPopup.value = false
   selectedAgent.value = null
+}
+
+function assignAgentTask() {
+  if (selectedAgentData.value) {
+    // Emit agent-task with agent's current zone context
+    emit('agent-task', {
+      agentId: selectedAgentData.value.id,
+      zone: selectedAgentData.value.zone,
+    })
+  }
+  closeAgentPopup()
 }
 
 // Watch for new events
@@ -338,6 +353,12 @@ watch(() => props.events, (newEvents) => {
 
         <!-- Actions -->
         <div class="mt-4 pt-3 border-t border-apex-border flex gap-2">
+          <button
+            class="flex-1 text-xs px-3 py-2 bg-gold/10 hover:bg-gold/20 text-gold rounded transition-colors"
+            @click="assignAgentTask"
+          >
+            Assign Task
+          </button>
           <button
             class="flex-1 text-xs px-3 py-2 bg-white/5 hover:bg-white/10 rounded transition-colors text-gray-300"
             @click="closeAgentPopup"

@@ -14,18 +14,86 @@ import { useSound } from '@/composables/useSound'
 import VillageCanvas from '@/components/village/VillageCanvas.vue'
 import VillageIsometric from '@/components/village/VillageIsometric.vue'
 import Village3D from '@/components/village/Village3D.vue'
+import VillageTaskDialog from '@/components/village/VillageTaskDialog.vue'
+import VillageResultPanel from '@/components/village/VillageResultPanel.vue'
 import TaskTickerBar from '@/components/village/TaskTickerBar.vue'
 import TaskDetailPanel from '@/components/village/TaskDetailPanel.vue'
+import { useVillageTasking } from '@/composables/useVillageTasking'
 import { ZONES, AGENT_COLORS } from '@/composables/useVillage'
 import { ZONES_3D, AGENT_COLORS as AGENT_COLORS_3D } from '@/composables/useVillageIsometric'
+import { VILLAGE_LAYOUT } from '@/composables/useVillage3D'
 
 const router = useRouter()
 const { playTone, sounds } = useSound()
+
+// --- Village Tasking (Phase E) ---
+const {
+  isExecuting,
+  taskResult,
+  taskError,
+  streamingContent,
+  streamingAgent,
+  taskHistory,
+  executeTask,
+  cancelTask,
+  clearResult,
+} = useVillageTasking()
+
+const showTaskDialog = ref(false)
+const taskDialogZone = ref(null)
+const showResultPanel = ref(false)
 
 // Navigate to chat with selected agent
 function handleAgentClick(agentId) {
   playTone(660, 0.05, 'sine', 0.1)
   router.push({ path: '/chat', query: { agent: agentId } })
+}
+
+// Zone click opens task dialog (Phase E)
+function handleZoneClick(zone) {
+  playTone(550, 0.04, 'sine', 0.08)
+  taskDialogZone.value = zone
+  showTaskDialog.value = true
+}
+
+// Agent "Assign Task" button opens dialog with agent pre-selected
+function handleAgentTask({ agentId, zone }) {
+  const zoneName = zone || 'village_square'
+  const layout = VILLAGE_LAYOUT[zoneName]
+  taskDialogZone.value = {
+    name: zoneName,
+    label: layout?.label || 'Village Square',
+    color: layout?.color || '#2d3436',
+    preSelectedAgent: agentId,
+  }
+  showTaskDialog.value = true
+}
+
+// Execute task from dialog
+async function handleTaskExecute(task) {
+  showTaskDialog.value = false
+  showResultPanel.value = true // Show immediately to display streaming
+  playTone(770, 0.05, 'sine', 0.1)
+
+  const result = await executeTask(task)
+  if (result) {
+    sounds.toolCompleteJingle()
+  } else {
+    sounds.toolErrorJingle()
+  }
+}
+
+function handleOpenInChat(conversationId) {
+  if (conversationId) {
+    router.push({ path: '/chat', query: { conversation: conversationId } })
+  } else {
+    router.push('/chat')
+  }
+}
+
+function handleCloseResult() {
+  showResultPanel.value = false
+  clearResult()
 }
 
 // View mode — migrate old '3d' value to 'iso' (isometric)
@@ -351,7 +419,8 @@ onUnmounted(() => {
             :events="eventLog"
             :status="status"
             @agent-click="handleAgentClick"
-            @zone-click="(zone) => {}"
+            @zone-click="handleZoneClick"
+            @agent-task="handleAgentTask"
             @webgl-error="handleWebGLError"
           />
         </div>
@@ -396,6 +465,28 @@ onUnmounted(() => {
         />
       </div>
     </transition>
+
+    <!-- Village Task Dialog (Phase E) -->
+    <VillageTaskDialog
+      :show="showTaskDialog"
+      :zone="taskDialogZone"
+      :executing="isExecuting"
+      @execute="handleTaskExecute"
+      @close="showTaskDialog = false"
+    />
+
+    <!-- Village Result Panel (Phase E) -->
+    <VillageResultPanel
+      :show="showResultPanel"
+      :result="taskResult"
+      :error="taskError"
+      :streaming-content="streamingContent"
+      :streaming-agent="streamingAgent"
+      :is-executing="isExecuting"
+      @close="handleCloseResult"
+      @open-in-chat="handleOpenInChat"
+      @cancel="cancelTask"
+    />
   </div>
 </template>
 
