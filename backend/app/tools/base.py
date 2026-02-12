@@ -25,6 +25,7 @@ class ToolCategory(str, Enum):
     BROWSER = "browser"
     CREATIVE = "creative"  # Suno compiler, prompt engineering
     NURSERY = "nursery"  # Model training studio
+    SENSORHEAD = "sensorhead"  # Physical sensor hardware
 
 
 class ToolResult(BaseModel):

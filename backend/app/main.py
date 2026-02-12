@@ -377,8 +377,10 @@ app.include_router(api_v1_router, prefix="/api/v1")
 # Mount WebSocket routers
 from app.api.v1.village_ws import router as village_ws_router
 from app.api.v1.council_ws import router as council_ws_router
+from app.api.v1.bridge_ws import router as bridge_ws_router
 app.include_router(village_ws_router, prefix="/ws")
 app.include_router(council_ws_router, prefix="/ws")
+app.include_router(bridge_ws_router, prefix="/ws")
 
 
 # Exception handlers

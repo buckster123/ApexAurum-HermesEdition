@@ -130,6 +130,18 @@ TOOL_ZONE_MAP = {
     "nursery_list_models": "nursery",
     "nursery_register_model": "nursery",
     "nursery_discover_models": "nursery",
+
+    # ═══════════════════════════════════════════════════════════════
+    # SENSOR TOWER - SensorHead hardware tools
+    # ═══════════════════════════════════════════════════════════════
+    "sensorhead_environment": "sensor_tower",
+    "sensorhead_capture": "sensor_tower",
+    "sensorhead_thermal": "sensor_tower",
+    "sensorhead_thermal_data": "sensor_tower",
+    "sensorhead_detect": "sensor_tower",
+    "sensorhead_classify": "sensor_tower",
+    "sensorhead_pose": "sensor_tower",
+    "sensorhead_status": "sensor_tower",
 }
 
 

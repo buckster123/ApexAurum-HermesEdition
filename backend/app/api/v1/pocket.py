@@ -191,6 +191,12 @@ POCKET_TOOLS = [
     "vault_list",
     "vault_read",
     "kb_search",
+    # SensorHead
+    "sensorhead_environment",
+    "sensorhead_capture",
+    "sensorhead_thermal",
+    "sensorhead_detect",
+    "sensorhead_status",
 ]
 
 POCKET_TOOL_TIMEOUT = 30  # seconds — shorter than web's 120s

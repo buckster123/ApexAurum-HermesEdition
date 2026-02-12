@@ -1081,6 +1081,42 @@ END $$;
         """)
         migrations.append("CREATE INDEX IF NOT EXISTS idx_pocket_pending_user ON pocket_pending_messages(user_id, delivered);")
 
+        # ─── SensorHead Bridge telemetry & alerts ───
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS sensor_telemetry (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                temperature_c REAL,
+                humidity_pct REAL,
+                pressure_hpa REAL,
+                co2_ppm REAL,
+                iaq_score INTEGER,
+                iaq_accuracy INTEGER,
+                voc_ppm REAL,
+                thermal_min_c REAL,
+                thermal_max_c REAL,
+                thermal_avg_c REAL,
+                raw_data JSONB DEFAULT '{}',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        """))
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_sensor_telemetry_device ON sensor_telemetry(device_id, created_at DESC);")
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_sensor_telemetry_user ON sensor_telemetry(user_id, created_at DESC);")
+
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS sensor_alerts (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                alert_type VARCHAR(50) NOT NULL,
+                data JSONB DEFAULT '{}',
+                acknowledged BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        """))
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_sensor_alerts_user ON sensor_alerts(user_id, acknowledged, created_at DESC);")
+
         for migration in migrations:
             await conn.execute(text(migration))
         print(f"Database migrations complete (embedding_dim={embed_dim})")
