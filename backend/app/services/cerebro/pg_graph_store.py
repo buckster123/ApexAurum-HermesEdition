@@ -668,8 +668,297 @@ class PgGraphStore:
         return [dict(row) for row in rows]
 
     # =========================================================================
+    # Episode queries (dream engine)
+    # =========================================================================
+
+    async def get_unconsolidated_episodes(self, user_id: UUID) -> list[Episode]:
+        """Get episodes that haven't been consolidated by the dream engine."""
+        result = await self.db.execute(
+            text("""
+                SELECT * FROM cerebro_episodes
+                WHERE user_id = :user_id AND consolidated = FALSE
+                ORDER BY created_at ASC
+            """),
+            {"user_id": str(user_id)},
+        )
+        rows = result.mappings().all()
+        return [self._row_to_episode(row) for row in rows]
+
+    async def mark_episode_consolidated(self, user_id: UUID, episode_id: str) -> bool:
+        """Mark an episode as consolidated by the dream engine."""
+        result = await self.db.execute(
+            text("""
+                UPDATE cerebro_episodes
+                SET consolidated = TRUE
+                WHERE id = :id AND user_id = :user_id
+            """),
+            {"id": episode_id, "user_id": str(user_id)},
+        )
+        await self.db.commit()
+        return result.rowcount > 0
+
+    async def get_episode_memory_ids(self, user_id: UUID, episode_id: str) -> list[str]:
+        """Get ordered memory IDs for an episode."""
+        result = await self.db.execute(
+            text("""
+                SELECT memory_id FROM cerebro_episode_steps
+                WHERE episode_id = :episode_id AND user_id = :user_id
+                ORDER BY position ASC
+            """),
+            {"episode_id": episode_id, "user_id": str(user_id)},
+        )
+        return [row.memory_id for row in result]
+
+    async def get_episode(self, user_id: UUID, episode_id: str) -> Optional[Episode]:
+        """Get a single episode by ID."""
+        result = await self.db.execute(
+            text("SELECT * FROM cerebro_episodes WHERE id = :id AND user_id = :user_id"),
+            {"id": episode_id, "user_id": str(user_id)},
+        )
+        row = result.mappings().first()
+        if not row:
+            return None
+        return self._row_to_episode(row)
+
+    async def update_episode(self, user_id: UUID, episode_id: str, **kwargs) -> bool:
+        """Update episode fields."""
+        allowed = {
+            "title", "ended_at", "overall_valence", "peak_arousal",
+            "tags", "consolidated", "schema_extracted",
+        }
+        updates = []
+        params = {"id": episode_id, "user_id": str(user_id)}
+        for key, val in kwargs.items():
+            if key in allowed:
+                if key == "tags":
+                    updates.append(f"{key} = CAST(:{key} AS jsonb)")
+                    params[key] = json.dumps(val) if isinstance(val, list) else val
+                elif key == "overall_valence" and isinstance(val, EmotionalValence):
+                    updates.append(f"{key} = :{key}")
+                    params[key] = val.value
+                else:
+                    updates.append(f"{key} = :{key}")
+                    params[key] = val
+        if not updates:
+            return False
+        sql = text(f"UPDATE cerebro_episodes SET {', '.join(updates)} WHERE id = :id AND user_id = :user_id")
+        result = await self.db.execute(sql, params)
+        await self.db.commit()
+        return result.rowcount > 0
+
+    async def list_episodes(self, user_id: UUID, limit: int = 20) -> list[Episode]:
+        """List recent episodes for a user."""
+        result = await self.db.execute(
+            text("""
+                SELECT * FROM cerebro_episodes
+                WHERE user_id = :user_id
+                ORDER BY created_at DESC
+                LIMIT :limit
+            """),
+            {"user_id": str(user_id), "limit": limit},
+        )
+        rows = result.mappings().all()
+        return [self._row_to_episode(row) for row in rows]
+
+    # =========================================================================
+    # Batch graph operations (dream engine)
+    # =========================================================================
+
+    async def get_all_node_ids(self, user_id: UUID, layer: Optional[str] = None) -> list[str]:
+        """Get all memory node IDs for a user, optionally filtered by layer."""
+        params: dict = {"user_id": str(user_id)}
+        where = "user_id = :user_id"
+        if layer:
+            where += " AND layer = :layer"
+            params["layer"] = layer
+        result = await self.db.execute(
+            text(f"SELECT id FROM cerebro_memory_nodes WHERE {where}"),
+            params,
+        )
+        return [row.id for row in result]
+
+    async def delete_node(self, user_id: UUID, node_id: str) -> bool:
+        """Delete a memory node and its links."""
+        await self.db.execute(
+            text("""
+                DELETE FROM cerebro_associative_links
+                WHERE user_id = :user_id AND (source_id = :id OR target_id = :id)
+            """),
+            {"user_id": str(user_id), "id": node_id},
+        )
+        result = await self.db.execute(
+            text("DELETE FROM cerebro_memory_nodes WHERE id = :id AND user_id = :user_id"),
+            {"id": node_id, "user_id": str(user_id)},
+        )
+        await self.db.commit()
+        return result.rowcount > 0
+
+    async def has_link(self, user_id: UUID, source_id: str, target_id: str) -> bool:
+        """Check if a link exists between two nodes (either direction)."""
+        result = await self.db.execute(
+            text("""
+                SELECT 1 FROM cerebro_associative_links
+                WHERE user_id = :user_id
+                  AND ((source_id = :a AND target_id = :b) OR (source_id = :b AND target_id = :a))
+                LIMIT 1
+            """),
+            {"user_id": str(user_id), "a": source_id, "b": target_id},
+        )
+        return result.first() is not None
+
+    async def batch_strengthen_co_activated(
+        self, user_id: UUID, node_ids: list[str], boost: float = 0.08,
+    ) -> int:
+        """Hebbian learning: strengthen all links between a set of co-activated nodes."""
+        if len(node_ids) < 2:
+            return 0
+        result = await self.db.execute(
+            text("""
+                UPDATE cerebro_associative_links
+                SET weight = LEAST(weight + :boost, 1.0),
+                    last_activated = NOW(),
+                    activation_count = activation_count + 1
+                WHERE user_id = :user_id
+                  AND source_id = ANY(:ids) AND target_id = ANY(:ids)
+            """),
+            {"user_id": str(user_id), "ids": node_ids, "boost": boost},
+        )
+        await self.db.commit()
+        return result.rowcount
+
+    async def prune_isolated_sensory(
+        self, user_id: UUID, max_salience: float, cutoff: datetime,
+    ) -> int:
+        """Delete isolated, low-salience sensory memories older than cutoff.
+
+        Single efficient SQL instead of N+1 loop.
+        """
+        result = await self.db.execute(
+            text("""
+                DELETE FROM cerebro_memory_nodes n
+                WHERE n.user_id = :user_id
+                  AND n.layer = 'sensory'
+                  AND n.salience < :max_sal
+                  AND n.created_at < :cutoff
+                  AND NOT EXISTS (
+                      SELECT 1 FROM cerebro_associative_links l
+                      WHERE l.user_id = :user_id
+                        AND (l.source_id = n.id OR l.target_id = n.id)
+                  )
+            """),
+            {"user_id": str(user_id), "max_sal": max_salience, "cutoff": cutoff},
+        )
+        await self.db.commit()
+        return result.rowcount
+
+    # =========================================================================
+    # Dream log
+    # =========================================================================
+
+    async def log_dream_phase(
+        self,
+        user_id: UUID,
+        cycle_id: str,
+        phase: str,
+        memories_processed: int = 0,
+        links_created: int = 0,
+        links_strengthened: int = 0,
+        memories_pruned: int = 0,
+        schemas_extracted: int = 0,
+        procedures_extracted: int = 0,
+        total_llm_calls: int = 0,
+        total_input_tokens: int = 0,
+        total_output_tokens: int = 0,
+        duration_seconds: float = 0,
+        notes: str = "",
+        success: bool = True,
+    ) -> None:
+        """Log a dream phase to the dream log."""
+        await self.db.execute(
+            text("""
+                INSERT INTO cerebro_dream_log (
+                    user_id, cycle_id, phase, started_at, completed_at,
+                    memories_processed, links_created, links_strengthened,
+                    memories_pruned, schemas_extracted, procedures_extracted,
+                    total_llm_calls, total_input_tokens, total_output_tokens,
+                    duration_seconds, notes, success
+                ) VALUES (
+                    :user_id, :cycle_id, :phase, NOW() - INTERVAL '1 second' * :duration, NOW(),
+                    :mem_proc, :links_c, :links_s,
+                    :mem_pruned, :schemas, :procedures,
+                    :llm_calls, :in_tokens, :out_tokens,
+                    :duration, :notes, :success
+                )
+            """),
+            {
+                "user_id": str(user_id),
+                "cycle_id": cycle_id,
+                "phase": phase,
+                "duration": duration_seconds,
+                "mem_proc": memories_processed,
+                "links_c": links_created,
+                "links_s": links_strengthened,
+                "mem_pruned": memories_pruned,
+                "schemas": schemas_extracted,
+                "procedures": procedures_extracted,
+                "llm_calls": total_llm_calls,
+                "in_tokens": total_input_tokens,
+                "out_tokens": total_output_tokens,
+                "notes": notes,
+                "success": success,
+            },
+        )
+        await self.db.commit()
+
+    async def get_dream_log(self, user_id: UUID, limit: int = 10) -> list[dict]:
+        """Get recent dream log entries."""
+        result = await self.db.execute(
+            text("""
+                SELECT * FROM cerebro_dream_log
+                WHERE user_id = :user_id
+                ORDER BY completed_at DESC NULLS LAST
+                LIMIT :limit
+            """),
+            {"user_id": str(user_id), "limit": limit},
+        )
+        return [dict(row) for row in result.mappings().all()]
+
+    async def count_dream_cycles_since(self, user_id: UUID, since: datetime) -> int:
+        """Count distinct dream cycles since a given date (for tier gating)."""
+        result = await self.db.execute(
+            text("""
+                SELECT COUNT(DISTINCT cycle_id) as c
+                FROM cerebro_dream_log
+                WHERE user_id = :user_id AND completed_at >= :since
+            """),
+            {"user_id": str(user_id), "since": since},
+        )
+        row = result.mappings().first()
+        return row["c"] if row else 0
+
+    # =========================================================================
     # Row mapping
     # =========================================================================
+
+    @staticmethod
+    def _row_to_episode(row) -> Episode:
+        """Convert a DB row to an Episode."""
+        tags = row.get("tags", [])
+        if isinstance(tags, str):
+            tags = json.loads(tags)
+        return Episode(
+            id=row["id"],
+            title=row.get("title", ""),
+            agent_id=row.get("agent_id"),
+            session_id=row.get("session_id"),
+            started_at=row.get("started_at") or row.get("created_at"),
+            ended_at=row.get("ended_at"),
+            overall_valence=row.get("overall_valence", "neutral"),
+            peak_arousal=float(row.get("peak_arousal", 0.5)) if row.get("peak_arousal") else 0.5,
+            tags=tags,
+            consolidated=bool(row.get("consolidated", False)),
+            schema_extracted=bool(row.get("schema_extracted", False)),
+        )
 
     @staticmethod
     def _row_to_memory_node(row) -> MemoryNode:

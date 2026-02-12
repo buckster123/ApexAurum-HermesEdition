@@ -86,6 +86,9 @@ LAYER_CONFIG = {
 # Dream Engine
 # =============================================================================
 DREAM_MAX_LLM_CALLS = 20
+DREAM_LLM_BUDGET_PATTERN = 12   # Reserve for pattern extraction
+DREAM_LLM_BUDGET_SCHEMA = 4     # Reserve for schema formation
+DREAM_LLM_BUDGET_REM = 4        # Reserve for REM recombination
 DREAM_CLUSTER_SIMILARITY_THRESHOLD = 0.80
 DREAM_CLUSTER_MIN_SIZE = 3
 DREAM_PRUNING_MIN_AGE_HOURS = 48
@@ -93,6 +96,14 @@ DREAM_PRUNING_MAX_SALIENCE = 0.3
 DREAM_REM_SAMPLE_SIZE = 20
 DREAM_REM_PAIR_CHECKS = 10
 DREAM_REM_MIN_CONNECTION_STRENGTH = 0.4
+
+# Episode auto-close: stale episodes (no episode_end called) are closed automatically
+EPISODE_AUTO_CLOSE_HOURS = 24
+
+# Schema validation: new schemas start in WORKING and must earn promotion
+SCHEMA_PROMOTE_MIN_SUPPORTS = 3    # supporting episodes/memories required
+SCHEMA_PROMOTE_MIN_ACCESSES = 2    # real recall accesses required
+SCHEMA_DEMOTE_MAX_IDLE_CYCLES = 3  # dream cycles with 0 accesses before demotion
 
 # =============================================================================
 # Agent defaults (ApexAurum agents)

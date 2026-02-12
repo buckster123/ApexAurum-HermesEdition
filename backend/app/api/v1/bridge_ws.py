@@ -156,6 +156,14 @@ async def bridge_websocket(websocket: WebSocket):
                     except Exception as e:
                         logger.debug(f"Telemetry store failed: {e}")
 
+            elif msg_type == "inference_response":
+                # Response from local LLM inference (Bridge relay)
+                cmd_id = msg.get("id")
+                if cmd_id:
+                    resolved = manager.resolve_command(cmd_id, msg)
+                    if not resolved:
+                        logger.debug(f"Orphaned inference response: {cmd_id}")
+
             elif msg_type == "alert":
                 # Autonomous monitoring alert
                 await _handle_alert(device_id, user_id, device.device_name, msg)

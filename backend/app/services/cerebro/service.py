@@ -5,7 +5,9 @@ using PostgreSQL as the backend.
 """
 
 import logging
+import os
 import time
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -18,9 +20,10 @@ from app.cerebro.engines.temporal import SemanticEngine
 from app.cerebro.engines.thalamus import GatingEngine
 from app.cerebro.models.activation import RecallResult
 from app.cerebro.models.agent import AgentProfile
+from app.cerebro.models.episode import Episode, EpisodeStep
 from app.cerebro.models.link import AssociativeLink
 from app.cerebro.models.memory import MemoryNode
-from app.cerebro.types import LinkType, MemoryType, Visibility
+from app.cerebro.types import EmotionalValence, LinkType, MemoryType, Visibility
 from app.services.cerebro.pg_graph_store import PgGraphStore
 from app.services.cerebro.spreading import spreading_activation
 
@@ -369,6 +372,290 @@ class CerebroCortexService:
                 "memory_type": node.metadata.memory_type.value if node else "unknown",
                 "link_type": link_type,
                 "weight": weight,
+            })
+        return results
+
+    # =========================================================================
+    # Episodes
+    # =========================================================================
+
+    async def start_episode(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        title: Optional[str] = None,
+        agent_id: str = "AZOTH",
+        tags: Optional[list[str]] = None,
+        session_id: Optional[str] = None,
+    ) -> dict:
+        """Start recording an episode."""
+        store = self._store(db)
+        episode = Episode(
+            title=title or "Untitled Episode",
+            agent_id=agent_id,
+            tags=tags or [],
+            session_id=session_id,
+            started_at=datetime.now(),
+        )
+        episode_id = await store.add_episode(user_id, episode)
+        return {
+            "id": episode_id,
+            "title": episode.title,
+            "agent_id": agent_id,
+            "started_at": episode.started_at.isoformat(),
+        }
+
+    async def end_episode(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        episode_id: str,
+        summary: Optional[str] = None,
+        valence: Optional[str] = None,
+    ) -> dict:
+        """End an episode with optional summary and valence."""
+        store = self._store(db)
+        kwargs: dict = {"ended_at": datetime.now()}
+        if valence:
+            try:
+                kwargs["overall_valence"] = EmotionalValence(valence)
+            except ValueError:
+                pass
+        ok = await store.update_episode(user_id, episode_id, **kwargs)
+        if not ok:
+            return {"error": f"Episode {episode_id} not found"}
+
+        # If summary provided, store it as a reflection memory linked to the episode
+        if summary:
+            result = await self.remember(
+                db, user_id, summary,
+                memory_type="episodic",
+                tags=["episode_summary"],
+                agent_id="AZOTH",
+                source="dream_engine",
+            )
+            if result and result.get("id"):
+                await self.add_episode_step(
+                    db, user_id, episode_id, result["id"], role="reflection",
+                )
+
+        return {"id": episode_id, "action": "ended", "valence": valence}
+
+    async def add_episode_step(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        episode_id: str,
+        memory_id: str,
+        role: str = "event",
+    ) -> dict:
+        """Add a memory as the next step in an episode."""
+        store = self._store(db)
+        # Get current step count for position
+        existing = await store.get_episode_memory_ids(user_id, episode_id)
+        step = EpisodeStep(
+            memory_id=memory_id,
+            position=len(existing),
+            role=role,
+        )
+        await store.add_episode_step(user_id, episode_id, step)
+        return {
+            "episode_id": episode_id,
+            "memory_id": memory_id,
+            "position": step.position,
+            "role": role,
+        }
+
+    async def list_episodes(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        limit: int = 20,
+    ) -> list[dict]:
+        """List recent episodes."""
+        store = self._store(db)
+        episodes = await store.list_episodes(user_id, limit=limit)
+        return [
+            {
+                "id": ep.id,
+                "title": ep.title,
+                "agent_id": ep.agent_id,
+                "started_at": ep.started_at.isoformat() if ep.started_at else None,
+                "ended_at": ep.ended_at.isoformat() if ep.ended_at else None,
+                "overall_valence": ep.overall_valence.value if isinstance(ep.overall_valence, EmotionalValence) else ep.overall_valence,
+                "consolidated": ep.consolidated,
+                "tags": ep.tags,
+            }
+            for ep in episodes
+        ]
+
+    async def get_episode_memories(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        episode_id: str,
+    ) -> list[dict]:
+        """Get all memories in an episode, in order."""
+        store = self._store(db)
+        mem_ids = await store.get_episode_memory_ids(user_id, episode_id)
+        results = []
+        for mid in mem_ids:
+            node = await store.get_node(user_id, mid)
+            if node:
+                results.append({
+                    "id": mid,
+                    "content": node.content[:500],
+                    "memory_type": node.metadata.memory_type.value,
+                    "salience": node.metadata.salience,
+                    "valence": node.metadata.valence.value if hasattr(node.metadata.valence, "value") else node.metadata.valence,
+                })
+        return results
+
+    # =========================================================================
+    # Procedures + Schemas
+    # =========================================================================
+
+    async def store_procedure(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        content: str,
+        tags: Optional[list[str]] = None,
+        derived_from: Optional[list[str]] = None,
+        agent_id: str = "AZOTH",
+    ) -> dict:
+        """Store a reusable procedure/workflow as a procedural memory.
+
+        Procedures are stored as regular memory nodes with memory_type=procedural
+        and derived_from links to source memories.
+        """
+        result = await self.remember(
+            db, user_id, content,
+            memory_type="procedural",
+            tags=tags or [],
+            agent_id=agent_id,
+            source="dream_engine",
+        )
+        if not result or result.get("action") != "stored":
+            return result or {"error": "Failed to store procedure"}
+
+        # Link to source memories
+        store = self._store(db)
+        if derived_from:
+            for source_id in derived_from[:10]:
+                try:
+                    await store.ensure_link(
+                        user_id,
+                        source_id=source_id,
+                        target_id=result["id"],
+                        link_type=LinkType.DERIVED_FROM,
+                        weight=0.7,
+                        source="dream_engine",
+                        evidence="Procedure extracted from source memory",
+                    )
+                except Exception as e:
+                    logger.debug(f"Procedure link failed for {source_id}: {e}")
+
+        return {**result, "type": "procedure"}
+
+    async def create_schema(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        content: str,
+        source_ids: Optional[list[str]] = None,
+        tags: Optional[list[str]] = None,
+        agent_id: str = "AZOTH",
+    ) -> dict:
+        """Create an abstract principle/schema derived from multiple memories.
+
+        Schemas are stored as memory nodes with memory_type=schematic
+        and derived_from links to all source memories.
+        """
+        result = await self.remember(
+            db, user_id, content,
+            memory_type="schematic",
+            tags=tags or [],
+            agent_id=agent_id,
+            source="dream_engine",
+        )
+        if not result or result.get("action") != "stored":
+            return result or {"error": "Failed to create schema"}
+
+        # Link all source memories
+        store = self._store(db)
+        if source_ids:
+            for source_id in source_ids[:20]:
+                try:
+                    await store.ensure_link(
+                        user_id,
+                        source_id=source_id,
+                        target_id=result["id"],
+                        link_type=LinkType.DERIVED_FROM,
+                        weight=0.8,
+                        source="dream_engine",
+                        evidence="Schema abstracted from source memory",
+                    )
+                except Exception as e:
+                    logger.debug(f"Schema link failed for {source_id}: {e}")
+
+        return {**result, "type": "schema"}
+
+    async def find_matching_schemas(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        tags: Optional[list[str]] = None,
+        concepts: Optional[list[str]] = None,
+    ) -> list[dict]:
+        """Find schemas matching given tags or concepts."""
+        store = self._store(db)
+        # Query schematic memories filtered by tags
+        nodes = await store.get_memories(
+            user_id, limit=20, memory_type="schematic",
+        )
+        results = []
+        search_terms = set((tags or []) + (concepts or []))
+        for node in nodes:
+            if search_terms:
+                node_terms = set(node.metadata.tags + node.metadata.concepts)
+                if not node_terms.intersection(search_terms):
+                    continue
+            results.append({
+                "id": node.id,
+                "content": node.content[:300],
+                "tags": node.metadata.tags,
+                "salience": node.metadata.salience,
+                "created_at": node.created_at.isoformat() if node.created_at else "",
+            })
+        return results
+
+    async def list_procedures(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        tags: Optional[list[str]] = None,
+        min_salience: float = 0.0,
+    ) -> list[dict]:
+        """List stored procedures, optionally filtered by tags."""
+        store = self._store(db)
+        nodes = await store.get_memories(
+            user_id, limit=50, memory_type="procedural",
+        )
+        results = []
+        for node in nodes:
+            if node.metadata.salience < min_salience:
+                continue
+            if tags:
+                if not set(tags).intersection(set(node.metadata.tags)):
+                    continue
+            results.append({
+                "id": node.id,
+                "content": node.content[:300],
+                "tags": node.metadata.tags,
+                "salience": node.metadata.salience,
+                "access_count": node.strength.access_count,
+                "created_at": node.created_at.isoformat() if node.created_at else "",
             })
         return results
 

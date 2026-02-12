@@ -146,6 +146,8 @@ TIER_LIMITS = {
         "vault_storage_mb": 0,
         "platform_grants": [],
         "trial_days": 7,
+        "dream_cycles_per_month": 0,
+        "dream_max_llm_calls": 0,
     },
     "seeker": {
         "name": "Seeker",
@@ -170,6 +172,8 @@ TIER_LIMITS = {
         "dev_mode": False,
         "vault_storage_mb": 100,
         "platform_grants": [],
+        "dream_cycles_per_month": 2,
+        "dream_max_llm_calls": 10,
     },
     "adept": {
         "name": "Adept",
@@ -202,6 +206,8 @@ TIER_LIMITS = {
         "dev_mode": False,
         "vault_storage_mb": 1024,
         "platform_grants": [],
+        "dream_cycles_per_month": 10,
+        "dream_max_llm_calls": 20,
     },
     "opus": {
         "name": "Opus",
@@ -239,6 +245,8 @@ TIER_LIMITS = {
         "dev_mode": True,
         "vault_storage_mb": 5120,
         "platform_grants": [],
+        "dream_cycles_per_month": 30,
+        "dream_max_llm_calls": 30,
     },
     "azothic": {
         "name": "Azothic",
@@ -277,6 +285,8 @@ TIER_LIMITS = {
         "dev_mode": True,
         "vault_storage_mb": 20480,
         "platform_grants": [],
+        "dream_cycles_per_month": None,  # Unlimited
+        "dream_max_llm_calls": 50,
     },
 }
 

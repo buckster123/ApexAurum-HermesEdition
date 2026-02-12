@@ -6,7 +6,7 @@ All API endpoints are mounted here.
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, chat, agents, village, tools, music, user, prompts, import_data, memory, files, cortex, billing, webhooks, council, admin, jam, feedback, nursery, devices, pocket, errors, agora, sensors
+from app.api.v1 import auth, chat, agents, village, tools, music, user, prompts, import_data, memory, files, cortex, billing, webhooks, council, admin, jam, feedback, nursery, devices, pocket, errors, agora, sensors, dream
 
 router = APIRouter()
 
@@ -35,3 +35,4 @@ router.include_router(sensors.router, prefix="/devices", tags=["SensorHead Dashb
 router.include_router(pocket.router, prefix="/pocket", tags=["ApexPocket"])
 router.include_router(errors.router)  # Error reporting (prefix in errors.py)
 router.include_router(agora.router)  # Agora - public AI social feed
+router.include_router(dream.router)  # CerebroCortex Dream Engine

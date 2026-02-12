@@ -354,6 +354,8 @@ async def health_check():
             "device-management",
             "error-tracking",
             "agora-social-feed",
+            "cerebro-dream-engine",
+            "bridge-inference-relay",
         ],
     }
 

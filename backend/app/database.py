@@ -1064,6 +1064,42 @@ END $$;
         """)
         migrations.append("CREATE INDEX IF NOT EXISTS idx_cerebro_dream_user ON cerebro_dream_log(user_id);")
 
+        # Dream Engine v2: extended dream_log columns for cycle tracking
+        migrations.append("""
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cerebro_dream_log') THEN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'cerebro_dream_log' AND column_name = 'cycle_id') THEN
+                        ALTER TABLE cerebro_dream_log ADD COLUMN cycle_id VARCHAR(50);
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'cerebro_dream_log' AND column_name = 'procedures_extracted') THEN
+                        ALTER TABLE cerebro_dream_log ADD COLUMN procedures_extracted INTEGER DEFAULT 0;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'cerebro_dream_log' AND column_name = 'total_llm_calls') THEN
+                        ALTER TABLE cerebro_dream_log ADD COLUMN total_llm_calls INTEGER DEFAULT 0;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'cerebro_dream_log' AND column_name = 'total_input_tokens') THEN
+                        ALTER TABLE cerebro_dream_log ADD COLUMN total_input_tokens INTEGER DEFAULT 0;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'cerebro_dream_log' AND column_name = 'total_output_tokens') THEN
+                        ALTER TABLE cerebro_dream_log ADD COLUMN total_output_tokens INTEGER DEFAULT 0;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'cerebro_dream_log' AND column_name = 'duration_seconds') THEN
+                        ALTER TABLE cerebro_dream_log ADD COLUMN duration_seconds FLOAT DEFAULT 0;
+                    END IF;
+                END IF;
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'Dream log v2 migration skipped';
+            END $$;
+        """)
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_cerebro_dream_cycle ON cerebro_dream_log(cycle_id);")
+
         # ═══════════════════════════════════════════════════════════════════════
         # POCKET PENDING MESSAGES - v5A: Agent-initiated messages for pocket app
         # ═══════════════════════════════════════════════════════════════════════
