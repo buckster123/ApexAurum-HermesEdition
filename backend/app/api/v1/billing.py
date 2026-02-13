@@ -795,16 +795,15 @@ async def redeem_coupon(
         benefit_details = {"credits_added": coupon.value}
 
     elif coupon.coupon_type == "tier_upgrade":
-        # Grant temporary tier access
+        # Grant temporary tier access (site-side only, no Stripe charges)
         from datetime import datetime, timedelta, timezone
+        from app.config import QUEST_TIER_MAP
 
-        # Calculate expiry date
         expiry_date = datetime.now(timezone.utc) + timedelta(days=coupon.value)
-        target_tier = coupon.tier or "opus"
+        raw_tier = coupon.tier or "opus"
+        is_quest_tier = raw_tier in QUEST_TIER_MAP
+        effective_tier = QUEST_TIER_MAP.get(raw_tier, raw_tier)
 
-        # Update user's subscription tier (or create temporary override)
-        # For now, we'll update the subscription directly
-        # In a more sophisticated system, you'd have a separate "tier_overrides" table
         from app.models.billing import Subscription
 
         result = await db.execute(
@@ -812,39 +811,47 @@ async def redeem_coupon(
         )
         subscription = result.scalar_one_or_none()
 
+        tier_config = TIER_LIMITS.get(effective_tier, TIER_LIMITS.get("free_trial", {}))
+
         if subscription:
-            # Store original tier if not already upgraded
             original_tier = subscription.tier
-            subscription.tier = target_tier
-            # Set the period end to the coupon expiry
+            subscription.tier = effective_tier
+            subscription.status = "active"
+            subscription.messages_limit = tier_config.get("messages_per_month")
             if not subscription.current_period_end or subscription.current_period_end < expiry_date:
                 subscription.current_period_end = expiry_date
 
             benefit_details = {
-                "tier": target_tier,
+                "tier": effective_tier,
                 "days": coupon.value,
                 "expires": expiry_date.isoformat(),
                 "original_tier": original_tier,
             }
         else:
-            # Create a new subscription for the user
             from uuid import uuid4
             new_sub = Subscription(
                 user_id=user.id,
-                stripe_customer_id=f"coupon_{uuid4().hex[:8]}",  # Placeholder
-                tier=target_tier,
+                stripe_customer_id=f"coupon_{uuid4().hex[:8]}",
+                tier=effective_tier,
                 status="active",
                 current_period_end=expiry_date,
-                messages_limit=TIER_LIMITS.get(target_tier, {}).get("messages_per_month"),
+                messages_limit=tier_config.get("messages_per_month"),
             )
             db.add(new_sub)
             benefit_details = {
-                "tier": target_tier,
+                "tier": effective_tier,
                 "days": coupon.value,
                 "expires": expiry_date.isoformat(),
             }
 
-        benefit_description = f"Upgraded to {target_tier.title()} tier for {coupon.value} days"
+        # Activate quest mode if this is a quest tier coupon
+        if is_quest_tier:
+            from app.services.progression import ProgressionService
+            prog_svc = ProgressionService(db)
+            await prog_svc.activate_quest(user.id)
+            benefit_details["quest_activated"] = True
+
+        benefit_description = f"Upgraded to {effective_tier.title()} tier for {coupon.value} days"
 
     elif coupon.coupon_type == "subscription_discount":
         # For subscription discounts, we'd integrate with Stripe coupons
@@ -918,10 +925,13 @@ async def create_coupon(
     if request.coupon_type not in valid_types:
         raise HTTPException(status_code=400, detail=f"Invalid coupon type. Must be one of: {valid_types}")
 
-    # Validate tier for tier_upgrade
-    if request.coupon_type == "tier_upgrade":
-        valid_tiers = ["free_trial", "seeker", "adept", "opus", "azothic"]
-        if not request.tier or request.tier not in valid_tiers:
+    # Validate tier for tier_upgrade / subscription_discount
+    if request.coupon_type in ("tier_upgrade", "subscription_discount"):
+        valid_tiers = [
+            "free_trial", "seeker", "adept", "opus", "azothic",
+            "quest_seeker", "quest_adept", "quest_opus", "quest_azothic",
+        ]
+        if request.coupon_type == "tier_upgrade" and (not request.tier or request.tier not in valid_tiers):
             raise HTTPException(status_code=400, detail=f"tier_upgrade coupons require tier: one of {valid_tiers}")
 
     # Create coupon
