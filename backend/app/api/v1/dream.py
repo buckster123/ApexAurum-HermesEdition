@@ -49,8 +49,9 @@ async def trigger_dream_cycle(
     Enqueues an ARQ background job. Returns job_id for status polling.
     """
     # Get user's tier
-    from app.services.billing import get_user_subscription
-    sub = await get_user_subscription(db, user.id)
+    from app.services.billing import BillingService
+    billing = BillingService(db)
+    sub = await billing.get_or_create_subscription(user.id)
     tier = sub.tier if sub else "free_trial"
     tier_config = TIER_LIMITS.get(tier, TIER_LIMITS["free_trial"])
 
@@ -151,8 +152,9 @@ async def dream_status(
     cycles_used = await store.count_dream_cycles_since(user.id, month_start)
 
     # Get tier limit
-    from app.services.billing import get_user_subscription
-    sub = await get_user_subscription(db, user.id)
+    from app.services.billing import BillingService
+    billing = BillingService(db)
+    sub = await billing.get_or_create_subscription(user.id)
     tier = sub.tier if sub else "free_trial"
     tier_config = TIER_LIMITS.get(tier, TIER_LIMITS["free_trial"])
     max_cycles = tier_config.get("dream_cycles_per_month", 0)
@@ -250,8 +252,9 @@ async def trigger_targeted_dream(
         raise HTTPException(status_code=400, detail=f"Queue too large ({len(queue_ids)}). Maximum 100 memories per targeted cycle.")
 
     # Tier check (same as /run)
-    from app.services.billing import get_user_subscription
-    sub = await get_user_subscription(db, user.id)
+    from app.services.billing import BillingService
+    billing = BillingService(db)
+    sub = await billing.get_or_create_subscription(user.id)
     tier = sub.tier if sub else "free_trial"
     from app.config import QUEST_TIER_MAP
     base_tier = QUEST_TIER_MAP.get(tier, tier)

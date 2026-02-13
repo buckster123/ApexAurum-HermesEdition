@@ -95,8 +95,9 @@ class ImportLimits(BaseModel):
 
 async def _get_tier_config(db: AsyncSession, user):
     """Get user's tier config with quest tier resolution."""
-    from app.services.billing import get_user_subscription
-    sub = await get_user_subscription(db, user.id)
+    from app.services.billing import BillingService
+    billing = BillingService(db)
+    sub = await billing.get_or_create_subscription(user.id)
     tier = sub.tier if sub else "free_trial"
 
     # Resolve quest tiers
