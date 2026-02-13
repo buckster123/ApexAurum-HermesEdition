@@ -157,7 +157,7 @@ function soulStateColor(soul) {
       <div class="flex items-center justify-between mb-8">
         <div>
           <h1 class="text-2xl font-bold text-white">Devices</h1>
-          <p class="text-gray-400 text-sm mt-1">Manage your ApexPocket companions</p>
+          <p class="text-gray-400 text-sm mt-1">Manage your companion devices</p>
         </div>
         <button
           @click="showAddModal = true"
@@ -291,6 +291,36 @@ function soulStateColor(soul) {
             >
               Delete
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SensorHead Build Guide CTA -->
+      <div class="mt-8 bg-gradient-to-r from-gold/5 to-purple-500/5 border border-gold/20 rounded-lg overflow-hidden">
+        <div class="flex flex-col md:flex-row">
+          <img
+            src="/images/build-guide/hero-all-senses.jpg"
+            alt="SensorHead — all four senses"
+            class="w-full md:w-64 h-40 md:h-auto object-cover"
+          />
+          <div class="p-5 flex-1">
+            <div class="flex items-center gap-2 mb-2">
+              <h3 class="text-lg font-bold text-gold">Build Your Own SensorHead</h3>
+              <span class="px-2 py-0.5 rounded-full text-xs bg-green-500/20 text-green-400 border border-green-500/30">All Tiers</span>
+            </div>
+            <p class="text-sm text-gray-400 mb-3">
+              Give your AI agents real-world senses — thermal imaging, night vision, AI object detection,
+              and environmental monitoring. Step-by-step DIY guide with photos.
+            </p>
+            <div class="flex items-center gap-3">
+              <router-link
+                to="/devices/build-guide"
+                class="px-4 py-2 bg-gold text-black rounded font-medium text-sm hover:bg-gold/90 transition-colors"
+              >
+                Start Building
+              </router-link>
+              <span class="text-xs text-gray-500">~$270 in parts &middot; Builder reward included</span>
+            </div>
           </div>
         </div>
       </div>

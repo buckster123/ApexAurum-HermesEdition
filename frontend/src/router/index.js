@@ -95,6 +95,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/devices/build-guide',
+      name: 'build-guide',
+      component: () => import('@/views/BuildGuideView.vue'),
+      meta: { requiresAuth: false }
+    },
+    {
       path: '/devices/:id/sensors',
       name: 'sensor-dashboard',
       component: () => import('@/views/SensorDashboardView.vue'),
