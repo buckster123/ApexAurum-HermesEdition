@@ -24,6 +24,8 @@ const props = defineProps({
     ]
   },
   executing: { type: Boolean, default: false },
+  zoneHistory: { type: Array, default: () => [] },
+  zoneStats: { type: Object, default: null },
 })
 
 const emit = defineEmits(['execute', 'close'])
@@ -36,6 +38,7 @@ const files = ref([])
 const useTools = ref(true)
 const textareaRef = ref(null)
 const dropActive = ref(false)
+const activeTab = ref('new') // 'new' | 'history'
 
 // --- Zone context ---
 const ZONE_PROMPTS = {
@@ -99,6 +102,7 @@ watch(() => props.show, async (visible) => {
     files.value = []
     mode.value = 'single'
     useTools.value = true
+    activeTab.value = 'new'
 
     // Pre-select agents: from scene selection, agent-task event, or zone-affinity default
     const sceneAgents = props.zone?.preSelectedAgents
@@ -201,6 +205,30 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
 })
 
+// --- Re-run from history ---
+function rerunTask(entry) {
+  prompt.value = entry.prompt || ''
+  selectedAgents.value = [...(entry.agents || ['AZOTH'])]
+  mode.value = entry.mode || 'single'
+  activeTab.value = 'new'
+  nextTick(() => textareaRef.value?.focus())
+}
+
+function formatTimeAgo(timestamp) {
+  if (!timestamp) return ''
+  const ms = Date.now() - new Date(timestamp).getTime()
+  if (ms < 60000) return 'just now'
+  if (ms < 3600000) return Math.floor(ms / 60000) + 'm ago'
+  if (ms < 86400000) return Math.floor(ms / 3600000) + 'h ago'
+  return Math.floor(ms / 86400000) + 'd ago'
+}
+
+function formatDuration(ms) {
+  if (!ms) return ''
+  if (ms < 1000) return ms + 'ms'
+  return (ms / 1000).toFixed(1) + 's'
+}
+
 // --- File size formatting ---
 function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B'
@@ -247,8 +275,18 @@ function formatFileSize(bytes) {
               {{ zoneIcon }}
             </span>
             <div>
-              <h2 class="font-medium text-white text-sm">{{ zoneLabel }}</h2>
-              <span class="text-xs text-gray-500">Village Task</span>
+              <div class="flex items-center gap-1.5">
+                <h2 class="font-medium text-white text-sm">{{ zoneLabel }}</h2>
+                <span
+                  v-if="zoneStats?.level > 0"
+                  class="text-[10px] px-1.5 py-0.5 rounded bg-gold/20 text-gold font-medium"
+                >
+                  Lv.{{ zoneStats.level }}
+                </span>
+              </div>
+              <span class="text-xs text-gray-500">
+                {{ zoneStats?.tasks > 0 ? zoneStats.tasks + ' tasks' : 'Village Task' }}
+              </span>
             </div>
           </div>
           <button
@@ -261,8 +299,34 @@ function formatFileSize(bytes) {
           </button>
         </div>
 
-        <!-- Body -->
-        <div class="px-5 py-4 space-y-4">
+        <!-- Tab Bar -->
+        <div class="flex border-b border-apex-border px-5">
+          <button
+            @click="activeTab = 'new'"
+            class="px-4 py-2 text-xs transition-colors border-b-2 -mb-px"
+            :class="activeTab === 'new'
+              ? 'text-gold border-gold'
+              : 'text-gray-500 border-transparent hover:text-gray-300'"
+          >
+            New Task
+          </button>
+          <button
+            @click="activeTab = 'history'"
+            class="px-4 py-2 text-xs transition-colors border-b-2 -mb-px flex items-center gap-1.5"
+            :class="activeTab === 'history'
+              ? 'text-gold border-gold'
+              : 'text-gray-500 border-transparent hover:text-gray-300'"
+          >
+            History
+            <span
+              v-if="zoneHistory.length > 0"
+              class="w-4 h-4 rounded-full bg-white/10 text-[10px] flex items-center justify-center"
+            >{{ zoneHistory.length }}</span>
+          </button>
+        </div>
+
+        <!-- New Task Body -->
+        <div v-show="activeTab === 'new'" class="px-5 py-4 space-y-4">
           <!-- Prompt Input -->
           <div>
             <textarea
@@ -380,6 +444,45 @@ function formatFileSize(bytes) {
             <span class="text-[10px] text-gray-600">
               {{ mode === 'single' ? 'Single agent responds' : 'Agents deliberate together' }}
             </span>
+          </div>
+        </div>
+
+        <!-- History Tab -->
+        <div v-show="activeTab === 'history'" class="px-5 py-4 max-h-80 overflow-y-auto">
+          <div v-if="zoneHistory.length === 0" class="text-center py-10 text-gray-500 text-sm">
+            No tasks yet at this zone
+          </div>
+          <div v-else class="space-y-2">
+            <div
+              v-for="entry in zoneHistory.slice(0, 20)"
+              :key="entry.id"
+              class="bg-white/5 rounded-lg px-3 py-2.5 hover:bg-white/10 transition-colors cursor-pointer group"
+              @click="rerunTask(entry)"
+            >
+              <div class="flex items-center justify-between mb-1">
+                <div class="flex items-center gap-1.5">
+                  <span
+                    class="w-2 h-2 rounded-full"
+                    :class="entry.success ? 'bg-green-400' : 'bg-red-400'"
+                  ></span>
+                  <span class="text-xs text-gray-400">
+                    {{ entry.agents?.join(', ') }}
+                  </span>
+                  <span
+                    v-if="entry.mode === 'council'"
+                    class="text-[10px] px-1 py-0.5 rounded bg-purple-500/20 text-purple-400"
+                  >council</span>
+                </div>
+                <div class="flex items-center gap-2 text-[10px] text-gray-600">
+                  <span v-if="entry.duration">{{ formatDuration(entry.duration) }}</span>
+                  <span>{{ formatTimeAgo(entry.timestamp) }}</span>
+                </div>
+              </div>
+              <p class="text-sm text-gray-300 truncate">{{ entry.prompt }}</p>
+              <span class="text-[10px] text-gold opacity-0 group-hover:opacity-100 transition-opacity">
+                Click to re-run
+              </span>
+            </div>
           </div>
         </div>
 

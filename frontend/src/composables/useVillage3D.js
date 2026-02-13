@@ -391,6 +391,7 @@ export function useVillage3D(containerRef, options = {}) {
   const zoneGroups = new Map()
   const zonePlaceholders = new Map()
   const zoneGlowRings = new Map()
+  const zoneLabelSprites = new Map()
   const zoneMeshes = []
 
   // Systems
@@ -782,6 +783,7 @@ export function useVillage3D(containerRef, options = {}) {
       const labelSprite = _createZoneLabelSprite(config.label, config.color)
       labelSprite.position.y = 5
       group.add(labelSprite)
+      zoneLabelSprites.set(name, labelSprite)
 
       // --- Glow ring at ground ---
       const ringGeo = new THREE.TorusGeometry(2.5, 0.06, 8, 32)
@@ -802,16 +804,16 @@ export function useVillage3D(containerRef, options = {}) {
     }
   }
 
-  function _createZoneLabelSprite(text, dotColor) {
+  function _createZoneLabelSprite(text, dotColor, level = 0) {
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
-    canvas.width = 128
+    canvas.width = 160
     canvas.height = 48
 
     // Background
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
     ctx.beginPath()
-    ctx.roundRect(4, 4, 120, 40, 6)
+    ctx.roundRect(4, 4, 152, 40, 6)
     ctx.fill()
 
     // Colored dot
@@ -827,10 +829,22 @@ export function useVillage3D(containerRef, options = {}) {
     ctx.textBaseline = 'middle'
     ctx.fillText(text, 24, 24)
 
+    // Level stars (gold dots)
+    if (level > 0) {
+      const textWidth = ctx.measureText(text).width
+      const starStart = 24 + textWidth + 6
+      ctx.fillStyle = '#FFD700'
+      for (let i = 0; i < Math.min(level, 5); i++) {
+        ctx.beginPath()
+        ctx.arc(starStart + i * 10, 24, 3, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+
     const texture = new THREE.CanvasTexture(canvas)
     const material = new THREE.SpriteMaterial({ map: texture, transparent: true })
     const sprite = new THREE.Sprite(material)
-    sprite.scale.set(4, 1.5, 1)
+    sprite.scale.set(5, 1.5, 1)
     return sprite
   }
 
@@ -920,31 +934,101 @@ export function useVillage3D(containerRef, options = {}) {
         colorHex,
         color,
         glbSwapped: false,
+        idleGlowBase: 0,
       }
 
       agents.set(id, agent)
     }
   }
 
-  function _createAgentNameSprite(name) {
+  function _createAgentNameSprite(name, level = 0) {
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
-    canvas.width = 128
+    canvas.width = 160
     canvas.height = 32
 
+    ctx.shadowColor = '#000000'
+    ctx.shadowBlur = 4
+
+    // Agent name
     ctx.fillStyle = '#ffffff'
     ctx.font = 'bold 18px monospace'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.shadowColor = '#000000'
-    ctx.shadowBlur = 4
-    ctx.fillText(name, 64, 16)
+    const nameX = level > 0 ? 64 : 80
+    ctx.fillText(name, nameX, 16)
+
+    // Level badge
+    if (level > 0) {
+      ctx.shadowBlur = 0
+      const badgeX = nameX + ctx.measureText(name).width / 2 + 8
+      ctx.fillStyle = 'rgba(255, 215, 0, 0.8)'
+      ctx.beginPath()
+      ctx.roundRect(badgeX, 4, 30, 22, 4)
+      ctx.fill()
+      ctx.fillStyle = '#000000'
+      ctx.font = 'bold 12px monospace'
+      ctx.textAlign = 'center'
+      ctx.fillText(`${level}`, badgeX + 15, 16)
+    }
 
     const texture = new THREE.CanvasTexture(canvas)
     const material = new THREE.SpriteMaterial({ map: texture, transparent: true })
     const sprite = new THREE.Sprite(material)
-    sprite.scale.set(3.5, 0.875, 1)
+    sprite.scale.set(4.5, 0.9, 1)
     return sprite
+  }
+
+  // =========================================================================
+  // GAMIFICATION VISUAL METHODS (E5)
+  // =========================================================================
+
+  function updateAgentNameplate(agentId, level) {
+    const agent = agents.get(agentId)
+    if (!agent) return
+    // Remove old nameSprite
+    if (agent.nameSprite) {
+      agent.group.remove(agent.nameSprite)
+      agent.nameSprite.material.map?.dispose()
+      agent.nameSprite.material.dispose()
+    }
+    // Create new one with level badge
+    const sprite = _createAgentNameSprite(agentId, level)
+    sprite.position.y = agent.glbSwapped ? 3.0 : 2.2
+    agent.group.add(sprite)
+    agent.nameSprite = sprite
+  }
+
+  function updateZoneLabel(zoneName, level) {
+    const group = zoneGroups.get(zoneName)
+    const oldSprite = zoneLabelSprites.get(zoneName)
+    if (!group) return
+    // Remove old label
+    if (oldSprite) {
+      group.remove(oldSprite)
+      oldSprite.material.map?.dispose()
+      oldSprite.material.dispose()
+    }
+    // Create new label with level stars
+    const config = VILLAGE_LAYOUT[zoneName]
+    if (!config) return
+    const sprite = _createZoneLabelSprite(config.label, config.color, level)
+    sprite.position.y = 5
+    group.add(sprite)
+    zoneLabelSprites.set(zoneName, sprite)
+  }
+
+  function setAgentIdleGlow(agentId, level) {
+    const agent = agents.get(agentId)
+    if (!agent) return
+    // Level 3+: subtle ambient glow when idle
+    agent.idleGlowBase = level >= 3 ? 0.05 * (level - 2) : 0
+  }
+
+  function emitAchievementBurst(position) {
+    if (!particleSystem) return
+    // Gold burst, double the normal count
+    particleSystem.emit(position, 0xffd700, 40)
   }
 
   // =========================================================================
@@ -1344,8 +1428,8 @@ export function useVillage3D(containerRef, options = {}) {
         agent.mesh.material.emissiveIntensity = 0.4 + Math.sin(agent.workPulse * 4) * 0.3
       }
     } else {
-      // Hide glow ring when not working
-      agent.glowRing.material.opacity = 0
+      // Hide glow ring when not working (unless leveled agent has idle glow)
+      agent.glowRing.material.opacity = agent.idleGlowBase || 0
     }
 
     if (agent.state === 'idle') {
@@ -1506,6 +1590,7 @@ export function useVillage3D(containerRef, options = {}) {
       colorHex,
       color,
       glbSwapped: false,
+      idleGlowBase: 0,
     }
 
     agents.set(agentId, agent)
@@ -1855,6 +1940,7 @@ export function useVillage3D(containerRef, options = {}) {
     zoneGroups.clear()
     zonePlaceholders.clear()
     zoneGlowRings.clear()
+    zoneLabelSprites.clear()
     zoneMeshes.length = 0
 
     // Dispose the rest of the scene
@@ -1937,6 +2023,12 @@ export function useVillage3D(containerRef, options = {}) {
     // Layout
     hasCustomLayout,
     resetLayout,
+
+    // Gamification (E5)
+    updateAgentNameplate,
+    updateZoneLabel,
+    setAgentIdleGlow,
+    emitAchievementBurst,
 
     // Internal refs (for advanced use / debugging)
     scene: sceneRef,

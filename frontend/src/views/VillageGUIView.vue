@@ -8,7 +8,7 @@
  * "Where invisible computation becomes visible movement"
  */
 
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSound } from '@/composables/useSound'
 import VillageCanvas from '@/components/village/VillageCanvas.vue'
@@ -19,6 +19,7 @@ import VillageResultPanel from '@/components/village/VillageResultPanel.vue'
 import TaskTickerBar from '@/components/village/TaskTickerBar.vue'
 import TaskDetailPanel from '@/components/village/TaskDetailPanel.vue'
 import { useVillageTasking } from '@/composables/useVillageTasking'
+import { useVillageGamification } from '@/composables/useVillageGamification'
 import { ZONES, AGENT_COLORS } from '@/composables/useVillage'
 import { ZONES_3D, AGENT_COLORS as AGENT_COLORS_3D } from '@/composables/useVillageIsometric'
 import { VILLAGE_LAYOUT } from '@/composables/useVillage3D'
@@ -39,13 +40,23 @@ const {
   clearResult,
 } = useVillageTasking()
 
+// --- Village Gamification (E5) ---
+const {
+  agentLevels,
+  zoneLevels,
+  recordTask: recordGamificationTask,
+  getZoneHistory,
+  getZoneStats,
+} = useVillageGamification()
+
 const showTaskDialog = ref(false)
 const taskDialogZone = ref(null)
 const showResultPanel = ref(false)
 
-// Navigate to chat with selected agent
+// Navigate to chat with selected agent (2D/Iso only — 3D has its own popup)
 function handleAgentClick(agentId) {
   playTone(660, 0.05, 'sine', 0.1)
+  if (viewMode.value === '3d') return // Village3D handles its own agent popup
   router.push({ path: '/chat', query: { agent: agentId } })
 }
 
@@ -80,6 +91,7 @@ async function handleTaskExecute(task) {
   showTaskDialog.value = false
   showResultPanel.value = true // Show immediately to display streaming
   playTone(770, 0.05, 'sine', 0.1)
+  const taskStartTime = Date.now()
 
   // Trigger 3D scene: agent walks to zone + glow ring
   if (viewMode.value === '3d' && village3dRef.value) {
@@ -109,6 +121,36 @@ async function handleTaskExecute(task) {
   } else {
     sounds.toolErrorJingle()
   }
+
+  // --- Gamification (E5) ---
+  const newAchievements = recordGamificationTask({
+    zone: task.zone,
+    agents: task.agents,
+    mode: task.mode,
+    success: !!result,
+    prompt: task.prompt,
+    duration: Date.now() - taskStartTime,
+    resultPreview: result?.content?.slice(0, 200) || taskError.value?.slice(0, 200) || '',
+  })
+
+  if (viewMode.value === '3d' && village3dRef.value) {
+    // Achievement effects
+    for (const ach of newAchievements) {
+      const primaryAgent = task.agents[0] || 'AZOTH'
+      village3dRef.value.emitAchievementBurst(primaryAgent)
+      village3dRef.value.triggerBubble(primaryAgent, `Achievement: ${ach.name}!`, 'success', 6)
+      sounds.devModeActivate()
+    }
+
+    // Update visuals with new levels
+    for (const agentId of task.agents) {
+      const level = agentLevels.value[agentId] || 0
+      village3dRef.value.updateAgentNameplate(agentId, level)
+      village3dRef.value.setAgentIdleGlow(agentId, level)
+    }
+    const zLevel = zoneLevels.value[task.zone] || 0
+    village3dRef.value.updateZoneLabel(task.zone, zLevel)
+  }
 }
 
 function handleOpenInChat(conversationId) {
@@ -122,6 +164,30 @@ function handleOpenInChat(conversationId) {
 function handleCloseResult() {
   showResultPanel.value = false
   clearResult()
+}
+
+// --- Gamification computed props for dialog ---
+const currentZoneHistory = computed(() =>
+  taskDialogZone.value ? getZoneHistory(taskDialogZone.value.name) : []
+)
+const currentZoneStats = computed(() =>
+  taskDialogZone.value ? getZoneStats(taskDialogZone.value.name) : null
+)
+
+// Apply gamification visuals when 3D view initializes
+function applyGamificationVisuals() {
+  if (!village3dRef.value) return
+  for (const [agentId, level] of Object.entries(agentLevels.value)) {
+    if (level > 0) {
+      village3dRef.value.updateAgentNameplate(agentId, level)
+      village3dRef.value.setAgentIdleGlow(agentId, level)
+    }
+  }
+  for (const [zoneName, level] of Object.entries(zoneLevels.value)) {
+    if (level > 0) {
+      village3dRef.value.updateZoneLabel(zoneName, level)
+    }
+  }
 }
 
 // View mode — migrate old '3d' value to 'iso' (isometric)
@@ -174,9 +240,16 @@ const agentColors = computed(() => viewMode.value === '2d' ? AGENT_COLORS : AGEN
 
 // Save view mode preference
 const MODE_TONES = { '2d': 440, 'iso': 550, '3d': 660 }
-watch(viewMode, (mode) => {
+watch(viewMode, async (mode) => {
   localStorage.setItem('village-view-mode', mode)
   playTone(MODE_TONES[mode] || 440, 0.05, 'sine', 0.1)
+
+  // Apply gamification visuals when switching to 3D (after scene init)
+  if (mode === '3d') {
+    await nextTick()
+    await nextTick()
+    setTimeout(applyGamificationVisuals, 600)
+  }
 })
 
 // WebSocket connection with backoff
@@ -356,6 +429,10 @@ function handleWebGLError(error) {
 
 onMounted(() => {
   connectWebSocket()
+  // Apply gamification visuals if starting in 3D mode
+  if (viewMode.value === '3d') {
+    setTimeout(applyGamificationVisuals, 800)
+  }
 })
 
 onUnmounted(() => {
@@ -446,6 +523,8 @@ onUnmounted(() => {
             ref="village3dRef"
             :events="eventLog"
             :status="status"
+            :agent-levels="agentLevels"
+            :zone-levels="zoneLevels"
             @agent-click="handleAgentClick"
             @zone-click="handleZoneClick"
             @agent-task="handleAgentTask"
@@ -499,6 +578,8 @@ onUnmounted(() => {
       :show="showTaskDialog"
       :zone="taskDialogZone"
       :executing="isExecuting"
+      :zone-history="currentZoneHistory"
+      :zone-stats="currentZoneStats"
       @execute="handleTaskExecute"
       @close="showTaskDialog = false"
     />

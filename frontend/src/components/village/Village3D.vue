@@ -20,7 +20,15 @@ const props = defineProps({
   status: {
     type: Object,
     default: () => ({ connection: 'disconnected', eventCount: 0 })
-  }
+  },
+  agentLevels: {
+    type: Object,
+    default: () => ({})
+  },
+  zoneLevels: {
+    type: Object,
+    default: () => ({})
+  },
 })
 
 const emit = defineEmits(['zone-click', 'agent-click', 'agent-task', 'webgl-error'])
@@ -72,7 +80,11 @@ const {
   focusTarget,
   returnToOverview,
   hasCustomLayout,
-  resetLayout
+  resetLayout,
+  updateAgentNameplate,
+  updateZoneLabel,
+  setAgentIdleGlow,
+  emitAchievementBurst,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -92,6 +104,24 @@ defineExpose({
   },
   clearSceneSelection() {
     selectedSceneAgents.value = []
+  },
+  // Gamification (E5)
+  updateAgentNameplate(agentId, level) {
+    updateAgentNameplate(agentId, level)
+  },
+  updateZoneLabel(zoneName, level) {
+    updateZoneLabel(zoneName, level)
+  },
+  setAgentIdleGlow(agentId, level) {
+    setAgentIdleGlow(agentId, level)
+  },
+  emitAchievementBurst(agentId) {
+    const agent = agents.get(agentId)
+    if (agent) {
+      const pos = agent.group.position.clone()
+      pos.y = 1.5
+      emitAchievementBurst(pos)
+    }
   },
 })
 
@@ -119,6 +149,10 @@ const selectedAgentData = computed(() => {
     tool: agent.currentTool
   }
 })
+
+const selectedAgentLevel = computed(() =>
+  props.agentLevels[selectedAgentData.value?.id] || 0
+)
 
 const isDivedIn = computed(() => cameraMode.value !== 'orbit')
 
@@ -337,16 +371,24 @@ watch(() => props.events, (newEvents) => {
             </div>
             <div>
               <h3 class="font-medium text-white">{{ selectedAgentData.id }}</h3>
-              <span
-                class="text-xs px-2 py-0.5 rounded"
-                :class="{
-                  'bg-green-500/20 text-green-400': selectedAgentData.state === 'working',
-                  'bg-blue-500/20 text-blue-400': selectedAgentData.state === 'walking',
-                  'bg-gray-500/20 text-gray-400': selectedAgentData.state === 'idle'
-                }"
-              >
-                {{ selectedAgentData.state }}
-              </span>
+              <div class="flex items-center gap-1.5">
+                <span
+                  class="text-xs px-2 py-0.5 rounded"
+                  :class="{
+                    'bg-green-500/20 text-green-400': selectedAgentData.state === 'working',
+                    'bg-blue-500/20 text-blue-400': selectedAgentData.state === 'walking',
+                    'bg-gray-500/20 text-gray-400': selectedAgentData.state === 'idle'
+                  }"
+                >
+                  {{ selectedAgentData.state }}
+                </span>
+                <span
+                  v-if="selectedAgentLevel > 0"
+                  class="text-xs px-1.5 py-0.5 rounded bg-gold/20 text-gold font-medium"
+                >
+                  Lv.{{ selectedAgentLevel }}
+                </span>
+              </div>
             </div>
           </div>
           <button
