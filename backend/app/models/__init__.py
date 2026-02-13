@@ -26,6 +26,7 @@ from app.models.feature_credit import FeatureCreditBalance
 from app.models.system import SystemSettings
 from app.models.device import Device
 from app.models.agora import AgoraPost, AgoraReaction, AgoraComment
+from app.models.progression import UserProgression
 
 # User references all of the above, so import LAST
 from app.models.user import User
@@ -68,5 +69,6 @@ __all__ = [
     "AgoraPost",
     "AgoraReaction",
     "AgoraComment",
+    "UserProgression",
     # "UserVector",  # Temp disabled
 ]

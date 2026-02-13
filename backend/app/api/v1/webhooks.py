@@ -15,10 +15,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db_context
-from app.config import get_settings, TIER_LIMITS, CREDIT_PACKS
+from app.config import get_settings, TIER_LIMITS, CREDIT_PACKS, QUEST_TIER_MAP
 from app.models.billing import Subscription
 from app.services.billing import BillingService
 from app.services.usage import FeatureCreditService
+from app.services.progression import ProgressionService
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -225,12 +226,16 @@ async def handle_subscription_created(data: dict, billing: BillingService, db: A
 
     tier = _get_tier_from_price(price_id)
 
+    # Resolve tier — quest tiers store the classic equivalent in subscription
+    is_quest = _is_quest_tier(tier)
+    effective_tier = QUEST_TIER_MAP.get(tier, tier) if is_quest else tier
+
     # Update subscription
     subscription.stripe_subscription_id = subscription_id
     subscription.stripe_price_id = price_id
-    subscription.tier = tier
+    subscription.tier = effective_tier
     subscription.status = data.get("status", "active")
-    subscription.messages_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free_trial"])["messages_per_month"]
+    subscription.messages_limit = TIER_LIMITS.get(effective_tier, TIER_LIMITS["free_trial"])["messages_per_month"]
 
     # Set billing period
     if data.get("current_period_start"):
@@ -240,7 +245,13 @@ async def handle_subscription_created(data: dict, billing: BillingService, db: A
 
     subscription.cancel_at_period_end = data.get("cancel_at_period_end", False)
 
-    logger.info(f"Subscription created for user {subscription.user_id}: {tier}")
+    # Quest tier: activate progression tracking
+    if is_quest:
+        progression_service = ProgressionService(db)
+        await progression_service.activate_quest(subscription.user_id)
+        logger.info(f"Quest activated for user {subscription.user_id}: {tier} -> {effective_tier}")
+
+    logger.info(f"Subscription created for user {subscription.user_id}: {effective_tier}{' (quest)' if is_quest else ''}")
 
 
 async def handle_subscription_updated(data: dict, billing: BillingService, db: AsyncSession):
@@ -268,9 +279,28 @@ async def handle_subscription_updated(data: dict, billing: BillingService, db: A
 
     if price_id:
         tier = _get_tier_from_price(price_id)
-        subscription.tier = tier
+        is_quest = _is_quest_tier(tier)
+        effective_tier = QUEST_TIER_MAP.get(tier, tier) if is_quest else tier
+
+        # Detect quest -> classic upgrade
+        was_quest = False
+        if not is_quest and subscription.tier:
+            # Check if progression was active (user upgrading from quest to classic)
+            progression_service = ProgressionService(db)
+            prog = await progression_service.get_progression(subscription.user_id)
+            if prog and prog.quest_active:
+                was_quest = True
+                await progression_service.deactivate_quest(subscription.user_id, unlock_all=True)
+                logger.info(f"Quest -> classic upgrade for user {subscription.user_id}")
+
+        subscription.tier = effective_tier
         subscription.stripe_price_id = price_id
-        subscription.messages_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free_trial"])["messages_per_month"]
+        subscription.messages_limit = TIER_LIMITS.get(effective_tier, TIER_LIMITS["free_trial"])["messages_per_month"]
+
+        # New quest subscription: activate
+        if is_quest:
+            progression_service = ProgressionService(db)
+            await progression_service.activate_quest(subscription.user_id)
 
     # Update status
     subscription.status = data.get("status", subscription.status)
@@ -379,6 +409,7 @@ def _get_tier_from_price(price_id: str) -> str:
     if not price_id:
         return "free_trial"
 
+    # Classic tiers
     if price_id == settings.stripe_price_seeker_monthly:
         return "seeker"
     elif price_id == settings.stripe_price_adept_monthly:
@@ -388,8 +419,28 @@ def _get_tier_from_price(price_id: str) -> str:
     elif price_id == settings.stripe_price_azothic_monthly:
         return "azothic"
 
+    # Quest tiers (map to classic equivalent for message limits)
+    elif price_id == settings.stripe_price_quest_seeker_monthly:
+        return "quest_seeker"
+    elif price_id == settings.stripe_price_quest_adept_monthly:
+        return "quest_adept"
+    elif price_id == settings.stripe_price_quest_opus_monthly:
+        return "quest_opus"
+    elif price_id == settings.stripe_price_quest_azothic_monthly:
+        return "quest_azothic"
+
     # Fallback: check price ID naming convention
     price_lower = price_id.lower()
+    # Check quest tiers first (more specific)
+    if "quest" in price_lower:
+        if "azothic" in price_lower:
+            return "quest_azothic"
+        elif "opus" in price_lower:
+            return "quest_opus"
+        elif "adept" in price_lower:
+            return "quest_adept"
+        elif "seeker" in price_lower:
+            return "quest_seeker"
     if "azothic" in price_lower:
         return "azothic"
     elif "opus" in price_lower:
@@ -400,3 +451,8 @@ def _get_tier_from_price(price_id: str) -> str:
         return "seeker"
 
     return "seeker"  # Default paid tier, not free_trial
+
+
+def _is_quest_tier(tier: str) -> bool:
+    """Check if a tier string is a quest tier."""
+    return tier.startswith("quest_")

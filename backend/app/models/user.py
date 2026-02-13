@@ -72,6 +72,9 @@ class User(Base):
     nursery_models = relationship("NurseryModelRecord", back_populates="user", cascade="all, delete-orphan")
     nursery_apprentices = relationship("NurseryApprentice", back_populates="user", cascade="all, delete-orphan")
 
+    # Quest Progression
+    progression = relationship("UserProgression", back_populates="user", uselist=False, cascade="all, delete-orphan")
+
     # Devices (ApexPocket, etc.)
     devices = relationship("Device", back_populates="user", cascade="all, delete-orphan")
 

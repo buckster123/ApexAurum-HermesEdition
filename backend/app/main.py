@@ -356,6 +356,7 @@ async def health_check():
             "agora-social-feed",
             "cerebro-dream-engine",
             "bridge-inference-relay",
+            "quest-engine",
         ],
     }
 

@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     stripe_price_credits_500: Optional[str] = None  # $5 for 500 credits
     stripe_price_credits_2500: Optional[str] = None  # $20 for 2500 credits
 
+    # Quest tier price IDs (gamified progression — lower price, features unlock through gameplay)
+    stripe_price_quest_seeker_monthly: Optional[str] = None   # $5/mo Seeker Quest
+    stripe_price_quest_adept_monthly: Optional[str] = None    # $15/mo Adept Quest
+    stripe_price_quest_opus_monthly: Optional[str] = None     # $50/mo Opus Quest
+    stripe_price_quest_azothic_monthly: Optional[str] = None  # $150/mo Azothic Quest
+
     # Feature pack prices (one-time payments)
     stripe_price_pack_spark: Optional[str] = None
     stripe_price_pack_flame: Optional[str] = None
@@ -295,6 +301,22 @@ GRANTABLE_PROVIDERS = ["together", "groq", "deepseek", "qwen", "moonshot", "open
 
 # Tier hierarchy for >= comparisons
 TIER_HIERARCHY = {"free_trial": 0, "seeker": 1, "adept": 2, "opus": 3, "azothic": 4}
+
+# Quest tiers map to their classic equivalents for base message limits
+# Quest users get the same message allocation but features unlock through gameplay
+QUEST_TIER_MAP = {
+    "quest_seeker": "seeker",
+    "quest_adept": "adept",
+    "quest_opus": "opus",
+    "quest_azothic": "azothic",
+}
+
+QUEST_TIER_PRICES = {
+    "quest_seeker": 5,
+    "quest_adept": 15,
+    "quest_opus": 50,
+    "quest_azothic": 150,
+}
 
 # Feature credit packs (replaces old cents-based credit system)
 CREDIT_PACKS = {
