@@ -3,19 +3,27 @@
  * NeuralView - Neo-Cortex 3D Dashboard
  *
  * The main dashboard view for the Neo-Cortex memory visualization.
+ * Dream Engine integrated as a right-panel mode — trigger, monitor,
+ * and watch dream cycles transform the memory graph in real-time.
+ *
  * "Where memories glow like stars in the vast neural cosmos"
  */
 
 import { ref, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useNeoCortexStore } from '@/stores/neocortex'
+import { useDreamStore } from '@/stores/dream'
 import { useSound } from '@/composables/useSound'
 import StatsBar from '@/components/neural/StatsBar.vue'
 import MemoryFilters from '@/components/neural/MemoryFilters.vue'
 import MemoryDetailPanel from '@/components/neural/MemoryDetailPanel.vue'
+import DreamPanel from '@/components/neural/DreamPanel.vue'
 import NeuralSpace from '@/components/neural/NeuralSpace.vue'
 import MemoryList from '@/components/neural/MemoryList.vue'
 
+const route = useRoute()
 const store = useNeoCortexStore()
+const dreamStore = useDreamStore()
 const { playTone } = useSound()
 
 const neuralSpaceRef = ref(null)
@@ -53,6 +61,10 @@ function onMemorySelect(memory) {
     showDetails.value = true
     showFilters.value = false
   }
+  // Switch to memory panel when selecting a node
+  if (memory) {
+    store.setRightPanelMode('memory')
+  }
 }
 
 // Initialize
@@ -60,19 +72,44 @@ onMounted(async () => {
   window.addEventListener('resize', handleResize)
   handleResize()
 
+  // Check for ?panel=dream query param (e.g. from /dream redirect)
+  if (route.query.panel === 'dream') {
+    store.setRightPanelMode('dream')
+    showDetails.value = true
+  }
+
   // Play startup sound
   playTone(440, 0.1, 'sine', 0.1)
   setTimeout(() => playTone(554, 0.1, 'sine', 0.1), 100)
   setTimeout(() => playTone(659, 0.15, 'sine', 0.15), 200)
 
-  // Load data
-  await store.initialize()
+  // Load data (neural + dream in parallel)
+  await Promise.all([
+    store.initialize(),
+    dreamStore.initialize(),
+  ])
 })
 
 // Watch for filter changes and reload data
 watch(() => store.filters, async () => {
   await store.fetchGraphData()
 }, { deep: true })
+
+// Auto-switch to Dream panel when a dream cycle starts
+watch(() => dreamStore.isRunning, (running) => {
+  if (running) {
+    store.setRightPanelMode('dream')
+    showDetails.value = true
+  }
+})
+
+// Re-fetch graph data after dream cycle completes (new nodes/links may exist)
+watch(() => dreamStore.isRunning, async (running, wasRunning) => {
+  if (!running && wasRunning) {
+    await store.fetchGraphData()
+    await store.fetchStats()
+  }
+})
 </script>
 
 <template>
@@ -156,16 +193,64 @@ watch(() => store.filters, async () => {
         </div>
       </div>
 
-      <!-- Right: Details Panel -->
+      <!-- Right: Details / Dream Panel -->
       <transition name="slide-right">
         <div
           v-show="showDetails"
           :class="[
-            'w-80 flex-shrink-0 z-10',
+            'w-80 flex-shrink-0 z-10 flex flex-col bg-apex-dark border-l border-apex-border',
             isMobile ? 'absolute inset-y-0 right-0 shadow-2xl' : ''
           ]"
         >
-          <MemoryDetailPanel />
+          <!-- Panel mode tabs -->
+          <div class="flex items-center border-b border-apex-border shrink-0">
+            <button
+              @click="store.setRightPanelMode('memory')"
+              :class="[
+                'flex-1 px-4 py-2.5 text-xs font-medium transition-colors relative',
+                store.rightPanelMode === 'memory'
+                  ? 'text-white'
+                  : 'text-gray-500 hover:text-gray-300'
+              ]"
+            >
+              Memory
+              <div
+                v-if="store.rightPanelMode === 'memory'"
+                class="absolute bottom-0 left-2 right-2 h-0.5 bg-gold rounded-full"
+              ></div>
+            </button>
+            <button
+              @click="store.setRightPanelMode('dream')"
+              :class="[
+                'flex-1 px-4 py-2.5 text-xs font-medium transition-colors relative',
+                store.rightPanelMode === 'dream'
+                  ? 'text-white'
+                  : 'text-gray-500 hover:text-gray-300'
+              ]"
+            >
+              <span class="flex items-center justify-center gap-1.5">
+                Dream
+                <span
+                  v-if="dreamStore.isRunning"
+                  class="w-1.5 h-1.5 rounded-full bg-gold animate-pulse"
+                ></span>
+                <span
+                  v-else-if="dreamStore.unconsolidatedEpisodes > 0"
+                  class="w-1.5 h-1.5 rounded-full bg-amber-400"
+                ></span>
+              </span>
+              <div
+                v-if="store.rightPanelMode === 'dream'"
+                class="absolute bottom-0 left-2 right-2 h-0.5 bg-gold rounded-full"
+              ></div>
+            </button>
+          </div>
+
+          <!-- Panel content -->
+          <div class="flex-1 overflow-hidden">
+            <MemoryDetailPanel v-if="store.rightPanelMode === 'memory'" />
+            <DreamPanel v-else />
+          </div>
         </div>
       </transition>
     </div>

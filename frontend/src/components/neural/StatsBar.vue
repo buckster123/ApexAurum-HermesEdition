@@ -7,10 +7,12 @@
 
 import { computed } from 'vue'
 import { useNeoCortexStore, AGENT_COLORS } from '@/stores/neocortex'
+import { useDreamStore } from '@/stores/dream'
 
 const emit = defineEmits(['toggleView'])
 
 const store = useNeoCortexStore()
+const dreamStore = useDreamStore()
 
 const totalMemories = computed(() => store.memoryCount)
 const totalLinks = computed(() => store.linkCount)
@@ -27,6 +29,10 @@ const activeFilters = computed(() => {
 function setView(mode) {
   store.setViewMode(mode)
   emit('toggleView', mode)
+}
+
+function openDreamPanel() {
+  store.setRightPanelMode('dream')
 }
 </script>
 
@@ -68,8 +74,26 @@ function setView(mode) {
       </div>
     </div>
 
-    <!-- Center: Agent Legend (hidden on mobile) -->
-    <div class="hidden md:flex items-center gap-3">
+    <!-- Center: Dream status + Agent Legend (hidden on mobile) -->
+    <div class="hidden md:flex items-center gap-4">
+      <!-- Dream indicator -->
+      <button
+        v-if="!dreamStore.isFreeTier"
+        @click="openDreamPanel"
+        class="flex items-center gap-1.5 text-xs px-2 py-1 rounded-md transition-colors"
+        :class="dreamStore.isRunning
+          ? 'bg-gold/15 text-gold border border-gold/30'
+          : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'"
+      >
+        <span v-if="dreamStore.isRunning" class="w-1.5 h-1.5 rounded-full bg-gold animate-pulse"></span>
+        <span class="font-serif text-[10px]">Au</span>
+        <span class="font-mono">{{ dreamStore.cyclesUsed }}<span class="text-gray-600">/{{ dreamStore.cyclesLimit === null ? '\u221E' : dreamStore.cyclesLimit }}</span></span>
+      </button>
+
+      <!-- Divider -->
+      <div class="w-px h-4 bg-gray-700"></div>
+
+      <!-- Agent Legend -->
       <div
         v-for="(color, agent) in AGENT_COLORS"
         :key="agent"

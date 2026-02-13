@@ -97,6 +97,11 @@ export const useNeoCortexStore = defineStore('neocortex', () => {
   const autoRotate = ref(true)
   const nodeScale = ref(1.0)
 
+  // Dream integration
+  const rightPanelMode = ref('memory') // 'memory' | 'dream'
+  const isDreamAnimating = ref(false)
+  const dreamPhase = ref(-1) // -1 = idle, 0-5 = active phase
+
   // =============================================================================
   // Computed
   // =============================================================================
@@ -330,6 +335,15 @@ export const useNeoCortexStore = defineStore('neocortex', () => {
     viewMode.value = mode
   }
 
+  function setRightPanelMode(mode) {
+    rightPanelMode.value = mode
+  }
+
+  function setDreamAnimationState(animating, phase = -1) {
+    isDreamAnimating.value = animating
+    dreamPhase.value = phase
+  }
+
   // Initialize
   async function initialize() {
     webglSupported.value = isWebGLAvailable()
@@ -359,6 +373,9 @@ export const useNeoCortexStore = defineStore('neocortex', () => {
     showConnections,
     autoRotate,
     nodeScale,
+    rightPanelMode,
+    isDreamAnimating,
+    dreamPhase,
 
     // Computed
     filteredNodes,
@@ -384,6 +401,8 @@ export const useNeoCortexStore = defineStore('neocortex', () => {
     setFilter,
     clearFilters,
     setViewMode,
+    setRightPanelMode,
+    setDreamAnimationState,
     initialize,
   }
 })

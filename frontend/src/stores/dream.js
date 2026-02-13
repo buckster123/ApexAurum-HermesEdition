@@ -17,6 +17,10 @@ export const useDreamStore = defineStore('dream', () => {
   const error = ref(null)
   const lastJobId = ref(null)
 
+  // Phase animation tracking (for visual choreography)
+  const activePhase = ref(-1) // -1 = idle, 0-5 = current phase
+  const phaseStartTime = ref(null)
+
   // Computed
   const cyclesUsed = computed(() => status.value?.cycles_used || 0)
   const cyclesLimit = computed(() => status.value?.cycles_limit)
@@ -61,6 +65,8 @@ export const useDreamStore = defineStore('dream', () => {
 
     isRunning.value = true
     error.value = null
+    activePhase.value = 0
+    phaseStartTime.value = Date.now()
 
     try {
       const res = await api.post('/api/v1/cortex/dream/run')
@@ -79,7 +85,23 @@ export const useDreamStore = defineStore('dream', () => {
       throw err
     } finally {
       isRunning.value = false
+      resetPhase()
     }
+  }
+
+  function advancePhase() {
+    if (activePhase.value < 5) {
+      activePhase.value++
+      phaseStartTime.value = Date.now()
+    } else {
+      activePhase.value = -1
+      phaseStartTime.value = null
+    }
+  }
+
+  function resetPhase() {
+    activePhase.value = -1
+    phaseStartTime.value = null
   }
 
   async function initialize() {
@@ -105,9 +127,13 @@ export const useDreamStore = defineStore('dream', () => {
     lastReport,
     unconsolidatedEpisodes,
     tier,
+    activePhase,
+    phaseStartTime,
     fetchStatus,
     fetchLog,
     triggerDream,
+    advancePhase,
+    resetPhase,
     initialize,
   }
 })
