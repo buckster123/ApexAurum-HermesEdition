@@ -1,8 +1,8 @@
 <script setup>
 /**
- * Devices View - ApexPocket Device Management
+ * Devices View - Device Management
  *
- * Register, monitor, and manage ApexPocket companion devices.
+ * Register, monitor, and manage ApexPocket and SensorHead devices.
  * Handles device tokens, soul state display, and lifecycle operations.
  */
 
@@ -17,6 +17,8 @@ const store = useDevicesStore()
 
 const showAddModal = ref(false)
 const newDeviceName = ref('')
+const newDeviceType = ref('sensor_head')
+const lastCreatedType = ref('sensor_head')
 const creating = ref(false)
 const copied = ref(false)
 const qrDataUrl = ref(null)
@@ -41,9 +43,11 @@ async function handleCreate() {
   if (!newDeviceName.value.trim()) return
   creating.value = true
   try {
-    await store.createDevice(newDeviceName.value.trim())
+    lastCreatedType.value = newDeviceType.value
+    await store.createDevice(newDeviceName.value.trim(), newDeviceType.value)
     showAddModal.value = false
     newDeviceName.value = ''
+    newDeviceType.value = 'sensor_head'
   } catch (e) {
     // error shown via store.error
   } finally {
@@ -187,7 +191,7 @@ function soulStateColor(soul) {
       >
         <div class="bg-white/5 border border-apex-border rounded-lg p-8 max-w-md mx-auto">
           <p class="text-gray-400 mb-6">
-            No devices registered yet. Add your first ApexPocket to get started.
+            No devices registered yet. Add your first device to get started.
           </p>
           <button
             @click="showAddModal = true"
@@ -336,11 +340,36 @@ function soulStateColor(soul) {
 
           <div class="space-y-4">
             <div>
+              <label class="block text-sm text-gray-400 mb-1">Device Type</label>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  @click="newDeviceType = 'sensor_head'"
+                  class="p-3 rounded border text-left transition-colors"
+                  :class="newDeviceType === 'sensor_head'
+                    ? 'border-gold bg-gold/10 text-white'
+                    : 'border-apex-border bg-white/5 text-gray-400 hover:border-gray-500'"
+                >
+                  <div class="font-medium text-sm">SensorHead</div>
+                  <div class="text-xs mt-0.5 opacity-70">Pi + sensors + cameras</div>
+                </button>
+                <button
+                  @click="newDeviceType = 'apex_pocket'"
+                  class="p-3 rounded border text-left transition-colors"
+                  :class="newDeviceType === 'apex_pocket'
+                    ? 'border-gold bg-gold/10 text-white'
+                    : 'border-apex-border bg-white/5 text-gray-400 hover:border-gray-500'"
+                >
+                  <div class="font-medium text-sm">ApexPocket</div>
+                  <div class="text-xs mt-0.5 opacity-70">Mobile companion</div>
+                </button>
+              </div>
+            </div>
+            <div>
               <label class="block text-sm text-gray-400 mb-1">Device Name</label>
               <input
                 v-model="newDeviceName"
                 type="text"
-                placeholder="My Pocket"
+                :placeholder="newDeviceType === 'sensor_head' ? 'My SensorHead' : 'My Pocket'"
                 class="w-full bg-white/5 border border-apex-border rounded px-3 py-2 text-white placeholder-gray-600 focus:outline-none focus:border-gold"
                 maxlength="100"
                 @keyup.enter="handleCreate"
@@ -382,15 +411,23 @@ function soulStateColor(soul) {
             <code class="text-gold text-sm break-all select-all">{{ store.newDeviceToken }}</code>
           </div>
 
-          <!-- QR Code -->
-          <div v-if="qrDataUrl" class="flex flex-col items-center mb-4">
+          <!-- SensorHead: config download instructions -->
+          <div v-if="lastCreatedType === 'sensor_head'" class="mb-4 p-3 bg-gold/5 border border-gold/20 rounded-lg">
+            <p class="text-sm text-gray-300 mb-2">
+              Download the config and save it on your Pi:
+            </p>
+            <code class="text-xs text-gold block">~/.config/sensorhead/bridge.json</code>
+          </div>
+
+          <!-- ApexPocket: QR Code -->
+          <div v-else-if="qrDataUrl" class="flex flex-col items-center mb-4">
             <img :src="qrDataUrl" alt="QR Code" class="w-[200px] h-[200px] bg-white rounded-lg" />
             <p class="text-gray-400 text-xs mt-2">Scan with ApexPocket app to pair</p>
           </div>
 
           <!-- Warning -->
           <p class="text-amber-400 text-sm mb-4">
-            This token is shown once. Save it securely -- it cannot be retrieved later.
+            This token is shown once. Save it securely — it cannot be retrieved later.
           </p>
 
           <!-- Actions -->

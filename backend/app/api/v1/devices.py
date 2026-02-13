@@ -28,9 +28,19 @@ router = APIRouter()
 
 # --- Schemas ---
 
+VALID_DEVICE_TYPES = {"apex_pocket", "sensor_head"}
+
+
 class DeviceCreateRequest(BaseModel):
     device_name: str
     device_type: str = "apex_pocket"
+
+    @field_validator("device_type")
+    @classmethod
+    def validate_device_type(cls, v: str) -> str:
+        if v not in VALID_DEVICE_TYPES:
+            raise ValueError(f"Invalid device type. Must be one of: {', '.join(sorted(VALID_DEVICE_TYPES))}")
+        return v
 
     @field_validator("device_name")
     @classmethod
@@ -99,14 +109,17 @@ def _generate_device_token() -> str:
     return "apex_dev_" + secrets.token_hex(16)
 
 
-def _build_config_json(device_id: str, token: str) -> str:
+def _build_config_json(device_id: str, token: str, device_type: str = "apex_pocket") -> str:
     """Build the device configuration JSON string."""
+    cloud_url = "https://backend-production-507c.up.railway.app"
     config = {
-        "cloud_url": "https://backend-production-507c.up.railway.app",
+        "cloud_url": cloud_url,
         "device_token": token,
         "device_id": device_id,
         "api_version": "v1",
     }
+    if device_type == "sensor_head":
+        config["ws_url"] = cloud_url.replace("https://", "wss://") + "/ws/bridge"
     return json.dumps(config, indent=2)
 
 
@@ -204,7 +217,7 @@ async def create_device(
     await db.refresh(device)
 
     device_id_str = str(device.id)
-    config_json = _build_config_json(device_id_str, plaintext_token)
+    config_json = _build_config_json(device_id_str, plaintext_token, device.device_type)
 
     logger.info(f"Device created: {device.device_name} ({device.device_type}) for user {user.id}")
 
@@ -295,7 +308,7 @@ async def rotate_device_token(
     await db.refresh(device)
 
     device_id_str = str(device.id)
-    config_json = _build_config_json(device_id_str, plaintext_token)
+    config_json = _build_config_json(device_id_str, plaintext_token, device.device_type)
 
     logger.info(f"Device token rotated: {device.device_name} (id={device.id})")
 
