@@ -397,7 +397,7 @@ class FireflySystem {
 // =============================================================================
 
 export function useVillage3D(containerRef, options = {}) {
-  const { onAgentClick, onZoneClick, onWebGLError } = options
+  const { onAgentClick, onZoneClick, onPedestalClick, onWebGLError } = options
 
   // --- Reactive state (exposed) ---
   const selectedAgent = shallowRef(null)
@@ -556,6 +556,9 @@ export function useVillage3D(containerRef, options = {}) {
 
     // --- Particle system ---
     particleSystem = new ParticleSystem(scene)
+
+    // --- Grand Prize Pedestal (H4) ---
+    _createPedestal(scene)
 
     // --- Apply saved layout if present ---
     const savedLayout = loadLayout()
@@ -1409,6 +1412,239 @@ export function useVillage3D(containerRef, options = {}) {
   }
 
   // =========================================================================
+  // H4: GRAND PRIZE PEDESTAL — The Village Shrine
+  // =========================================================================
+
+  let pedestalGroup = null
+  let pedestalStage = null
+  let pedestalStageElements = null  // Current stage-specific meshes
+  let pedestalLight = null
+  let pedestalOrbitParticles = null
+
+  const PEDESTAL_POS = new THREE.Vector3(3, 0, -3) // Near fountain, Village Square
+
+  function _createPedestal(scene) {
+    pedestalGroup = new THREE.Group()
+    pedestalGroup.position.copy(PEDESTAL_POS)
+    pedestalGroup.userData = { type: 'pedestal' }
+
+    // Stone base cylinder
+    const baseGeo = new THREE.CylinderGeometry(0.8, 1.0, 1.2, 8)
+    const baseMat = new THREE.MeshStandardMaterial({
+      color: 0x555566,
+      roughness: 0.9,
+      metalness: 0.1,
+    })
+    const base = new THREE.Mesh(baseGeo, baseMat)
+    base.position.y = 0.6
+    base.castShadow = !isMobile
+    pedestalGroup.add(base)
+
+    // Top platform
+    const topGeo = new THREE.CylinderGeometry(0.9, 0.8, 0.15, 8)
+    const topMat = new THREE.MeshStandardMaterial({
+      color: 0x666677,
+      roughness: 0.8,
+      metalness: 0.15,
+    })
+    const top = new THREE.Mesh(topGeo, topMat)
+    top.position.y = 1.275
+    top.castShadow = !isMobile
+    pedestalGroup.add(top)
+
+    // Faint white glow (default seeker state)
+    pedestalLight = new THREE.PointLight(0xffffff, 0.3, 5)
+    pedestalLight.position.y = 2.5
+    pedestalGroup.add(pedestalLight)
+
+    scene.add(pedestalGroup)
+
+    // Default to seeker state
+    evolvePedestal('seeker')
+  }
+
+  function evolvePedestal(stage) {
+    if (!pedestalGroup) return
+    if (stage === pedestalStage) return
+    pedestalStage = stage
+
+    // Remove old stage elements
+    if (pedestalStageElements) {
+      for (const el of pedestalStageElements) {
+        pedestalGroup.remove(el)
+        el.traverse((child) => {
+          if (child.geometry) child.geometry.dispose()
+          if (child.material) child.material.dispose()
+        })
+      }
+    }
+    pedestalStageElements = []
+
+    // Remove old orbit particles
+    if (pedestalOrbitParticles) {
+      pedestalGroup.remove(pedestalOrbitParticles)
+      pedestalOrbitParticles.geometry.dispose()
+      pedestalOrbitParticles.material.dispose()
+      pedestalOrbitParticles = null
+    }
+
+    if (stage === 'seeker' || !stage) {
+      // Faint white glow, no crystal
+      pedestalLight.color.set(0xffffff)
+      pedestalLight.intensity = 0.3
+
+    } else if (stage === 'adept') {
+      // Blue crystal shard
+      const crystalGeo = new THREE.OctahedronGeometry(0.35, 0)
+      const crystalMat = new THREE.MeshStandardMaterial({
+        color: 0x60a5fa,
+        emissive: 0x60a5fa,
+        emissiveIntensity: 0.6,
+        transparent: true,
+        opacity: 0.85,
+        roughness: 0.1,
+        metalness: 0.5,
+      })
+      const crystal = new THREE.Mesh(crystalGeo, crystalMat)
+      crystal.position.y = 1.8
+      crystal.castShadow = !isMobile
+      pedestalGroup.add(crystal)
+      pedestalStageElements.push(crystal)
+
+      pedestalLight.color.set(0x60a5fa)
+      pedestalLight.intensity = 0.6
+
+    } else if (stage === 'opus') {
+      // Purple octahedron, larger
+      const octoGeo = new THREE.OctahedronGeometry(0.5, 1)
+      const octoMat = new THREE.MeshStandardMaterial({
+        color: 0xa78bfa,
+        emissive: 0xa78bfa,
+        emissiveIntensity: 0.7,
+        transparent: true,
+        opacity: 0.9,
+        roughness: 0.05,
+        metalness: 0.6,
+      })
+      const octo = new THREE.Mesh(octoGeo, octoMat)
+      octo.position.y = 2.0
+      octo.castShadow = !isMobile
+      pedestalGroup.add(octo)
+      pedestalStageElements.push(octo)
+
+      // Orbiting particles
+      _createOrbitParticles(0xa78bfa, 8)
+
+      pedestalLight.color.set(0xa78bfa)
+      pedestalLight.intensity = 0.8
+
+    } else if (stage === 'azothic') {
+      // Golden dodecahedron shrine
+      const dodecGeo = new THREE.DodecahedronGeometry(0.55, 0)
+      const dodecMat = new THREE.MeshStandardMaterial({
+        color: 0xffd700,
+        emissive: 0xffd700,
+        emissiveIntensity: 0.8,
+        roughness: 0.05,
+        metalness: 0.8,
+      })
+      const dodec = new THREE.Mesh(dodecGeo, dodecMat)
+      dodec.position.y = 2.2
+      dodec.castShadow = !isMobile
+      pedestalGroup.add(dodec)
+      pedestalStageElements.push(dodec)
+
+      // Orbiting particles (gold, more)
+      _createOrbitParticles(0xffd700, 16)
+
+      // "SensorHead Awaits" text sprite
+      const textSprite = _createPedestalTextSprite('SensorHead Awaits')
+      textSprite.position.y = 3.5
+      pedestalGroup.add(textSprite)
+      pedestalStageElements.push(textSprite)
+
+      pedestalLight.color.set(0xffd700)
+      pedestalLight.intensity = 1.2
+    }
+  }
+
+  function _createOrbitParticles(colorHex, count) {
+    const positions = new Float32Array(count * 3)
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2
+      positions[i * 3] = Math.cos(angle) * 1.2
+      positions[i * 3 + 1] = 2.0 + Math.sin(angle * 2) * 0.3
+      positions[i * 3 + 2] = Math.sin(angle) * 1.2
+    }
+
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+
+    const mat = new THREE.PointsMaterial({
+      color: colorHex,
+      size: 0.15,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+
+    pedestalOrbitParticles = new THREE.Points(geo, mat)
+    pedestalGroup.add(pedestalOrbitParticles)
+  }
+
+  function _createPedestalTextSprite(text) {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    canvas.width = 256
+    canvas.height = 48
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+    ctx.beginPath()
+    ctx.roundRect(8, 6, 240, 36, 8)
+    ctx.fill()
+
+    ctx.fillStyle = '#FFD700'
+    ctx.font = 'bold 16px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, 128, 24)
+
+    const texture = new THREE.CanvasTexture(canvas)
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false })
+    const sprite = new THREE.Sprite(material)
+    sprite.scale.set(4, 0.75, 1)
+    return sprite
+  }
+
+  function _updatePedestal(dt, time) {
+    if (!pedestalGroup) return
+
+    // Rotate stage elements
+    if (pedestalStageElements) {
+      for (const el of pedestalStageElements) {
+        if (el.isMesh) {
+          el.rotation.y += dt * 0.8
+          // Gentle bob
+          el.position.y = el.position.y + Math.sin(time * 2) * 0.002
+        }
+      }
+    }
+
+    // Orbit particles rotation
+    if (pedestalOrbitParticles) {
+      pedestalOrbitParticles.rotation.y += dt * 1.2
+      pedestalOrbitParticles.material.opacity = 0.5 + Math.sin(time * 3) * 0.3
+    }
+
+    // Light pulse
+    if (pedestalLight && pedestalStage && pedestalStage !== 'seeker') {
+      const basePulse = pedestalStage === 'azothic' ? 1.0 : pedestalStage === 'opus' ? 0.7 : 0.5
+      pedestalLight.intensity = basePulse + Math.sin(time * 2) * 0.2
+    }
+  }
+
+  // =========================================================================
   // GLB PROGRESSIVE ENHANCEMENT
   // =========================================================================
 
@@ -1770,6 +2006,9 @@ export function useVillage3D(containerRef, options = {}) {
     // --- Update fireflies ---
     if (fireflySystem) fireflySystem.update(elapsedTime)
 
+    // --- Update pedestal (H4) ---
+    _updatePedestal(dt, elapsedTime)
+
     // --- Render ---
     controls.update()
     renderer.render(scene, camera)
@@ -2116,6 +2355,8 @@ export function useVillage3D(containerRef, options = {}) {
     for (const group of zoneGroups.values()) {
       targets.push(group)
     }
+    // Pedestal (H4)
+    if (pedestalGroup) targets.push(pedestalGroup)
 
     return raycaster.intersectObjects(targets, true)
   }
@@ -2159,6 +2400,8 @@ export function useVillage3D(containerRef, options = {}) {
       }
 
       onAgentClick?.(userData.id, agents.get(userData.id))
+    } else if (userData.type === 'pedestal') {
+      onPedestalClick?.()
     } else if (userData.type === 'zone') {
       onZoneClick?.(userData.name, VILLAGE_LAYOUT[userData.name]?.label)
     }
@@ -2275,6 +2518,23 @@ export function useVillage3D(containerRef, options = {}) {
     if (fireflySystem) {
       fireflySystem.dispose()
       fireflySystem = null
+    }
+
+    // Dispose pedestal (H4)
+    if (pedestalGroup) {
+      sceneRef.value?.remove(pedestalGroup)
+      pedestalGroup.traverse((child) => {
+        if (child.geometry) child.geometry.dispose()
+        if (child.material) {
+          if (child.material.map) child.material.map.dispose()
+          child.material.dispose()
+        }
+      })
+      pedestalGroup = null
+      pedestalStageElements = null
+      pedestalOrbitParticles = null
+      pedestalLight = null
+      pedestalStage = null
     }
 
     // Dispose environment assets (fountain, trees, bushes, etc.)
@@ -2447,6 +2707,9 @@ export function useVillage3D(containerRef, options = {}) {
     // Unlock Ceremonies (G3)
     playUnlockCeremony,
     skipCeremony,
+
+    // Grand Prize Pedestal (H4)
+    evolvePedestal,
 
     // Internal refs (for advanced use / debugging)
     scene: sceneRef,

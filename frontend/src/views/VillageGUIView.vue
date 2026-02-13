@@ -275,6 +275,9 @@ function applyQuestLockState() {
   }
   // AZOTH is always unlocked
   village3dRef.value.setAgentLocked('AZOTH', false)
+
+  // H4: Evolve pedestal based on quest stage
+  village3dRef.value.evolvePedestal(questProgress.quest_stage || 'seeker')
 }
 
 // Apply gamification visuals when 3D view initializes
@@ -650,6 +653,7 @@ onUnmounted(() => {
             @agent-click="handleAgentClick"
             @zone-click="handleZoneClick"
             @agent-task="handleAgentTask"
+            @pedestal-click="router.push('/achievements')"
             @webgl-error="handleWebGLError"
           />
         </div>

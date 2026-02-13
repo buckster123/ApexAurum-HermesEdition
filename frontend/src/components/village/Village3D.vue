@@ -35,7 +35,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['zone-click', 'agent-click', 'agent-task', 'webgl-error'])
+const emit = defineEmits(['zone-click', 'agent-click', 'agent-task', 'pedestal-click', 'webgl-error'])
 
 const containerRef = ref(null)
 const showAgentPopup = ref(false)
@@ -60,6 +60,9 @@ const villageOptions = {
       label,
       color: VILLAGE_LAYOUT[zoneName]?.color || '#2d3436',
     })
+  },
+  onPedestalClick: () => {
+    emit('pedestal-click')
   },
   onWebGLError: (error) => {
     emit('webgl-error', error)
@@ -95,6 +98,7 @@ const {
   focusOnZone,
   setAgentLocked,
   isAgentLocked,
+  evolvePedestal,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -157,6 +161,10 @@ defineExpose({
   },
   isAgentLocked(agentId) {
     return isAgentLocked(agentId)
+  },
+  // Grand Prize Pedestal (H4)
+  evolvePedestal(stage) {
+    evolvePedestal(stage)
   },
 })
 
