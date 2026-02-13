@@ -129,6 +129,13 @@ function closeMobileMenu() {
           Devices
         </router-link>
         <router-link
+          to="/achievements"
+          class="text-gray-400 hover:text-gold transition-colors"
+          active-class="text-gold"
+        >
+          Achievements
+        </router-link>
+        <router-link
           to="/billing"
           class="text-gray-400 hover:text-white transition-colors"
           active-class="text-gold"
@@ -299,6 +306,13 @@ function closeMobileMenu() {
           class="px-4 py-3 rounded-lg text-gray-300 hover:bg-white/5 hover:text-gold transition-colors"
         >
           📱 Devices
+        </router-link>
+        <router-link
+          to="/achievements"
+          @click="closeMobileMenu"
+          class="px-4 py-3 rounded-lg text-gray-300 hover:bg-white/5 hover:text-gold transition-colors"
+        >
+          Achievements
         </router-link>
         <router-link
           to="/billing"
