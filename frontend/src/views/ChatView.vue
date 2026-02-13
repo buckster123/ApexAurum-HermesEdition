@@ -388,13 +388,25 @@ function selectConversation(conv) {
 }
 
 // Filtered conversations (search)
+const HISTORY_PREVIEW_COUNT = 8
+const showAllHistory = ref(false)
 const filteredConversations = computed(() => {
-  if (!searchQuery.value.trim()) return chat.sortedConversations
-  const q = searchQuery.value.toLowerCase()
-  return chat.sortedConversations.filter(c =>
-    c.title?.toLowerCase().includes(q)
-  )
+  let convs = chat.sortedConversations
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.toLowerCase()
+    convs = convs.filter(c => c.title?.toLowerCase().includes(q))
+  }
+  if (!showAllHistory.value && !searchQuery.value.trim() && convs.length > HISTORY_PREVIEW_COUNT) {
+    return convs.slice(0, HISTORY_PREVIEW_COUNT)
+  }
+  return convs
 })
+const hasMoreConversations = computed(() =>
+  !searchQuery.value.trim() && chat.sortedConversations.length > HISTORY_PREVIEW_COUNT
+)
+const hiddenCount = computed(() =>
+  Math.max(0, chat.sortedConversations.length - HISTORY_PREVIEW_COUNT)
+)
 
 // Inline title editing
 function startEdit(conv) {
@@ -562,7 +574,7 @@ function renderMarkdown(content) {
       </div>
 
       <!-- Conversations List (with pull-to-refresh) -->
-      <div ref="conversationsList" class="flex-1 overflow-y-auto px-2 relative">
+      <div ref="conversationsList" class="flex-1 min-h-[10rem] overflow-y-auto px-2 relative">
         <!-- Pull to refresh indicator -->
         <div
           v-if="pullRefresh.isPulling.value || pullRefresh.isRefreshing.value"
@@ -649,7 +661,19 @@ function renderMarkdown(content) {
         <div v-else-if="chat.conversations.length === 0" class="text-center text-gray-500 text-sm py-8">
           No conversations yet
         </div>
+
+        <!-- Show more / Show less -->
+        <button
+          v-if="hasMoreConversations"
+          @click="showAllHistory = !showAllHistory"
+          class="w-full py-2 text-xs text-gray-500 hover:text-gold transition-colors"
+        >
+          {{ showAllHistory ? 'Show less' : `Show ${hiddenCount} more...` }}
+        </button>
       </div>
+
+      <!-- Sidebar Footer (Model, Tools, Agent selectors) -->
+      <div class="shrink-0 overflow-y-auto max-h-[45vh]">
 
       <!-- Provider Selector (The Many Flames - Dev Mode Only) -->
       <div v-if="devMode" class="p-4 border-t border-apex-border" :class="{ 'border-purple-500/30': pacMode }">
@@ -863,6 +887,7 @@ function renderMarkdown(content) {
           </select>
         </div>
       </div>
+      </div><!-- /Sidebar Footer -->
     </aside>
 
     <!-- Main Chat Area -->
