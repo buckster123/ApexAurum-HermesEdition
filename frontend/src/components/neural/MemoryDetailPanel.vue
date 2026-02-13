@@ -8,10 +8,20 @@
 
 import { ref, computed } from 'vue'
 import { useNeoCortexStore, AGENT_COLORS, LAYER_CONFIG, MEMORY_TYPES } from '@/stores/neocortex'
+import { useDreamStore } from '@/stores/dream'
 import { useSound } from '@/composables/useSound'
 
 const store = useNeoCortexStore()
+const dreamStore = useDreamStore()
 const { playTone } = useSound()
+
+const isQueued = computed(() => memory.value && dreamStore.isInQueue(memory.value.id))
+
+function toggleDreamQueue() {
+  if (!memory.value) return
+  dreamStore.toggleQueueMembership(memory.value.id)
+  playTone(isQueued.value ? 330 : 770, 0.1, 'sine', 0.15)
+}
 
 const isPromoting = ref(false)
 const isDeleting = ref(false)
@@ -318,6 +328,20 @@ function close() {
         </div>
 
         <!-- Delete -->
+        <!-- Dream queue toggle -->
+        <button
+          v-if="!dreamStore.isFreeTier"
+          @click="toggleDreamQueue"
+          :class="[
+            'w-full text-xs py-2 rounded transition-colors',
+            isQueued
+              ? 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30'
+              : 'bg-purple-500/10 hover:bg-purple-500/20 text-purple-400/70'
+          ]"
+        >
+          {{ isQueued ? 'Remove from Athanor' : 'Mark for Transmutation' }}
+        </button>
+
         <button
           v-if="!showDeleteConfirm"
           @click="showDeleteConfirm = true"

@@ -64,6 +64,15 @@ async function handleTriggerDream() {
   }
 }
 
+async function handleTargetedDream() {
+  triggerError.value = null
+  try {
+    await dreamStore.triggerTargetedDream()
+  } catch {
+    triggerError.value = dreamStore.error || 'Targeted dream failed.'
+  }
+}
+
 function dismissError() {
   triggerError.value = null
   dreamStore.error = null
@@ -117,6 +126,43 @@ function dismissError() {
           class="btn-primary w-full py-2 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Initiate Dream Cycle
+        </button>
+      </div>
+
+      <!-- Athanor Queue (Targeted Dreams) -->
+      <div v-if="dreamStore.hasQueue" class="space-y-2">
+        <div class="flex items-center justify-between">
+          <h4 class="text-[10px] uppercase tracking-widest text-purple-400">
+            Athanor Queue ({{ dreamStore.queueCount }})
+          </h4>
+          <button @click="dreamStore.clearQueue" class="text-[10px] text-gray-600 hover:text-gray-400">
+            Clear
+          </button>
+        </div>
+
+        <div class="max-h-[120px] overflow-y-auto space-y-1 dream-log-list">
+          <div
+            v-for="item in dreamStore.dreamQueue.slice(0, 10)"
+            :key="item.memory_id"
+            class="flex items-center gap-2 px-2 py-1.5 rounded bg-purple-500/10 border border-purple-500/20 text-[11px]"
+          >
+            <span class="text-purple-400 shrink-0">&#x2697;</span>
+            <span class="text-gray-300 truncate flex-1">{{ item.content_preview }}</span>
+            <button
+              @click="dreamStore.removeFromQueue([item.memory_id])"
+              class="text-gray-600 hover:text-red-400 shrink-0"
+            >&times;</button>
+          </div>
+        </div>
+
+        <button
+          @click="handleTargetedDream"
+          :disabled="!dreamStore.canRunDream || dreamStore.isRunning"
+          class="w-full py-2 text-sm font-medium rounded transition-colors
+                 bg-purple-600 hover:bg-purple-500 text-white
+                 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Transmute These ({{ dreamStore.queueCount }})
         </button>
       </div>
 
