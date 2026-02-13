@@ -54,6 +54,9 @@ export const useBillingStore = defineStore('billing', () => {
   // Convenience
   const isPaid = computed(() => status.value.tier !== 'free_trial')
 
+  const isQuestActive = computed(() => status.value.quest_active || false)
+  const questStage = computed(() => status.value.quest_stage || null)
+
   const tierName = computed(() => {
     const names = {
       free_trial: 'Free Trial',
@@ -62,7 +65,8 @@ export const useBillingStore = defineStore('billing', () => {
       opus: 'Opus',
       azothic: 'Azothic',
     }
-    return names[status.value.tier] || 'Unknown'
+    const base = names[status.value.tier] || 'Unknown'
+    return isQuestActive.value ? `Quest ${base}` : base
   })
 
   const usagePercent = computed(() => {
@@ -305,6 +309,8 @@ export const useBillingStore = defineStore('billing', () => {
     canUseTools,
     canUseMultiProvider,
     allowedModels,
+    isQuestActive,
+    questStage,
 
     // New: feature credits + usage
     usageSummary,

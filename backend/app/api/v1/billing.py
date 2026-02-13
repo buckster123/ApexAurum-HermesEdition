@@ -90,6 +90,8 @@ async def get_billing_status(
         credit_balance_cents=status_data["credit_balance_cents"],
         credit_balance_usd=status_data["credit_balance_usd"],
         features=TierFeatures(**status_data["features"]),
+        quest_active=status_data.get("quest_active", False),
+        quest_stage=status_data.get("quest_stage"),
         at_limit=status_data["at_limit"],
         near_limit=status_data["near_limit"],
     )

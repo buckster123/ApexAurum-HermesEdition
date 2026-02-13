@@ -131,6 +131,10 @@ class BillingStatusResponse(BaseModel):
     # Features (what the user can access based on tier)
     features: TierFeatures
 
+    # Quest progression
+    quest_active: bool = Field(False, description="Whether user is on the Quest path")
+    quest_stage: Optional[str] = Field(None, description="Current quest stage (seeker/adept/opus/azothic)")
+
     # Usage alerts
     at_limit: bool = Field(False, description="Whether user has hit message limit")
     near_limit: bool = Field(False, description="Whether user is >80% of limit")

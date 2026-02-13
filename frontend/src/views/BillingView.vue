@@ -177,7 +177,13 @@ function formatDate(dateStr) {
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div class="text-sm text-gray-400 mb-1">Current Plan</div>
-          <div class="text-2xl font-bold text-gold">{{ billing.tierName }}</div>
+          <div class="flex items-center gap-2">
+            <div class="text-2xl font-bold text-gold">{{ billing.tierName }}</div>
+            <span
+              v-if="billing.isQuestActive"
+              class="px-2 py-0.5 text-xs rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30"
+            >Quest Path</span>
+          </div>
           <div class="text-sm text-gray-500 mt-1">
             {{ billing.isFreeTrial ? 'Free Trial' : currentPlanPrice !== null ? `$${currentPlanPrice}/month` : '' }}
           </div>

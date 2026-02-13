@@ -144,6 +144,21 @@ class BillingService:
         except Exception:
             feature_credits = {"opus_messages": 0, "suno_generations": 0, "training_jobs": 0}
 
+        # Quest progression
+        quest_active = False
+        quest_stage = None
+        try:
+            from app.models.progression import UserProgression
+            prog_result = await self.db.execute(
+                select(UserProgression).where(UserProgression.user_id == user_id)
+            )
+            prog = prog_result.scalar_one_or_none()
+            if prog and prog.quest_active:
+                quest_active = True
+                quest_stage = prog.quest_stage
+        except Exception:
+            pass
+
         return {
             "tier": subscription.tier,
             "subscription_status": subscription.status,
@@ -155,6 +170,8 @@ class BillingService:
             "trial_end": subscription.trial_end,
             "credit_balance_cents": credit_balance.balance_cents,
             "credit_balance_usd": credit_balance.balance_cents / 100,
+            "quest_active": quest_active,
+            "quest_stage": quest_stage,
             "features": {
                 "models": tier_config["models"],
                 "tools_enabled": tier_config["tools_enabled"],
