@@ -21,15 +21,15 @@ function closeMobileMenu() {
 
 <template>
   <nav class="fixed top-0 left-0 right-0 h-16 bg-apex-dark/80 backdrop-blur-lg border-b border-apex-border z-50">
-    <div class="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
+    <div class="px-4 sm:px-6 h-full flex items-center justify-between">
       <!-- Logo -->
-      <router-link to="/chat" class="flex items-center gap-2">
+      <router-link to="/chat" class="flex items-center gap-2 mr-4 shrink-0">
         <span class="text-2xl font-serif font-bold text-gold">Au</span>
-        <span class="hidden sm:inline text-lg font-medium">ApexAurum</span>
+        <span class="hidden lg:inline text-base font-medium">ApexAurum</span>
       </router-link>
 
       <!-- Desktop Navigation -->
-      <div class="hidden md:flex items-center gap-6">
+      <div class="hidden md:flex items-center gap-3 lg:gap-4 text-sm">
         <router-link
           to="/chat"
           class="text-gray-400 hover:text-white transition-colors"
@@ -70,7 +70,7 @@ function closeMobileMenu() {
           class="text-gray-400 hover:text-white transition-colors"
           active-class="text-gold"
         >
-          Village-GUI
+          Athaverse
         </router-link>
         <router-link
           to="/neural"
@@ -119,7 +119,7 @@ function closeMobileMenu() {
           class="text-gray-400 hover:text-white transition-colors"
           active-class="text-gold"
         >
-          File Vault
+          Files
         </router-link>
         <router-link
           to="/devices"
@@ -133,7 +133,7 @@ function closeMobileMenu() {
           class="text-gray-400 hover:text-gold transition-colors"
           active-class="text-gold"
         >
-          Achievements
+          Trophies
         </router-link>
         <router-link
           to="/billing"
@@ -249,7 +249,7 @@ function closeMobileMenu() {
           @click="closeMobileMenu"
           class="px-4 py-3 rounded-lg text-gray-300 hover:bg-white/5 hover:text-gold transition-colors"
         >
-          👁️ Village-GUI
+          👁️ Athaverse
         </router-link>
         <router-link
           to="/neural"

@@ -6,6 +6,9 @@ import { useHaptic } from './useHaptic'
 const devMode = ref(localStorage.getItem('devMode') === 'true')
 const pacMode = ref(localStorage.getItem('pacMode') === 'true')
 
+// Singleton listener flag - prevents multiple components from fighting over the keydown listener
+let globalListenerActive = false
+
 // Tier restriction message shown when non-Adept tries to activate
 const tierRestrictionMessage = ref('')
 
@@ -253,7 +256,11 @@ export function useDevMode() {
   }
 
   onMounted(() => {
-    setupListeners()
+    // Only set up the global keydown listener once across all component instances
+    if (!globalListenerActive) {
+      setupListeners()
+      globalListenerActive = true
+    }
 
     // Whisper hint to console if in dev mode but not PAC
     if (devMode.value && !pacMode.value) {
@@ -263,8 +270,10 @@ export function useDevMode() {
     }
   })
 
+  // Don't remove the global listener on unmount — it's singleton and should persist
   onUnmounted(() => {
-    cleanupListeners()
+    if (tapTimeout.value) clearTimeout(tapTimeout.value)
+    if (azothTimeout.value) clearTimeout(azothTimeout.value)
   })
 
   return {

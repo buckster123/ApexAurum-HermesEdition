@@ -572,7 +572,7 @@ onUnmounted(() => {
     <div class="h-12 bg-apex-dark/80 backdrop-blur border-b border-apex-border flex items-center justify-between px-4">
       <div class="flex items-center gap-3">
         <span class="text-lg">🏘️</span>
-        <span class="font-medium text-white">Village GUI</span>
+        <span class="font-medium text-white">Athaverse</span>
         <span class="text-xs text-gray-500 hidden sm:inline">Agent Activity Visualization</span>
       </div>
 

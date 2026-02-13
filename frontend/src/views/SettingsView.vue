@@ -85,7 +85,7 @@ const { hapticEnabled, setEnabled: setHapticEnabled, haptics, isSupported: hapti
 
 // Active tab for dev mode
 const activeTab = ref('profile')
-const devTabs = ['profile', 'agents', 'memory', 'import', 'advanced', 'api']
+const devTabs = ['profile', 'agents', 'import', 'advanced', 'api']
 
 // Import state
 const importing = ref(false)
@@ -181,6 +181,22 @@ const contextStrategies = [
 ]
 
 const agents = ['AZOTH', 'ELYSIAN', 'VAJRA', 'KETHER']
+
+// Tier-filtered models for the model selector (available to all users)
+const tierFilteredModels = computed(() => {
+  // Use backend-fetched models (already tier-filtered)
+  if (chatStore.availableModels.length > 0) return chatStore.availableModels
+  // Fallback to hardcoded list filtered by billing
+  return models.filter(m => billing.isModelAllowed(m.id))
+})
+
+const temperatureLabel = computed(() => {
+  const t = preferences.value.temperature
+  if (t <= 0.2) return 'Precise'
+  if (t <= 0.5) return 'Balanced'
+  if (t <= 0.8) return 'Creative'
+  return 'Experimental'
+})
 
 // Computed
 const tapProgress = computed(() => Math.min(tapCount.value / 7 * 100, 100))
@@ -455,10 +471,6 @@ async function deleteCustomAgent(agentId) {
     console.error('Failed to delete agent:', e)
     showToast('Failed to delete agent. Please try again.')
   }
-}
-
-function formatCost(cost) {
-  return `$${cost.toFixed(4)}`
 }
 
 // Tab switching triggers data loading
@@ -774,6 +786,44 @@ function getAgentSymbol(agentId) {
             </label>
           </div>
 
+          <!-- Default Model (all users, tier-filtered) -->
+          <div>
+            <label class="block text-sm text-gray-400 mb-2">Default Model</label>
+            <select
+              :value="chatStore.selectedModel"
+              @change="chatStore.setSelectedModel($event.target.value)"
+              class="input"
+            >
+              <option v-for="m in tierFilteredModels" :key="m.id" :value="m.id">
+                {{ m.name || m.id }}
+              </option>
+            </select>
+            <p class="text-xs text-gray-500 mt-1">
+              Available models depend on your subscription tier.
+            </p>
+          </div>
+
+          <!-- Temperature (all users) -->
+          <div>
+            <label class="block text-sm text-gray-400 mb-2">
+              Temperature: {{ preferences.temperature }}
+              <span class="text-xs text-gold ml-1">{{ temperatureLabel }}</span>
+            </label>
+            <input
+              type="range"
+              v-model.number="preferences.temperature"
+              min="0"
+              max="1"
+              step="0.1"
+              class="w-full"
+            />
+            <div class="flex justify-between text-xs text-gray-500 mt-1">
+              <span>Precise</span>
+              <span>Balanced</span>
+              <span>Creative</span>
+            </div>
+          </div>
+
           <!-- Tools (The Athanor's Hands) -->
           <div class="border border-apex-border rounded-lg p-4 space-y-3">
             <div class="flex items-center justify-between">
@@ -913,6 +963,61 @@ function getAgentSymbol(agentId) {
           >
             {{ savingAgora ? 'Saving...' : 'Save Agora Settings' }}
           </button>
+        </div>
+      </div>
+
+      <!-- Sound & UX (all users) -->
+      <div class="card mb-6">
+        <h2 class="text-xl font-bold mb-4">Sound & UX</h2>
+
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-medium">Sound Effects</div>
+              <div class="text-sm text-gray-400">
+                Audio feedback for interactions and easter eggs
+              </div>
+            </div>
+            <button
+              @click="toggleSound"
+              class="relative w-14 h-7 rounded-full transition-colors"
+              :class="soundEnabled ? 'bg-gold' : 'bg-apex-border'"
+            >
+              <span
+                class="absolute top-1 left-1 w-5 h-5 rounded-full bg-white transition-transform"
+                :class="soundEnabled ? 'translate-x-7' : ''"
+              ></span>
+            </button>
+          </div>
+
+          <div v-if="hapticSupported" class="flex items-center justify-between">
+            <div>
+              <div class="font-medium">Haptic Feedback</div>
+              <div class="text-sm text-gray-400">
+                Vibration feedback on mobile devices
+              </div>
+            </div>
+            <button
+              @click="setHapticEnabled(!hapticEnabled)"
+              class="relative w-14 h-7 rounded-full transition-colors"
+              :class="hapticEnabled ? 'bg-gold' : 'bg-apex-border'"
+            >
+              <span
+                class="absolute top-1 left-1 w-5 h-5 rounded-full bg-white transition-transform"
+                :class="hapticEnabled ? 'translate-x-7' : ''"
+              ></span>
+            </button>
+          </div>
+
+          <div v-if="soundEnabled" class="pt-2 border-t border-apex-border">
+            <div class="text-sm text-gray-400 mb-3">Test Sounds</div>
+            <div class="flex flex-wrap gap-2">
+              <button @click="sounds.konamiKey(5)" class="btn-secondary text-xs px-3 py-1">Chime</button>
+              <button @click="sounds.devModeActivate()" class="btn-secondary text-xs px-3 py-1">Unlock</button>
+              <button @click="sounds.azothLetter(2)" class="btn-secondary text-xs px-3 py-1">Resonance</button>
+              <button @click="sounds.stoneSelect()" class="btn-secondary text-xs px-3 py-1">Crystal</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1383,35 +1488,6 @@ function getAgentSymbol(agentId) {
     <!-- ADVANCED TAB (Dev Mode only) -->
     <template v-if="devMode && activeTab === 'advanced'">
       <div class="card mb-6">
-        <h2 class="text-xl font-bold mb-4">Model Settings</h2>
-
-        <div class="space-y-4">
-          <div>
-            <label class="block text-sm text-gray-400 mb-2">Default Model</label>
-            <select v-model="preferences.default_model" class="input">
-              <option v-for="model in models" :key="model.id" :value="model.id">
-                {{ model.name }}
-              </option>
-            </select>
-          </div>
-
-          <div>
-            <label class="block text-sm text-gray-400 mb-2">
-              Temperature: {{ preferences.temperature }}
-            </label>
-            <input
-              type="range"
-              v-model.number="preferences.temperature"
-              min="0"
-              max="1"
-              step="0.1"
-              class="w-full"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div class="card mb-6">
         <h2 class="text-xl font-bold mb-4">Context & Cache</h2>
 
         <div class="space-y-4">
@@ -1449,127 +1525,6 @@ function getAgentSymbol(agentId) {
         </div>
       </div>
 
-      <!-- Sound & UX Settings -->
-      <div class="card mb-6">
-        <h2 class="text-xl font-bold mb-4">Sound & UX</h2>
-
-        <div class="space-y-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="font-medium">Sound Effects</div>
-              <div class="text-sm text-gray-400">
-                Audio feedback for easter eggs and interactions
-              </div>
-            </div>
-            <button
-              @click="toggleSound"
-              class="relative w-14 h-7 rounded-full transition-colors"
-              :class="soundEnabled ? 'bg-gold' : 'bg-apex-border'"
-            >
-              <span
-                class="absolute top-1 left-1 w-5 h-5 rounded-full bg-white transition-transform"
-                :class="soundEnabled ? 'translate-x-7' : ''"
-              ></span>
-            </button>
-          </div>
-
-          <!-- Haptic Feedback (mobile only) -->
-          <div v-if="hapticSupported" class="flex items-center justify-between">
-            <div>
-              <div class="font-medium">Haptic Feedback</div>
-              <div class="text-sm text-gray-400">
-                Vibration feedback on mobile devices
-              </div>
-            </div>
-            <button
-              @click="setHapticEnabled(!hapticEnabled)"
-              class="relative w-14 h-7 rounded-full transition-colors"
-              :class="hapticEnabled ? 'bg-gold' : 'bg-apex-border'"
-            >
-              <span
-                class="absolute top-1 left-1 w-5 h-5 rounded-full bg-white transition-transform"
-                :class="hapticEnabled ? 'translate-x-7' : ''"
-              ></span>
-            </button>
-          </div>
-
-          <div v-if="soundEnabled" class="pt-2 border-t border-apex-border">
-            <div class="text-sm text-gray-400 mb-3">Test Sounds</div>
-            <div class="flex flex-wrap gap-2">
-              <button
-                @click="sounds.konamiKey(5)"
-                class="btn-secondary text-xs px-3 py-1"
-              >
-                Chime
-              </button>
-              <button
-                @click="sounds.devModeActivate()"
-                class="btn-secondary text-xs px-3 py-1"
-              >
-                Unlock
-              </button>
-              <button
-                @click="sounds.azothLetter(2)"
-                class="btn-secondary text-xs px-3 py-1"
-              >
-                Resonance
-              </button>
-              <button
-                @click="sounds.stoneSelect()"
-                class="btn-secondary text-xs px-3 py-1"
-              >
-                Crystal
-              </button>
-              <button
-                @click="sounds.pacActivate()"
-                class="btn-secondary text-xs px-3 py-1"
-                :class="pacMode ? 'pac-badge' : ''"
-              >
-                Ethereal
-              </button>
-            </div>
-          </div>
-
-          <!-- Haptic test buttons -->
-          <div v-if="hapticSupported && hapticEnabled" class="pt-2 border-t border-apex-border">
-            <div class="text-sm text-gray-400 mb-3">Test Haptics</div>
-            <div class="flex flex-wrap gap-2">
-              <button
-                @click="haptics.light()"
-                class="btn-secondary text-xs px-3 py-1"
-              >
-                Light
-              </button>
-              <button
-                @click="haptics.medium()"
-                class="btn-secondary text-xs px-3 py-1"
-              >
-                Medium
-              </button>
-              <button
-                @click="haptics.strong()"
-                class="btn-secondary text-xs px-3 py-1"
-              >
-                Strong
-              </button>
-              <button
-                @click="haptics.success()"
-                class="btn-secondary text-xs px-3 py-1"
-              >
-                Success
-              </button>
-              <button
-                @click="haptics.pac()"
-                class="btn-secondary text-xs px-3 py-1"
-                :class="pacMode ? 'pac-badge' : ''"
-              >
-                PAC
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- Usage Stats (in Advanced tab for dev mode) -->
       <div class="card">
         <h2 class="text-xl font-bold mb-4">Usage Statistics</h2>
@@ -1588,21 +1543,6 @@ function getAgentSymbol(agentId) {
           <div class="bg-apex-darker rounded-lg p-4">
             <div class="text-2xl font-bold text-gold">{{ usage.agents_spawned }}</div>
             <div class="text-sm text-gray-400">Agents Spawned</div>
-          </div>
-
-          <div class="bg-apex-darker rounded-lg p-4">
-            <div class="text-2xl font-bold text-gold">{{ usage.music_generated }}</div>
-            <div class="text-sm text-gray-400">Music Generated</div>
-          </div>
-
-          <div class="bg-apex-darker rounded-lg p-4">
-            <div class="text-2xl font-bold text-gold">{{ (usage.total_tokens / 1000).toFixed(1) }}K</div>
-            <div class="text-sm text-gray-400">Tokens Used</div>
-          </div>
-
-          <div class="bg-apex-darker rounded-lg p-4">
-            <div class="text-2xl font-bold text-gold">{{ formatCost(usage.total_cost_usd) }}</div>
-            <div class="text-sm text-gray-400">Total Cost</div>
           </div>
         </div>
 
