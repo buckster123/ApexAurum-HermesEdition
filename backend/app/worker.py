@@ -53,6 +53,49 @@ async def run_dream_cycle(ctx: dict, user_id: str, max_llm_calls: int = 20) -> d
         return {"success": False, "error": str(e)}
 
 
+async def run_targeted_dream_cycle(
+    ctx: dict, user_id: str, memory_ids: list[str], max_llm_calls: int = 20
+) -> dict:
+    """Run a targeted dream cycle for specific queued memories.
+
+    Called by: POST /cortex/dream/run-targeted
+    """
+    logger.info(f"Targeted dream cycle starting for user {user_id} ({len(memory_ids)} memories)")
+
+    try:
+        from app.services.cerebro.targeted_dream import TargetedDreamEngine
+        from app.services.llm_provider import create_llm_service
+
+        llm = create_llm_service(provider="anthropic")
+        engine = TargetedDreamEngine(
+            user_id=UUID(user_id),
+            memory_ids=memory_ids,
+            llm=llm,
+            model="claude-haiku-4-5-20251001",
+            max_llm_calls=max_llm_calls,
+        )
+        report = await engine.run_cycle()
+
+        # Clear queue on success
+        if report.success:
+            from app.database import get_db_context
+            from app.services.cerebro.pg_graph_store import PgGraphStore
+            async with get_db_context() as db:
+                store = PgGraphStore(db)
+                await store.clear_dream_queue(UUID(user_id))
+
+        logger.info(
+            f"Targeted dream complete for {user_id}: "
+            f"{report.total_llm_calls} LLM calls, "
+            f"{report.total_duration_seconds:.1f}s"
+        )
+        return report.to_dict()
+
+    except Exception as e:
+        logger.error(f"Targeted dream failed for {user_id}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
 async def scheduled_dream_sweep(ctx: dict) -> dict:
     """3 AM UTC sweep: find users with unconsolidated episodes, queue dream jobs.
 
@@ -114,7 +157,7 @@ async def scheduled_dream_sweep(ctx: dict) -> dict:
 
 class WorkerSettings:
     """ARQ worker configuration."""
-    functions = [run_dream_cycle]
+    functions = [run_dream_cycle, run_targeted_dream_cycle]
     cron_jobs = [cron(scheduled_dream_sweep, hour=3, minute=0)]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     max_jobs = 5

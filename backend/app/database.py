@@ -1100,6 +1100,40 @@ END $$;
         """)
         migrations.append("CREATE INDEX IF NOT EXISTS idx_cerebro_dream_cycle ON cerebro_dream_log(cycle_id);")
 
+        # Dream Engine v3: scope + target_count columns for targeted dream cycles
+        migrations.append("""
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cerebro_dream_log') THEN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'cerebro_dream_log' AND column_name = 'scope') THEN
+                        ALTER TABLE cerebro_dream_log ADD COLUMN scope VARCHAR(20) DEFAULT 'natural';
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'cerebro_dream_log' AND column_name = 'target_count') THEN
+                        ALTER TABLE cerebro_dream_log ADD COLUMN target_count INTEGER DEFAULT 0;
+                    END IF;
+                END IF;
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'Dream log v3 migration skipped';
+            END $$;
+        """)
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # CEREBRO DREAM QUEUE - Targeted dream memory queue (The Athanor Queue)
+        # ═══════════════════════════════════════════════════════════════════════
+        migrations.append("""
+            CREATE TABLE IF NOT EXISTS cerebro_dream_queue (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                memory_id VARCHAR(50) NOT NULL,
+                queued_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                source VARCHAR(30) DEFAULT 'manual',
+                CONSTRAINT uq_dream_queue UNIQUE (user_id, memory_id)
+            );
+        """)
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_dream_queue_user ON cerebro_dream_queue(user_id);")
+
         # ═══════════════════════════════════════════════════════════════════════
         # POCKET PENDING MESSAGES - v5A: Agent-initiated messages for pocket app
         # ═══════════════════════════════════════════════════════════════════════

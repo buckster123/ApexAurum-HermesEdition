@@ -1030,3 +1030,104 @@ class PgGraphStore:
             last_accessed_at=last_accessed,
             promoted_at=promoted,
         )
+
+    # =========================================================================
+    # Dream Queue (Targeted Dream Cycles)
+    # =========================================================================
+
+    async def add_to_dream_queue(
+        self, user_id: UUID, memory_ids: list[str], source: str = "manual"
+    ) -> int:
+        """Add memory IDs to the dream queue. Returns count added."""
+        if not memory_ids:
+            return 0
+        added = 0
+        for mid in memory_ids:
+            result = await self.db.execute(
+                text("""
+                    INSERT INTO cerebro_dream_queue (user_id, memory_id, source)
+                    VALUES (:uid, :mid, :src)
+                    ON CONFLICT (user_id, memory_id) DO NOTHING
+                """),
+                {"uid": str(user_id), "mid": mid, "src": source},
+            )
+            added += result.rowcount
+        await self.db.commit()
+        return added
+
+    async def remove_from_dream_queue(
+        self, user_id: UUID, memory_ids: list[str]
+    ) -> int:
+        """Remove memory IDs from the dream queue. Returns count removed."""
+        if not memory_ids:
+            return 0
+        result = await self.db.execute(
+            text("""
+                DELETE FROM cerebro_dream_queue
+                WHERE user_id = :uid AND memory_id = ANY(:mids)
+            """),
+            {"uid": str(user_id), "mids": memory_ids},
+        )
+        await self.db.commit()
+        return result.rowcount
+
+    async def get_dream_queue(self, user_id: UUID) -> list[dict]:
+        """Get all queued memories with content preview."""
+        result = await self.db.execute(
+            text("""
+                SELECT q.memory_id, q.queued_at, q.source,
+                       LEFT(m.content, 100) as content_preview
+                FROM cerebro_dream_queue q
+                LEFT JOIN cerebro_memory_nodes m
+                    ON m.id = q.memory_id AND m.user_id = q.user_id
+                WHERE q.user_id = :uid
+                ORDER BY q.queued_at DESC
+            """),
+            {"uid": str(user_id)},
+        )
+        return [
+            {
+                "memory_id": row[0],
+                "queued_at": row[1].isoformat() if row[1] else None,
+                "source": row[2],
+                "content_preview": row[3] or "(deleted)",
+            }
+            for row in result.fetchall()
+        ]
+
+    async def clear_dream_queue(self, user_id: UUID) -> int:
+        """Clear the entire dream queue for a user."""
+        result = await self.db.execute(
+            text("DELETE FROM cerebro_dream_queue WHERE user_id = :uid"),
+            {"uid": str(user_id)},
+        )
+        await self.db.commit()
+        return result.rowcount
+
+    async def get_dream_queue_ids(self, user_id: UUID) -> list[str]:
+        """Get just the memory_ids from the queue."""
+        result = await self.db.execute(
+            text("SELECT memory_id FROM cerebro_dream_queue WHERE user_id = :uid"),
+            {"uid": str(user_id)},
+        )
+        return [row[0] for row in result.fetchall()]
+
+    async def get_neighbor_ids(
+        self, user_id: UUID, node_ids: list[str], max_hops: int = 1
+    ) -> list[str]:
+        """Get unique neighbor IDs for a set of nodes (1-hop expansion)."""
+        if not node_ids:
+            return []
+        result = await self.db.execute(
+            text("""
+                SELECT DISTINCT
+                    CASE WHEN source_id = ANY(:nids) THEN target_id ELSE source_id END as neighbor
+                FROM cerebro_associative_links
+                WHERE user_id = :uid
+                  AND (source_id = ANY(:nids) OR target_id = ANY(:nids))
+            """),
+            {"uid": str(user_id), "nids": node_ids},
+        )
+        # Return neighbors that aren't already in the input set
+        input_set = set(node_ids)
+        return [row[0] for row in result.fetchall() if row[0] not in input_set]

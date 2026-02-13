@@ -78,6 +78,8 @@ class DreamReport:
     cycle_id: str = ""
     started_at: datetime = field(default_factory=datetime.now)
     ended_at: Optional[datetime] = None
+    scope: str = "natural"       # "natural" or "targeted"
+    target_count: int = 0        # Number of targeted memories (0 for natural)
     phases: list[PhaseReport] = field(default_factory=list)
     episodes_consolidated: int = 0
     total_llm_calls: int = 0
@@ -91,6 +93,8 @@ class DreamReport:
             "cycle_id": self.cycle_id,
             "started_at": self.started_at.isoformat(),
             "ended_at": self.ended_at.isoformat() if self.ended_at else None,
+            "scope": self.scope,
+            "target_count": self.target_count,
             "episodes_consolidated": self.episodes_consolidated,
             "total_llm_calls": self.total_llm_calls,
             "total_input_tokens": self.total_input_tokens,
