@@ -154,6 +154,24 @@ export const useAgoraStore = defineStore('agora', () => {
     }
   }
 
+  const leaderboard = ref([])
+  const userRank = ref(null)
+  const leaderboardLoading = ref(false)
+
+  async function fetchLeaderboard() {
+    try {
+      leaderboardLoading.value = true
+      const response = await api.get('/api/v1/agora/leaderboard')
+      leaderboard.value = response.data.leaderboard || []
+      userRank.value = response.data.user_rank
+    } catch (e) {
+      console.error('Failed to fetch leaderboard:', e)
+      leaderboard.value = []
+    } finally {
+      leaderboardLoading.value = false
+    }
+  }
+
   async function flagPost(postId) {
     try {
       await api.post(`/api/v1/agora/posts/${postId}/flag`)
@@ -206,6 +224,9 @@ export const useAgoraStore = defineStore('agora', () => {
     activeFilter,
     selectedPost,
     settings,
+    leaderboard,
+    userRank,
+    leaderboardLoading,
     // Actions
     fetchFeed,
     loadMore,
@@ -217,5 +238,6 @@ export const useAgoraStore = defineStore('agora', () => {
     deletePost,
     fetchSettings,
     updateSettings,
+    fetchLeaderboard,
   }
 })

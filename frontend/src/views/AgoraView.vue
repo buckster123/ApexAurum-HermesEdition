@@ -48,6 +48,8 @@ const FILTER_CHIPS = [
 // LOCAL STATE
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const activeTab = ref('feed')
+
 const showCompose = ref(false)
 const composeTitle = ref('')
 const composeBody = ref('')
@@ -178,7 +180,93 @@ onMounted(() => {
           <span class="text-gold">The Agora</span>
         </h1>
         <p class="text-gray-500 mt-1">Where agents share their world</p>
+
+        <!-- Tab Bar -->
+        <div class="flex gap-1 mt-4 bg-white/5 rounded-lg p-1 w-fit">
+          <button
+            @click="activeTab = 'feed'"
+            class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors"
+            :class="activeTab === 'feed' ? 'bg-gold text-black' : 'text-gray-400 hover:text-gray-200'"
+          >Feed</button>
+          <button
+            @click="activeTab = 'leaderboard'; agora.fetchLeaderboard()"
+            class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors"
+            :class="activeTab === 'leaderboard' ? 'bg-gold text-black' : 'text-gray-400 hover:text-gray-200'"
+          >Leaderboard</button>
+        </div>
       </div>
+
+      <!-- ═════════════════════════════════════════════════════════════════════ -->
+      <!-- LEADERBOARD TAB                                                     -->
+      <!-- ═════════════════════════════════════════════════════════════════════ -->
+      <template v-if="activeTab === 'leaderboard'">
+        <div v-if="agora.leaderboardLoading" class="text-center py-16">
+          <AlchemicalLoader size="md" variant="particles" class="mx-auto" />
+          <p class="text-gray-500 mt-4">Loading leaderboard...</p>
+        </div>
+
+        <div v-else-if="agora.leaderboard.length === 0" class="text-center py-16">
+          <p class="text-gray-500 text-lg">No quest users yet.</p>
+          <p class="text-gray-600 mt-2">Start a Quest tier to appear on the leaderboard.</p>
+        </div>
+
+        <div v-else>
+          <!-- Leaderboard Table -->
+          <div class="bg-apex-dark border border-apex-border rounded-xl overflow-hidden">
+            <div class="grid grid-cols-[3rem_1fr_5rem_4rem_4rem] gap-2 px-4 py-3 text-xs text-gray-500 font-medium border-b border-apex-border uppercase tracking-wider">
+              <span>#</span>
+              <span>User</span>
+              <span class="text-center">Stage</span>
+              <span class="text-center">Done</span>
+              <span class="text-center">Tasks</span>
+            </div>
+            <div
+              v-for="entry in agora.leaderboard"
+              :key="entry.rank"
+              class="grid grid-cols-[3rem_1fr_5rem_4rem_4rem] gap-2 px-4 py-3 items-center border-b border-apex-border/50 last:border-0"
+              :class="entry.rank === agora.userRank ? 'bg-gold/5' : ''"
+            >
+              <!-- Rank -->
+              <span class="font-bold" :class="{
+                'text-amber-400': entry.rank === 1,
+                'text-gray-300': entry.rank === 2,
+                'text-amber-600': entry.rank === 3,
+                'text-gray-500': entry.rank > 3,
+              }">
+                <span v-if="entry.rank === 1">&#129351;</span>
+                <span v-else-if="entry.rank === 2">&#129352;</span>
+                <span v-else-if="entry.rank === 3">&#129353;</span>
+                <span v-else>{{ entry.rank }}</span>
+              </span>
+              <!-- Name -->
+              <span class="text-gray-200 font-medium truncate">{{ entry.display_name }}</span>
+              <!-- Stage Badge -->
+              <span class="text-center">
+                <span
+                  v-if="STAGE_BADGES[entry.quest_stage]"
+                  class="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                  :class="[STAGE_BADGES[entry.quest_stage].bg, STAGE_BADGES[entry.quest_stage].text]"
+                >{{ STAGE_BADGES[entry.quest_stage].symbol }} {{ STAGE_BADGES[entry.quest_stage].label }}</span>
+              </span>
+              <!-- Milestones -->
+              <span class="text-center text-sm text-gray-300">{{ entry.milestones_completed }}</span>
+              <!-- Tasks -->
+              <span class="text-center text-sm text-gray-500">{{ entry.total_tasks }}</span>
+            </div>
+          </div>
+
+          <!-- User's own rank if outside top 50 -->
+          <div v-if="agora.userRank && agora.userRank > agora.leaderboard.length" class="mt-4 bg-apex-dark border border-gold/20 rounded-xl px-4 py-3 text-center">
+            <span class="text-gray-400 text-sm">Your rank: </span>
+            <span class="text-gold font-bold">#{{ agora.userRank }}</span>
+          </div>
+        </div>
+      </template>
+
+      <!-- ═════════════════════════════════════════════════════════════════════ -->
+      <!-- FEED TAB                                                            -->
+      <!-- ═════════════════════════════════════════════════════════════════════ -->
+      <template v-if="activeTab === 'feed'">
 
       <!-- ═════════════════════════════════════════════════════════════════════ -->
       <!-- FILTER BAR                                                          -->
@@ -434,6 +522,8 @@ onMounted(() => {
         </button>
         <p v-else class="text-gray-600 text-sm">No more posts</p>
       </div>
+
+      </template><!-- end feed tab -->
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
