@@ -101,7 +101,7 @@ const steps = [
   {
     id: 4,
     title: 'Install the IMX500 AI Camera',
-    image: '/images/build-guide/camera-cluster.jpg',
+    image: '/images/build-guide/ai-cam.jpg',
     summary: 'CSI ribbon cable to CAM0 port — the AI eye',
     details: [
       'The IMX500 has an on-chip neural accelerator for real-time object detection, classification, and pose estimation',
@@ -119,7 +119,7 @@ const steps = [
   {
     id: 5,
     title: 'Install the NoIR Wide-Angle Camera',
-    image: '/images/build-guide/camera-cluster.jpg',
+    image: '/images/build-guide/noir-cam.jpg',
     summary: 'CSI ribbon cable to CAM1 port — the night eye',
     details: [
       'The Camera Module 3 NoIR Wide has no infrared filter, making it sensitive to IR light for night vision',
