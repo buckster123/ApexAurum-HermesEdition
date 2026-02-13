@@ -199,10 +199,10 @@ Sub-phased for incremental delivery. Each sub-phase is independently deployable 
 ## Execution Order
 
 ```
-G1  Locked Village visuals          ← Foundation (see locked state)
-G2  Quest HUD                       ← Progress tracking (see the path)
-G3  Unlock Ceremonies               ← Reward feedback (feel the unlock)
-G4  Tutorial Overlay                ← Onboarding (learn the system)
+G1  Locked Village visuals          ✓ DEPLOYED (2eaa17e)
+G2  Quest HUD                       ✓ DEPLOYED (b6158ca)
+G3  Unlock Ceremonies               ✓ DEPLOYED (343c4ad)
+G4  Tutorial Overlay                ✓ DEPLOYED (157d0d4) — live-tested
 G5  Agent Unlock Progression        ← Depth (earn your team)
 G6  Stage Transitions               ← Grand moments (celebrate ascension)
 ```
