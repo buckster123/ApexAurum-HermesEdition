@@ -29,11 +29,16 @@ const displayedTiers = computed(() =>
 )
 
 // Price display for current plan (handles both classic and quest tiers)
+const effectiveTierId = computed(() => {
+  const tier = billing.status.tier
+  return billing.isQuestActive ? `quest_${tier}` : tier
+})
+
 const currentPlanPrice = computed(() => {
   const tier = billing.status.tier
   if (!tier || tier === 'free_trial') return null
   const allTiers = billing.pricing?.tiers || []
-  const match = allTiers.find(t => t.id === tier)
+  const match = allTiers.find(t => t.id === effectiveTierId.value) || allTiers.find(t => t.id === tier)
   return match ? match.price_monthly : null
 })
 
@@ -336,7 +341,7 @@ function formatDate(dateStr) {
             : tier.popular
               ? 'bg-gold/5 border-gold shadow-lg shadow-gold/10'
               : 'bg-surface border-gray-700 hover:border-gray-600',
-          billing.status.tier === tier.id && 'ring-2 ring-gold/50'
+          effectiveTierId === tier.id && 'ring-2 ring-gold/50'
         ]"
       >
         <!-- Popular Badge -->
@@ -354,7 +359,7 @@ function formatDate(dateStr) {
 
         <!-- Current Badge -->
         <div
-          v-if="billing.status.tier === tier.id"
+          v-if="effectiveTierId === tier.id"
           class="absolute -top-3 right-4 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full"
         >
           CURRENT
@@ -387,7 +392,7 @@ function formatDate(dateStr) {
         <!-- CTA Button -->
         <button
           @click="selectPlan(tier.id)"
-          :disabled="tier.id === 'free_trial' || billing.status.tier === tier.id || loadingAction === tier.id"
+          :disabled="tier.id === 'free_trial' || effectiveTierId === tier.id || loadingAction === tier.id"
           :class="[
             'w-full py-3 rounded-lg font-medium transition-all',
             tier.popular && tier.tier_type === 'quest'
@@ -395,13 +400,13 @@ function formatDate(dateStr) {
               : tier.popular
                 ? 'bg-gold text-black hover:bg-gold/90'
                 : 'bg-surface border border-gray-600 hover:border-gold/50',
-            (tier.id === 'free_trial' || billing.status.tier === tier.id) && 'opacity-50 cursor-not-allowed'
+            (tier.id === 'free_trial' || effectiveTierId === tier.id) && 'opacity-50 cursor-not-allowed'
           ]"
         >
           {{
             loadingAction === tier.id
               ? 'Processing...'
-              : billing.status.tier === tier.id
+              : effectiveTierId === tier.id
                 ? 'Current Plan'
                 : tier.id === 'free_trial'
                   ? 'Free Trial'
