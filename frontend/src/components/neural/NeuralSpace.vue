@@ -14,6 +14,7 @@ import { useDreamStore } from '@/stores/dream'
 import { useSound } from '@/composables/useSound'
 import { NeuralAmbientSystem } from '@/composables/useNeuralAmbient'
 import { DreamNexusSystem } from '@/composables/useDreamNexus'
+import { DreamEffectsSystem } from '@/composables/useDreamEffects'
 import { useAgentModels } from '@/composables/useAgentModels'
 import AlchemicalLoader from '@/components/ui/AlchemicalLoader.vue'
 
@@ -70,6 +71,10 @@ let initCheckInterval = null
 // Dream Nexus (alchemy helix at scene center)
 let nexusSystem = null
 let removeNexusCallback = null
+
+// Dream Effects (phase-by-phase visual transformations)
+let effectsSystem = null
+let removeEffectsCallback = null
 
 /**
  * Walk up the parent chain to find the memory-node group.
@@ -255,10 +260,25 @@ watch(() => props.autoRotate, (val) => {
   setAutoRotate(val)
 })
 
-// Flash nexus orb on dream phase transitions
+// Flash nexus orb + drive effects on dream phase transitions
 watch(() => dreamStore.activePhase, (newPhase) => {
   if (nexusSystem && newPhase >= 0) {
     nexusSystem.flashPhase(newPhase)
+  }
+  if (effectsSystem) {
+    effectsSystem.setPhase(newPhase)
+  }
+})
+
+// Start/stop dream effects when dream cycle begins/ends
+watch(() => dreamStore.isRunning, (running, wasRunning) => {
+  if (!effectsSystem) return
+  if (running && !wasRunning) {
+    // Start effects with current memory nodes
+    const memNodes = nodeGroup.value ? [...nodeGroup.value.children] : []
+    effectsSystem.startDream(memNodes)
+  } else if (!running && wasRunning) {
+    effectsSystem.completeDream()
   }
 })
 
@@ -284,6 +304,16 @@ function initNexus() {
   }
 }
 
+// Initialize dream effects engine
+function initEffects() {
+  if (scene.value && !effectsSystem) {
+    effectsSystem = new DreamEffectsSystem(scene.value)
+    removeEffectsCallback = addAnimationCallback((dt) => {
+      effectsSystem.update(dt)
+    })
+  }
+}
+
 // Lifecycle
 onMounted(() => {
   if (containerRef.value) {
@@ -305,6 +335,7 @@ onMounted(() => {
     buildVisualization()
     initAmbient()
     initNexus()
+    initEffects()
   } else {
     // Wait for initialization
     initCheckInterval = setInterval(() => {
@@ -312,6 +343,7 @@ onMounted(() => {
         buildVisualization()
         initAmbient()
         initNexus()
+        initEffects()
         clearInterval(initCheckInterval)
         initCheckInterval = null
       }
@@ -335,6 +367,11 @@ onUnmounted(() => {
   if (nexusSystem) {
     nexusSystem.dispose()
     nexusSystem = null
+  }
+  if (removeEffectsCallback) removeEffectsCallback()
+  if (effectsSystem) {
+    effectsSystem.dispose()
+    effectsSystem = null
   }
   agentModels.disposeAll()
 })
