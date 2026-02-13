@@ -184,8 +184,35 @@ watch(lastServerMilestones, (milestones) => {
     village3dRef.value.emitAchievementBurst('AZOTH')
     village3dRef.value.triggerBubble('AZOTH', `Quest: ${m.name}!`, 'success', 8)
     sounds.devModeActivate()
+    // G1: Unlock the zone that was just unlocked by this milestone
+    if (m.feature_unlocked) {
+      const zone = FEATURE_TO_ZONE[m.feature_unlocked]
+      if (zone) village3dRef.value.setZoneLocked(zone, false)
+    }
   }
 })
+
+// G1: Feature-to-zone mapping for lock/unlock visuals
+const FEATURE_TO_ZONE = {
+  basic_chat: 'workshop',
+  web_search: 'library',
+  music_gen: 'dj_booth',
+  memory_system: 'memory_garden',
+  file_vault: 'file_shed',
+  external_integrations: 'bridge_portal',
+  multi_agent: 'watchtower',
+}
+
+// G1: Compute which zones should be locked based on quest progress
+function applyQuestLockState() {
+  if (!village3dRef.value || !questProgress.quest_active) return
+  const unlocked = new Set(questProgress.features_unlocked || [])
+  for (const [feature, zone] of Object.entries(FEATURE_TO_ZONE)) {
+    village3dRef.value.setZoneLocked(zone, !unlocked.has(feature))
+  }
+  // Village Square is always unlocked
+  village3dRef.value.setZoneLocked('village_square', false)
+}
 
 // Apply gamification visuals when 3D view initializes
 function applyGamificationVisuals() {
@@ -201,6 +228,8 @@ function applyGamificationVisuals() {
       village3dRef.value.updateZoneLabel(zoneName, level)
     }
   }
+  // G1: Apply lock state after visuals
+  applyQuestLockState()
 }
 
 // View mode — migrate old '3d' value to 'iso' (isometric)

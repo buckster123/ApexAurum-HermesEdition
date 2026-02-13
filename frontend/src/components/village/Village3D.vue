@@ -85,6 +85,7 @@ const {
   updateZoneLabel,
   setAgentIdleGlow,
   emitAchievementBurst,
+  setZoneLocked,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -122,6 +123,10 @@ defineExpose({
       pos.y = 1.5
       emitAchievementBurst(pos)
     }
+  },
+  // Quest Engine (G1)
+  setZoneLocked(zoneName, locked) {
+    setZoneLocked(zoneName, locked)
   },
 })
 

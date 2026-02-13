@@ -1032,6 +1032,118 @@ export function useVillage3D(containerRef, options = {}) {
   }
 
   // =========================================================================
+  // G1: ZONE LOCK/UNLOCK VISUALS (Quest Engine)
+  // =========================================================================
+
+  const zonePadlockSprites = new Map()
+  const zoneLockedState = new Map()
+
+  function _createPadlockSprite() {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    canvas.width = 64
+    canvas.height = 64
+
+    // Padlock body
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
+    ctx.beginPath()
+    ctx.roundRect(16, 28, 32, 28, 4)
+    ctx.fill()
+    ctx.strokeStyle = '#FFD700'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.roundRect(16, 28, 32, 28, 4)
+    ctx.stroke()
+
+    // Shackle
+    ctx.strokeStyle = '#FFD700'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.arc(32, 28, 12, Math.PI, 0)
+    ctx.stroke()
+
+    // Keyhole
+    ctx.fillStyle = '#FFD700'
+    ctx.beginPath()
+    ctx.arc(32, 40, 3, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillRect(31, 42, 2, 6)
+
+    const texture = new THREE.CanvasTexture(canvas)
+    const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false })
+    const sprite = new THREE.Sprite(mat)
+    sprite.scale.set(1.2, 1.2, 1)
+    return sprite
+  }
+
+  function setZoneLocked(zoneName, locked) {
+    const group = zoneGroups.get(zoneName)
+    if (!group) return
+
+    zoneLockedState.set(zoneName, locked)
+
+    // Adjust building placeholder material
+    const placeholder = zonePlaceholders.get(zoneName)
+    if (placeholder && placeholder.material) {
+      if (locked) {
+        placeholder.material.opacity = 0.25
+        placeholder.material.emissiveIntensity = 0.03
+      } else {
+        placeholder.material.opacity = 0.75
+        placeholder.material.emissiveIntensity = 0.15
+      }
+    }
+
+    // Adjust GLB model materials if loaded
+    group.traverse((child) => {
+      if (child.isMesh && child !== placeholder) {
+        if (child.material) {
+          const mat = child.material
+          if (locked) {
+            mat._origEmissiveIntensity = mat.emissiveIntensity
+            mat._origOpacity = mat.opacity
+            mat.emissiveIntensity = 0.02
+            if (mat.transparent) mat.opacity = Math.min(mat.opacity, 0.3)
+          } else if (mat._origEmissiveIntensity !== undefined) {
+            mat.emissiveIntensity = mat._origEmissiveIntensity
+            if (mat.transparent) mat.opacity = mat._origOpacity || 0.75
+          }
+        }
+      }
+    })
+
+    // Glow ring
+    const ring = zoneGlowRings.get(zoneName)
+    if (ring) {
+      ring.material.opacity = locked ? 0.08 : 0.3
+    }
+
+    // Label sprite dim
+    const label = zoneLabelSprites.get(zoneName)
+    if (label) {
+      label.material.opacity = locked ? 0.3 : 1.0
+    }
+
+    // Padlock sprite
+    if (locked) {
+      if (!zonePadlockSprites.has(zoneName)) {
+        const padlock = _createPadlockSprite()
+        padlock.position.y = 4.2
+        group.add(padlock)
+        zonePadlockSprites.set(zoneName, padlock)
+      }
+    } else {
+      const existing = zonePadlockSprites.get(zoneName)
+      if (existing) {
+        group.remove(existing)
+        existing.material.map?.dispose()
+        existing.material.dispose()
+        zonePadlockSprites.delete(zoneName)
+      }
+    }
+  }
+
+  // =========================================================================
   // GLB PROGRESSIVE ENHANCEMENT
   // =========================================================================
 
@@ -1941,6 +2053,8 @@ export function useVillage3D(containerRef, options = {}) {
     zonePlaceholders.clear()
     zoneGlowRings.clear()
     zoneLabelSprites.clear()
+    zonePadlockSprites.clear()
+    zoneLockedState.clear()
     zoneMeshes.length = 0
 
     // Dispose the rest of the scene
@@ -2029,6 +2143,9 @@ export function useVillage3D(containerRef, options = {}) {
     updateZoneLabel,
     setAgentIdleGlow,
     emitAchievementBurst,
+
+    // Quest Engine (G1)
+    setZoneLocked,
 
     // Internal refs (for advanced use / debugging)
     scene: sceneRef,
