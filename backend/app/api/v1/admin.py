@@ -7,22 +7,23 @@ All endpoints require is_admin=True on the authenticated user.
 import logging
 from typing import Optional
 from uuid import UUID
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from sqlalchemy import text
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.user import User
-from app.models.billing import Subscription, CreditBalance, Coupon
+from app.models.billing import Subscription, CreditBalance, CreditTransaction, Coupon
+from app.models.progression import UserProgression
 from app.models.feedback import BugReport
 from app.models.conversation import Conversation, Message
 from app.models.agora import AgoraPost, AgoraComment
 from app.auth.deps import get_current_user
+from app.config import TIER_LIMITS, QUEST_TIER_MAP
 from app.services.llm_provider import get_available_providers, PROVIDER_MODELS
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,9 @@ class UserResponse(BaseModel):
     credit_balance: int
     is_admin: bool
     created_at: datetime
+    subscription_status: Optional[str] = None
+    quest_active: bool = False
+    quest_stage: Optional[str] = None
 
 
 class UserListResponse(BaseModel):
@@ -55,7 +59,8 @@ class UpdateAdminRequest(BaseModel):
 
 
 class UpdateTierRequest(BaseModel):
-    tier: str  # free, pro, opus
+    tier: str  # free_trial, seeker, adept, opus, azothic (or quest_seeker, etc.)
+    reset_usage: bool = True  # Reset messages_used to 0
 
 
 class TierGrantUpdate(BaseModel):
@@ -77,6 +82,20 @@ class ProviderStatus(BaseModel):
     model_count: int
 
 
+class ResetUsageRequest(BaseModel):
+    extra_messages: int = Field(0, ge=0, le=10000, description="Grant extra messages on top of reset")
+
+
+class AddCreditsRequest(BaseModel):
+    amount_cents: int = Field(ge=1, le=100000, description="Credits to add in cents")
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class ToggleQuestRequest(BaseModel):
+    quest_active: bool
+    unlock_all: bool = False  # When deactivating, unlock all features (classic upgrade)
+
+
 class StatsResponse(BaseModel):
     # Core
     total_users: int
@@ -84,6 +103,9 @@ class StatsResponse(BaseModel):
     total_conversations: int
     active_coupons: int
     users_by_tier: dict
+    # Quest Progression
+    total_quest_users: int = 0
+    quest_users_by_stage: dict = {}
     # Features
     total_music_tasks: int
     music_by_status: dict
@@ -140,20 +162,28 @@ async def list_users(
     result = await db.execute(query)
     users = result.scalars().all()
 
-    # Get subscription and credit info for each user
+    # Batch-fetch subscriptions, credit balances, and progressions
+    user_ids = [u.id for u in users]
+    sub_result = await db.execute(
+        select(Subscription).where(Subscription.user_id.in_(user_ids))
+    )
+    subs_map = {s.user_id: s for s in sub_result.scalars().all()}
+
+    credit_result = await db.execute(
+        select(CreditBalance).where(CreditBalance.user_id.in_(user_ids))
+    )
+    credits_map = {c.user_id: c for c in credit_result.scalars().all()}
+
+    prog_result = await db.execute(
+        select(UserProgression).where(UserProgression.user_id.in_(user_ids))
+    )
+    prog_map = {p.user_id: p for p in prog_result.scalars().all()}
+
     user_list = []
     for user in users:
-        # Get subscription
-        sub_result = await db.execute(
-            select(Subscription).where(Subscription.user_id == user.id)
-        )
-        subscription = sub_result.scalar_one_or_none()
-
-        # Get credit balance
-        credit_result = await db.execute(
-            select(CreditBalance).where(CreditBalance.user_id == user.id)
-        )
-        credit_balance = credit_result.scalar_one_or_none()
+        subscription = subs_map.get(user.id)
+        credit_balance = credits_map.get(user.id)
+        progression = prog_map.get(user.id)
 
         user_list.append(UserResponse(
             id=user.id,
@@ -165,6 +195,9 @@ async def list_users(
             credit_balance=credit_balance.balance_cents if credit_balance else 0,
             is_admin=user.is_admin,
             created_at=user.created_at,
+            subscription_status=subscription.status if subscription else None,
+            quest_active=progression.quest_active if progression else False,
+            quest_stage=progression.quest_stage if progression and progression.quest_active else None,
         ))
 
     # Get total count
@@ -215,12 +248,22 @@ async def update_user_tier(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Change a user's subscription tier (admin override)."""
-    if request.tier not in ["free_trial", "seeker", "adept", "opus", "azothic"]:
+    """Change a user's subscription tier (admin override).
+
+    Resolves quest tier IDs (quest_seeker etc.) to their classic equivalents.
+    Sets status=active, resets usage, and sets billing period dates.
+    """
+    # Resolve quest tier → classic tier
+    effective_tier = QUEST_TIER_MAP.get(request.tier, request.tier)
+    valid_tiers = ["free_trial", "seeker", "adept", "opus", "azothic"]
+
+    if effective_tier not in valid_tiers:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tier must be 'free_trial', 'seeker', 'adept', 'opus', or 'azothic'"
+            detail=f"Invalid tier '{request.tier}'. Valid: {valid_tiers + list(QUEST_TIER_MAP.keys())}"
         )
+
+    now = datetime.now(timezone.utc)
 
     # Get or create subscription
     result = await db.execute(
@@ -229,28 +272,43 @@ async def update_user_tier(
     subscription = result.scalar_one_or_none()
 
     if not subscription:
-        # Create subscription for user
         from uuid import uuid4
         subscription = Subscription(
             user_id=user_id,
             stripe_customer_id=f"admin_override_{uuid4().hex[:8]}",
-            tier=request.tier,
+            tier=effective_tier,
             status="active",
         )
         db.add(subscription)
     else:
-        subscription.tier = request.tier
+        subscription.tier = effective_tier
+        subscription.status = "active"
+        subscription.cancel_at_period_end = False
 
     # Update message limits based on tier
-    from app.config import TIER_LIMITS
-    tier_config = TIER_LIMITS.get(request.tier, TIER_LIMITS["free_trial"])
+    tier_config = TIER_LIMITS.get(effective_tier, TIER_LIMITS["free_trial"])
     subscription.messages_limit = tier_config["messages_per_month"]
+
+    # Reset usage if requested
+    if request.reset_usage:
+        subscription.messages_used = 0
+
+    # Set billing period (now → now + 30 days)
+    subscription.current_period_start = now
+    subscription.current_period_end = now + timedelta(days=30)
 
     await db.commit()
 
-    logger.info(f"Admin {admin.email} set tier={request.tier} for user {user_id}")
+    logger.info(f"Admin {admin.email} set tier={effective_tier} (requested={request.tier}) for user {user_id}")
 
-    return {"status": "updated", "user_id": str(user_id), "tier": request.tier}
+    return {
+        "status": "updated",
+        "user_id": str(user_id),
+        "tier": effective_tier,
+        "messages_used": subscription.messages_used,
+        "messages_limit": subscription.messages_limit,
+        "period_end": subscription.current_period_end.isoformat(),
+    }
 
 
 @router.get("/users/{user_id}/usage")
@@ -261,7 +319,6 @@ async def get_user_usage(
 ):
     """Get detailed usage summary for a specific user (admin only)."""
     from app.services.usage import UsageService, FeatureCreditService, get_current_period
-    from app.config import TIER_LIMITS
 
     # Get user's tier
     result = await db.execute(
@@ -292,6 +349,168 @@ async def get_user_usage(
             "suno_generations_per_month": tier_config.get("suno_generations_per_month"),
             "jam_sessions_per_month": tier_config.get("jam_sessions_per_month"),
         },
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# User Progression & Credits
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/users/{user_id}/progression")
+async def get_user_progression(
+    user_id: UUID,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """View a user's quest progression details."""
+    result = await db.execute(
+        select(UserProgression).where(UserProgression.user_id == user_id)
+    )
+    prog = result.scalar_one_or_none()
+
+    if not prog:
+        return {
+            "user_id": str(user_id),
+            "quest_active": False,
+            "quest_stage": None,
+            "milestones_completed": [],
+            "features_unlocked": [],
+            "total_tasks": 0,
+            "agent_stats": {},
+            "zone_stats": {},
+        }
+
+    return {
+        "user_id": str(user_id),
+        "quest_active": prog.quest_active,
+        "quest_stage": prog.quest_stage,
+        "quest_started_at": prog.quest_started_at.isoformat() if prog.quest_started_at else None,
+        "milestones_completed": prog.milestones_completed or [],
+        "features_unlocked": prog.features_unlocked or [],
+        "total_tasks": prog.total_tasks,
+        "agent_stats": prog.agent_stats or {},
+        "zone_stats": prog.zone_stats or {},
+        "created_at": prog.created_at.isoformat() if prog.created_at else None,
+        "updated_at": prog.updated_at.isoformat() if prog.updated_at else None,
+    }
+
+
+@router.patch("/users/{user_id}/quest")
+async def toggle_user_quest(
+    user_id: UUID,
+    request: ToggleQuestRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle quest mode on/off for a user."""
+    from app.services.progression import ProgressionService
+
+    svc = ProgressionService(db)
+
+    if request.quest_active:
+        prog = await svc.activate_quest(user_id)
+        await db.commit()
+        logger.info(f"Admin {admin.email} activated quest for user {user_id}")
+        return {
+            "status": "activated",
+            "user_id": str(user_id),
+            "quest_stage": prog.quest_stage,
+        }
+    else:
+        prog = await svc.deactivate_quest(user_id, unlock_all=request.unlock_all)
+        await db.commit()
+        logger.info(f"Admin {admin.email} deactivated quest for user {user_id} (unlock_all={request.unlock_all})")
+        return {
+            "status": "deactivated",
+            "user_id": str(user_id),
+            "unlock_all": request.unlock_all,
+        }
+
+
+@router.post("/users/{user_id}/reset-usage")
+async def reset_user_usage(
+    user_id: UUID,
+    request: ResetUsageRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset a user's message usage counter, optionally grant extra messages."""
+    result = await db.execute(
+        select(Subscription).where(Subscription.user_id == user_id)
+    )
+    subscription = result.scalar_one_or_none()
+
+    if not subscription:
+        raise HTTPException(status_code=404, detail="No subscription found for user")
+
+    subscription.messages_used = 0
+    if request.extra_messages > 0:
+        subscription.messages_limit = (subscription.messages_limit or 0) + request.extra_messages
+
+    await db.commit()
+
+    logger.info(
+        f"Admin {admin.email} reset usage for user {user_id} "
+        f"(extra_messages={request.extra_messages})"
+    )
+
+    return {
+        "status": "reset",
+        "user_id": str(user_id),
+        "messages_used": 0,
+        "messages_limit": subscription.messages_limit,
+    }
+
+
+@router.post("/users/{user_id}/add-credits")
+async def add_user_credits(
+    user_id: UUID,
+    request: AddCreditsRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add credits directly to a user's balance (no coupon/Stripe needed)."""
+    # Get or create credit balance
+    result = await db.execute(
+        select(CreditBalance).where(CreditBalance.user_id == user_id)
+    )
+    balance = result.scalar_one_or_none()
+
+    now = datetime.now(timezone.utc)
+
+    if not balance:
+        balance = CreditBalance(
+            user_id=user_id,
+            balance_cents=request.amount_cents,
+            total_purchased_cents=request.amount_cents,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(balance)
+    else:
+        balance.balance_cents += request.amount_cents
+        balance.total_purchased_cents += request.amount_cents
+        balance.updated_at = now
+
+    # Record transaction
+    txn = CreditTransaction(
+        user_id=user_id,
+        amount_cents=request.amount_cents,
+        balance_after=balance.balance_cents,
+        transaction_type="bonus",
+        description=request.note or f"Admin grant by {admin.email}",
+    )
+    db.add(txn)
+
+    await db.commit()
+
+    logger.info(f"Admin {admin.email} added {request.amount_cents}c credits to user {user_id}")
+
+    return {
+        "status": "credited",
+        "user_id": str(user_id),
+        "amount_cents": request.amount_cents,
+        "new_balance": balance.balance_cents,
     }
 
 
@@ -343,6 +562,24 @@ async def get_stats(
 
     users_with_sub = sum(users_by_tier.values())
     users_by_tier["Free Trial"] += total_users - users_with_sub
+
+    # --- Quest Progression ---
+    total_quest_users = 0
+    quest_users_by_stage = {}
+    try:
+        quest_count = await db.execute(
+            select(func.count(UserProgression.id)).where(UserProgression.quest_active == True)
+        )
+        total_quest_users = quest_count.scalar() or 0
+
+        stage_query = await db.execute(
+            select(UserProgression.quest_stage, func.count(UserProgression.id))
+            .where(UserProgression.quest_active == True)
+            .group_by(UserProgression.quest_stage)
+        )
+        quest_users_by_stage = {stage: count for stage, count in stage_query.fetchall()}
+    except Exception as e:
+        logger.debug(f"Quest progression stats unavailable: {e}")
 
     # --- Music tasks ---
     total_music_tasks = 0
@@ -455,6 +692,8 @@ async def get_stats(
         total_conversations=total_conversations,
         active_coupons=active_coupons,
         users_by_tier=users_by_tier,
+        total_quest_users=total_quest_users,
+        quest_users_by_stage=quest_users_by_stage,
         total_music_tasks=total_music_tasks,
         music_by_status=music_by_status,
         total_council_sessions=total_council_sessions,
@@ -556,8 +795,6 @@ async def update_report(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a bug report's status or admin notes."""
-    from datetime import timezone
-
     result = await db.execute(select(BugReport).where(BugReport.id == report_id))
     report = result.scalar_one_or_none()
 
