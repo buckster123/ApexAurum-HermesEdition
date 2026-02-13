@@ -10,6 +10,7 @@
 
 import { ref, computed, onMounted } from 'vue'
 import { useVillageGamification, ACHIEVEMENTS } from '@/composables/useVillageGamification'
+import AchievementShareModal from '@/components/village/AchievementShareModal.vue'
 
 const {
   stats,
@@ -134,6 +135,14 @@ const progressPercent = computed(() =>
   totalCount.value > 0 ? Math.round((totalEarned.value / totalCount.value) * 100) : 0
 )
 
+// --- Share modal ---
+
+const shareTarget = ref(null)
+
+function openShare(ach) {
+  shareTarget.value = ach
+}
+
 // --- Fetch data on mount ---
 
 onMounted(() => {
@@ -237,6 +246,15 @@ onMounted(() => {
                 <span>&#9889;</span>
                 <span>{{ ach.feature.replace(/_/g, ' ') }}</span>
               </div>
+
+              <!-- Share button (unlocked only) -->
+              <button
+                v-if="ach.unlocked"
+                @click="openShare(ach)"
+                class="mt-3 w-full text-[11px] py-1.5 rounded-lg bg-white/5 text-gray-400 hover:bg-gold/10 hover:text-gold transition-colors"
+              >
+                Share
+              </button>
             </div>
           </div>
         </div>
@@ -249,6 +267,14 @@ onMounted(() => {
         </div>
       </template>
     </div>
+
+    <!-- Share Modal (H5) -->
+    <AchievementShareModal
+      v-if="shareTarget"
+      :achievement="shareTarget"
+      :stage-config="STAGE_CONFIG[shareTarget.stage]"
+      @close="shareTarget = null"
+    />
   </div>
 </template>
 
