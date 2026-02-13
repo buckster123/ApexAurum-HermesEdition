@@ -178,17 +178,21 @@ const currentZoneStats = computed(() =>
   taskDialogZone.value ? getZoneStats(taskDialogZone.value.name) : null
 )
 
-// F6: React to server milestone unlocks (arrives async after recordTask)
+// F6+G3: React to server milestone unlocks with unlock ceremonies
 watch(lastServerMilestones, (milestones) => {
   if (!milestones?.length || viewMode.value !== '3d' || !village3dRef.value) return
   for (const m of milestones) {
-    village3dRef.value.emitAchievementBurst('AZOTH')
-    village3dRef.value.triggerBubble('AZOTH', `Quest: ${m.name}!`, 'success', 8)
-    sounds.devModeActivate()
-    // G1: Unlock the zone that was just unlocked by this milestone
-    if (m.feature_unlocked) {
-      const zone = FEATURE_TO_ZONE[m.feature_unlocked]
-      if (zone) village3dRef.value.setZoneLocked(zone, false)
+    const zone = m.feature_unlocked ? FEATURE_TO_ZONE[m.feature_unlocked] : null
+    if (zone) {
+      // G3: Queue unlock ceremony — camera pan, padlock shatter, particle rain
+      village3dRef.value.playUnlockCeremony(zone, () => {
+        sounds.devModeActivate()
+      })
+    } else {
+      // No zone mapping — simple burst + bubble
+      village3dRef.value.emitAchievementBurst('AZOTH')
+      village3dRef.value.triggerBubble('AZOTH', `Quest: ${m.name}!`, 'success', 8)
+      sounds.devModeActivate()
     }
   }
 })

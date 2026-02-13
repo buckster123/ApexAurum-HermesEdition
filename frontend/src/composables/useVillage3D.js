@@ -113,6 +113,42 @@ class ParticleSystem {
     this.bursts.push({ group, particles, age: 0, maxAge: 1.5, geometry })
   }
 
+  rain(position, colorHex, count = 60) {
+    const particles = []
+    const group = new THREE.Group()
+    const color = new THREE.Color(colorHex)
+    const geometry = new THREE.SphereGeometry(0.08, 6, 6)
+
+    for (let i = 0; i < count; i++) {
+      const material = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 1,
+      })
+      const mesh = new THREE.Mesh(geometry, material)
+
+      // Scatter above position at varying heights for staggered fall
+      mesh.position.set(
+        position.x + (Math.random() - 0.5) * 5,
+        position.y + Math.random() * 6,
+        position.z + (Math.random() - 0.5) * 5,
+      )
+
+      // Gentle downward drift + slight lateral wander
+      const velocity = new THREE.Vector3(
+        (Math.random() - 0.5) * 0.8,
+        -(0.5 + Math.random() * 1.5),
+        (Math.random() - 0.5) * 0.8,
+      )
+
+      group.add(mesh)
+      particles.push({ mesh, velocity, age: 0 })
+    }
+
+    this.scene.add(group)
+    this.bursts.push({ group, particles, age: 0, maxAge: 3.5, geometry })
+  }
+
   update(dt) {
     for (let i = this.bursts.length - 1; i >= 0; i--) {
       const burst = this.bursts[i]
@@ -1144,6 +1180,117 @@ export function useVillage3D(containerRef, options = {}) {
   }
 
   // =========================================================================
+  // G3: UNLOCK CEREMONIES — The Dopamine Moment
+  // =========================================================================
+
+  let ceremonyQueue = []
+  let ceremonyActive = false
+  let ceremonyCurrent = null
+  let ceremonyId = 0
+
+  function playUnlockCeremony(zoneName, onUnlock) {
+    ceremonyQueue.push({ zoneName, onUnlock })
+    if (!ceremonyActive) _runNextCeremony()
+  }
+
+  function skipCeremony() {
+    if (!ceremonyActive || !ceremonyCurrent) return
+    _skipCurrentCeremony()
+  }
+
+  function _skipCurrentCeremony() {
+    if (!ceremonyCurrent) return
+    const { zoneName, savedPos, savedTarget, onUnlock } = ceremonyCurrent
+    ceremonyId++ // Invalidate all pending ceremony callbacks
+    setZoneLocked(zoneName, false)
+    onUnlock?.()
+    _startCameraTransition(savedPos, savedTarget, 0.5)
+    const tid = setTimeout(() => {
+      ceremonyActive = false
+      ceremonyCurrent = null
+      _runNextCeremony()
+    }, 600)
+    pendingTimeouts.push(tid)
+  }
+
+  function _runNextCeremony() {
+    if (ceremonyQueue.length === 0) {
+      ceremonyActive = false
+      ceremonyCurrent = null
+      return
+    }
+
+    ceremonyActive = true
+    const myId = ++ceremonyId
+    const { zoneName, onUnlock } = ceremonyQueue.shift()
+    const zone = VILLAGE_LAYOUT[zoneName]
+
+    if (!zone) {
+      onUnlock?.()
+      _runNextCeremony()
+      return
+    }
+
+    // Save current camera state
+    const savedPos = cameraRef.value?.position.clone() || ORBIT_POSITION.clone()
+    const savedTarget = controlsRef.value?.target.clone() || ORBIT_TARGET.clone()
+    ceremonyCurrent = { zoneName, savedPos, savedTarget, onUnlock }
+
+    // Phase 1: Pan camera to zone (1.5s)
+    const zoneTarget = new THREE.Vector3(zone.pos[0], 2, zone.pos[2])
+    const cameraPos = zoneTarget.clone().add(new THREE.Vector3(6, 5, 6))
+    _startCameraTransition(cameraPos, zoneTarget, 1.5)
+
+    const tid1 = setTimeout(() => {
+      if (myId !== ceremonyId) return // Stale — ceremony was skipped
+
+      // Phase 2: Unlock effects
+      // Padlock shatter animation
+      const padlock = zonePadlockSprites.get(zoneName)
+      if (padlock) {
+        padlock.userData = { shattering: true, shatterStart: performance.now() }
+      }
+
+      // Brighten building
+      setZoneLocked(zoneName, false)
+
+      // Gold particle rain
+      if (particleSystem) {
+        const rainPos = new THREE.Vector3(zone.pos[0], 8, zone.pos[2])
+        particleSystem.rain(rainPos, 0xffd700, 60)
+      }
+
+      // Zone unlock bubble (positioned at zone, not following any agent)
+      if (sceneRef.value) {
+        const bubblePos = new THREE.Vector3(zone.pos[0], 4, zone.pos[2])
+        const bubble = new SpeechBubble(sceneRef.value, bubblePos, `${zone.label} Unlocked!`, 'success')
+        bubble.agentId = '__ceremony__'
+        bubble.maxAge = 5
+        speechBubbles.push(bubble)
+      }
+
+      // Fire the unlock callback (caller plays fanfare sound)
+      onUnlock?.()
+
+      // Phase 3: Hold for admiration, then pan back
+      const tid2 = setTimeout(() => {
+        if (myId !== ceremonyId) return
+        _startCameraTransition(savedPos, savedTarget, 1.0)
+
+        const tid3 = setTimeout(() => {
+          if (myId !== ceremonyId) return
+          ceremonyActive = false
+          ceremonyCurrent = null
+          _runNextCeremony()
+        }, 1200)
+        pendingTimeouts.push(tid3)
+      }, 3000)
+      pendingTimeouts.push(tid2)
+    }, 1700)
+    pendingTimeouts.push(tid1)
+  }
+
+  // =========================================================================
   // GLB PROGRESSIVE ENHANCEMENT
   // =========================================================================
 
@@ -1468,6 +1615,23 @@ export function useVillage3D(containerRef, options = {}) {
         ring.rotation.z = elapsedTime * 0.5
       } else {
         ring.material.opacity = 0.3
+      }
+    }
+
+    // --- Update shattering padlocks (G3) ---
+    for (const [zoneName, padlock] of zonePadlockSprites.entries()) {
+      if (padlock.userData?.shattering) {
+        const elapsed = (performance.now() - padlock.userData.shatterStart) / 1000
+        const t = Math.min(1, elapsed / 0.5)
+        padlock.scale.setScalar(1.2 * (1 - t))
+        padlock.material.opacity = 1 - t
+        if (t >= 1) {
+          const group = zoneGroups.get(zoneName)
+          if (group) group.remove(padlock)
+          padlock.material.map?.dispose()
+          padlock.material.dispose()
+          zonePadlockSprites.delete(zoneName)
+        }
       }
     }
 
@@ -1850,6 +2014,12 @@ export function useVillage3D(containerRef, options = {}) {
   }
 
   function _handleClick(event) {
+    // G3: Skip ceremony on click
+    if (ceremonyActive) {
+      _skipCurrentCeremony()
+      return
+    }
+
     _updateMouse(event)
     const intersections = _getIntersections()
     const userData = _findUserData(intersections)
@@ -2056,6 +2226,10 @@ export function useVillage3D(containerRef, options = {}) {
     zonePadlockSprites.clear()
     zoneLockedState.clear()
     zoneMeshes.length = 0
+    ceremonyQueue.length = 0
+    ceremonyActive = false
+    ceremonyCurrent = null
+    ceremonyId = 0
 
     // Dispose the rest of the scene
     const scene = sceneRef.value
@@ -2146,6 +2320,10 @@ export function useVillage3D(containerRef, options = {}) {
 
     // Quest Engine (G1)
     setZoneLocked,
+
+    // Unlock Ceremonies (G3)
+    playUnlockCeremony,
+    skipCeremony,
 
     // Internal refs (for advanced use / debugging)
     scene: sceneRef,

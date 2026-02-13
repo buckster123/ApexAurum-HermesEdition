@@ -86,6 +86,8 @@ const {
   setAgentIdleGlow,
   emitAchievementBurst,
   setZoneLocked,
+  playUnlockCeremony,
+  skipCeremony,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -127,6 +129,13 @@ defineExpose({
   // Quest Engine (G1)
   setZoneLocked(zoneName, locked) {
     setZoneLocked(zoneName, locked)
+  },
+  // Unlock Ceremonies (G3)
+  playUnlockCeremony(zoneName, onUnlock) {
+    playUnlockCeremony(zoneName, onUnlock)
+  },
+  skipCeremony() {
+    skipCeremony()
   },
 })
 
