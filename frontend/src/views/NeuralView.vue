@@ -18,6 +18,7 @@ import StatsBar from '@/components/neural/StatsBar.vue'
 import MemoryFilters from '@/components/neural/MemoryFilters.vue'
 import MemoryDetailPanel from '@/components/neural/MemoryDetailPanel.vue'
 import DreamPanel from '@/components/neural/DreamPanel.vue'
+import ImportPanel from '@/components/neural/ImportPanel.vue'
 import NeuralSpace from '@/components/neural/NeuralSpace.vue'
 import MemoryList from '@/components/neural/MemoryList.vue'
 
@@ -72,9 +73,12 @@ onMounted(async () => {
   window.addEventListener('resize', handleResize)
   handleResize()
 
-  // Check for ?panel=dream query param (e.g. from /dream redirect)
+  // Check for ?panel= query param (e.g. from /dream redirect or /neural?panel=import)
   if (route.query.panel === 'dream') {
     store.setRightPanelMode('dream')
+    showDetails.value = true
+  } else if (route.query.panel === 'import') {
+    store.setRightPanelMode('import')
     showDetails.value = true
   }
 
@@ -244,12 +248,28 @@ watch(() => dreamStore.isRunning, async (running, wasRunning) => {
                 class="absolute bottom-0 left-2 right-2 h-0.5 bg-gold rounded-full"
               ></div>
             </button>
+            <button
+              @click="store.setRightPanelMode('import')"
+              :class="[
+                'flex-1 px-4 py-2.5 text-xs font-medium transition-colors relative',
+                store.rightPanelMode === 'import'
+                  ? 'text-white'
+                  : 'text-gray-500 hover:text-gray-300'
+              ]"
+            >
+              Import
+              <div
+                v-if="store.rightPanelMode === 'import'"
+                class="absolute bottom-0 left-2 right-2 h-0.5 bg-gold rounded-full"
+              ></div>
+            </button>
           </div>
 
           <!-- Panel content -->
           <div class="flex-1 overflow-hidden">
             <MemoryDetailPanel v-if="store.rightPanelMode === 'memory'" />
-            <DreamPanel v-else />
+            <DreamPanel v-else-if="store.rightPanelMode === 'dream'" />
+            <ImportPanel v-else-if="store.rightPanelMode === 'import'" />
           </div>
         </div>
       </transition>
