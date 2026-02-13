@@ -10,8 +10,10 @@ import { ref, shallowRef, watch, onMounted, onUnmounted, computed } from 'vue'
 import * as THREE from 'three'
 import { useThreeScene, createMemoryNode, createConnectionLine } from '@/composables/useThreeScene'
 import { useNeoCortexStore, AGENT_COLORS, LAYER_CONFIG } from '@/stores/neocortex'
+import { useDreamStore } from '@/stores/dream'
 import { useSound } from '@/composables/useSound'
 import { NeuralAmbientSystem } from '@/composables/useNeuralAmbient'
+import { DreamNexusSystem } from '@/composables/useDreamNexus'
 import { useAgentModels } from '@/composables/useAgentModels'
 import AlchemicalLoader from '@/components/ui/AlchemicalLoader.vue'
 
@@ -29,6 +31,7 @@ const props = defineProps({
 const emit = defineEmits(['select', 'hover', 'doubleClick'])
 
 const store = useNeoCortexStore()
+const dreamStore = useDreamStore()
 const containerRef = ref(null)
 
 // Initialize Three.js
@@ -63,6 +66,10 @@ const agentModels = useAgentModels()
 let ambientSystem = null
 let removeAmbientCallback = null
 let initCheckInterval = null
+
+// Dream Nexus (alchemy helix at scene center)
+let nexusSystem = null
+let removeNexusCallback = null
 
 /**
  * Walk up the parent chain to find the memory-node group.
@@ -177,6 +184,16 @@ function setNodeEmissive(node, multiplier) {
 }
 
 function onClick(event) {
+  // Check nexus orbs first (they sit at scene center)
+  if (nexusSystem) {
+    const nexusHit = getObjectAtMouse(event, nexusSystem.getClickableObjects())
+    if (nexusHit) {
+      store.setRightPanelMode('dream')
+      playTone(554, 0.1, 'sine', 0.15)
+      return
+    }
+  }
+
   if (!nodeGroup.value) return
 
   const intersect = getObjectAtMouse(event, nodeGroup.value.children)
@@ -238,6 +255,13 @@ watch(() => props.autoRotate, (val) => {
   setAutoRotate(val)
 })
 
+// Flash nexus orb on dream phase transitions
+watch(() => dreamStore.activePhase, (newPhase) => {
+  if (nexusSystem && newPhase >= 0) {
+    nexusSystem.flashPhase(newPhase)
+  }
+})
+
 // Initialize ambient system once scene is ready
 function initAmbient() {
   if (scene.value && !ambientSystem) {
@@ -247,6 +271,16 @@ function initAmbient() {
     })
     // Set initial memory state
     ambientSystem.setHasRealMemories(store.filteredNodes.length > 0)
+  }
+}
+
+// Initialize dream nexus (alchemy helix at scene center)
+function initNexus() {
+  if (scene.value && !nexusSystem) {
+    nexusSystem = new DreamNexusSystem(scene.value)
+    removeNexusCallback = addAnimationCallback((dt) => {
+      nexusSystem.update(dt, dreamStore.activePhase, dreamStore.isRunning)
+    })
   }
 }
 
@@ -270,12 +304,14 @@ onMounted(() => {
   if (isInitialized.value) {
     buildVisualization()
     initAmbient()
+    initNexus()
   } else {
     // Wait for initialization
     initCheckInterval = setInterval(() => {
       if (isInitialized.value) {
         buildVisualization()
         initAmbient()
+        initNexus()
         clearInterval(initCheckInterval)
         initCheckInterval = null
       }
@@ -294,6 +330,11 @@ onUnmounted(() => {
   if (ambientSystem) {
     ambientSystem.dispose()
     ambientSystem = null
+  }
+  if (removeNexusCallback) removeNexusCallback()
+  if (nexusSystem) {
+    nexusSystem.dispose()
+    nexusSystem = null
   }
   agentModels.disposeAll()
 })
