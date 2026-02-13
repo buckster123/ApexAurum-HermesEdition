@@ -88,6 +88,7 @@ const {
   setZoneLocked,
   playUnlockCeremony,
   skipCeremony,
+  focusOnZone,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -136,6 +137,13 @@ defineExpose({
   },
   skipCeremony() {
     skipCeremony()
+  },
+  // Camera control (G4 tutorial)
+  focusOnZone(zoneName) {
+    focusOnZone(zoneName)
+  },
+  returnToOverview() {
+    returnToOverview()
   },
 })
 

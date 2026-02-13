@@ -17,6 +17,7 @@ import Village3D from '@/components/village/Village3D.vue'
 import VillageTaskDialog from '@/components/village/VillageTaskDialog.vue'
 import VillageResultPanel from '@/components/village/VillageResultPanel.vue'
 import QuestHUD from '@/components/village/QuestHUD.vue'
+import VillageTutorial from '@/components/village/VillageTutorial.vue'
 import TaskTickerBar from '@/components/village/TaskTickerBar.vue'
 import TaskDetailPanel from '@/components/village/TaskDetailPanel.vue'
 import { useVillageTasking } from '@/composables/useVillageTasking'
@@ -178,6 +179,25 @@ const currentZoneStats = computed(() =>
   taskDialogZone.value ? getZoneStats(taskDialogZone.value.name) : null
 )
 
+// G4: Tutorial — The Awakening
+const showTutorial = ref(false)
+
+function handleTutorialCamera(command) {
+  if (!village3dRef.value) return
+  if (command === 'overview') {
+    village3dRef.value.returnToOverview()
+  } else if (command.startsWith('focus-zone:')) {
+    const zone = command.split(':')[1]
+    village3dRef.value.focusOnZone(zone)
+  }
+}
+
+function handleTutorialComplete() {
+  showTutorial.value = false
+  // Return camera to overview
+  if (village3dRef.value) village3dRef.value.returnToOverview()
+}
+
 // F6+G3: React to server milestone unlocks with unlock ceremonies
 watch(lastServerMilestones, (milestones) => {
   if (!milestones?.length || viewMode.value !== '3d' || !village3dRef.value) return
@@ -296,6 +316,14 @@ watch(viewMode, async (mode) => {
     await nextTick()
     await nextTick()
     setTimeout(applyGamificationVisuals, 600)
+    // G4: Check if tutorial needed
+    setTimeout(() => {
+      if (!localStorage.getItem('village_tutorial_complete')) {
+        showTutorial.value = true
+      }
+    }, 1200)
+  } else {
+    showTutorial.value = false
   }
 })
 
@@ -481,6 +509,12 @@ onMounted(() => {
   // Apply gamification visuals if starting in 3D mode
   if (viewMode.value === '3d') {
     setTimeout(applyGamificationVisuals, 800)
+    // G4: Tutorial on first visit
+    setTimeout(() => {
+      if (!localStorage.getItem('village_tutorial_complete')) {
+        showTutorial.value = true
+      }
+    }, 1500)
   }
 })
 
@@ -582,7 +616,15 @@ onUnmounted(() => {
         </div>
 
         <!-- Quest HUD (G2) — bottom-left overlay, 3D mode only -->
-        <QuestHUD v-if="viewMode === '3d'" class="absolute bottom-4 left-4 z-10" />
+        <QuestHUD v-if="viewMode === '3d' && !showTutorial" class="absolute bottom-4 left-4 z-10" />
+
+        <!-- Tutorial Overlay (G4) — The Awakening -->
+        <VillageTutorial
+          v-if="viewMode === '3d'"
+          :active="showTutorial"
+          @step-camera="handleTutorialCamera"
+          @complete="handleTutorialComplete"
+        />
       </div>
 
       <!-- Right Sidebar: Task Detail Panel -->
