@@ -40,13 +40,16 @@ const {
   clearResult,
 } = useVillageTasking()
 
-// --- Village Gamification (E5) ---
+// --- Village Gamification (E5) + Quest Sync (F6) ---
 const {
   agentLevels,
   zoneLevels,
   recordTask: recordGamificationTask,
   getZoneHistory,
   getZoneStats,
+  questProgress,
+  lastServerMilestones,
+  fetchQuestProgress,
 } = useVillageGamification()
 
 const showTaskDialog = ref(false)
@@ -173,6 +176,16 @@ const currentZoneHistory = computed(() =>
 const currentZoneStats = computed(() =>
   taskDialogZone.value ? getZoneStats(taskDialogZone.value.name) : null
 )
+
+// F6: React to server milestone unlocks (arrives async after recordTask)
+watch(lastServerMilestones, (milestones) => {
+  if (!milestones?.length || viewMode.value !== '3d' || !village3dRef.value) return
+  for (const m of milestones) {
+    village3dRef.value.emitAchievementBurst('AZOTH')
+    village3dRef.value.triggerBubble('AZOTH', `Quest: ${m.name}!`, 'success', 8)
+    sounds.devModeActivate()
+  }
+})
 
 // Apply gamification visuals when 3D view initializes
 function applyGamificationVisuals() {
@@ -429,6 +442,8 @@ function handleWebGLError(error) {
 
 onMounted(() => {
   connectWebSocket()
+  // F6: Fetch quest progress from server (non-blocking)
+  fetchQuestProgress()
   // Apply gamification visuals if starting in 3D mode
   if (viewMode.value === '3d') {
     setTimeout(applyGamificationVisuals, 800)

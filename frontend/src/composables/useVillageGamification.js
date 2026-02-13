@@ -2,16 +2,19 @@
  * useVillageGamification — Persistent XP, Levels, Achievements & Task History
  *
  * Tracks agent XP, zone evolution, milestone achievements, and task history.
- * All state persisted to localStorage. No backend changes required.
+ * All state persisted to localStorage + synced to server for quest tier users.
  *
  * XP formula: success = 2 XP, failure = 1 XP, council bonus = +1 per agent.
  * Agent level: min(10, floor(xp / 5))
  * Zone level: min(5, floor(tasks / 5))
  *
+ * F6: Server sync — quest users get milestone checks + stat persistence server-side.
+ *
  * "Every task forges the Village stronger."
  */
 
-import { reactive, computed } from 'vue'
+import { reactive, computed, ref } from 'vue'
+import api from '@/services/api'
 
 const STORAGE_KEY = 'apexaurum_village_stats'
 const STORAGE_VERSION = 1
@@ -171,6 +174,19 @@ export function useVillageGamification() {
 
   const stats = reactive(loadStats())
 
+  // --- Quest state (F6: server-side progression) ---
+  const questProgress = reactive({
+    quest_active: false,
+    quest_stage: null,
+    milestones: [],
+    features_unlocked: [],
+    next_milestone: null,
+    stage_progress: 0,
+    stage_total: 0,
+  })
+  const questLoading = ref(false)
+  const lastServerMilestones = ref([]) // Newly unlocked from last check
+
   // --- Computed levels ---
 
   const agentLevels = computed(() => {
@@ -268,10 +284,134 @@ export function useVillageGamification() {
     // Check achievements
     const unlocked = checkAchievements()
 
-    // Persist
+    // Persist locally
     saveStats(stats)
 
+    // F6: Server sync (non-blocking — fire and forget)
+    _serverSync(task)
+
     return unlocked
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // F6: SERVER SYNC — Quest Engine bridge
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Fetch quest progress from server. Call on Village mount.
+   * Non-quest users get quest_active: false — no disruption.
+   */
+  async function fetchQuestProgress() {
+    try {
+      questLoading.value = true
+      const { data } = await api.get('/api/v1/quest/progress')
+      Object.assign(questProgress, data)
+
+      // If server has stats, merge server totals if they're ahead of local
+      if (data.total_tasks > stats.totalTasks) {
+        stats.totalTasks = data.total_tasks
+      }
+      if (data.agent_stats && Object.keys(data.agent_stats).length > 0) {
+        for (const [agentId, serverStats] of Object.entries(data.agent_stats)) {
+          if (stats.agents[agentId]) {
+            // Server wins if it has more XP (handles cross-device sync)
+            if ((serverStats.xp || 0) > stats.agents[agentId].xp) {
+              stats.agents[agentId].xp = serverStats.xp
+              stats.agents[agentId].tasks = serverStats.tasks || stats.agents[agentId].tasks
+              stats.agents[agentId].successes = serverStats.successes || stats.agents[agentId].successes
+            }
+          }
+        }
+      }
+      if (data.zone_stats && Object.keys(data.zone_stats).length > 0) {
+        for (const [zone, serverStats] of Object.entries(data.zone_stats)) {
+          if (stats.zones[zone] && (serverStats.tasks || 0) > stats.zones[zone].tasks) {
+            stats.zones[zone].tasks = serverStats.tasks
+            stats.zones[zone].successes = serverStats.successes || stats.zones[zone].successes
+          }
+        }
+      }
+
+      saveStats(stats)
+    } catch (e) {
+      // Not logged in or server down — silently continue with localStorage only
+      if (e.response?.status !== 401) {
+        console.warn('[Gamification] Quest progress fetch failed:', e.message)
+      }
+    } finally {
+      questLoading.value = false
+    }
+  }
+
+  /**
+   * Post-task server sync: check milestones + sync stats.
+   * Runs non-blocking after each recordTask().
+   */
+  async function _serverSync(task) {
+    // Only sync if we have an auth token
+    const token = localStorage.getItem('accessToken')
+    if (!token || token === 'undefined' || token === 'null') return
+
+    try {
+      // 1. Check milestones (returns newly completed)
+      const { data: milestoneResult } = await api.post('/api/v1/quest/check-milestones', {
+        zone: task.zone || null,
+        agents: task.agents || [],
+        mode: task.mode || 'single',
+        type: task.mode === 'council' ? 'council' : 'chat',
+        model: task.model || null,
+        tools_used: task.tools_used || [],
+        has_file_upload: !!task.has_file_upload,
+        success: !!task.success,
+      })
+
+      // Store newly unlocked milestones for the UI to react to
+      if (milestoneResult.new_milestones?.length > 0) {
+        lastServerMilestones.value = milestoneResult.new_milestones
+        // Update local quest progress
+        for (const m of milestoneResult.new_milestones) {
+          if (!questProgress.features_unlocked.includes(m.feature_unlocked)) {
+            questProgress.features_unlocked.push(m.feature_unlocked)
+          }
+        }
+        questProgress.stage_progress += milestoneResult.new_milestones.length
+      }
+
+      if (milestoneResult.stage_complete && milestoneResult.new_stage) {
+        questProgress.quest_stage = milestoneResult.new_stage
+      }
+
+      // 2. Sync stats to server (less frequent — every 5 tasks)
+      if (stats.totalTasks % 5 === 0) {
+        await api.post('/api/v1/quest/sync-stats', {
+          agents: stats.agents,
+          zones: stats.zones,
+          achievements: stats.achievements,
+          totalTasks: stats.totalTasks,
+        })
+      }
+    } catch (e) {
+      // Non-blocking — don't disrupt the user experience
+      if (e.response?.status !== 401) {
+        console.warn('[Gamification] Server sync failed:', e.message)
+      }
+    }
+  }
+
+  /**
+   * Force a full stats sync to server. Call on page unload or explicit save.
+   */
+  async function syncStatsToServer() {
+    try {
+      await api.post('/api/v1/quest/sync-stats', {
+        agents: stats.agents,
+        zones: stats.zones,
+        achievements: stats.achievements,
+        totalTasks: stats.totalTasks,
+      })
+    } catch {
+      // Silent fail
+    }
   }
 
   // --- Query helpers ---
@@ -315,6 +455,12 @@ export function useVillageGamification() {
     getZoneStats,
     resetStats,
     ACHIEVEMENTS,
+    // F6: Quest Engine sync
+    questProgress,
+    questLoading,
+    lastServerMilestones,
+    fetchQuestProgress,
+    syncStatsToServer,
   }
 
   return _instance
