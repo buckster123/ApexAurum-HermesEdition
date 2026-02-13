@@ -10,6 +10,7 @@ through the tunnel and results return forward.
 
 import json
 import logging
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -72,6 +73,22 @@ async def authenticate_device_ws(websocket: WebSocket) -> tuple | None:
     return None
 
 
+async def _touch_device(device_id: UUID):
+    """Update device last_seen_at in database."""
+    try:
+        from app.database import get_db_context
+        async with get_db_context() as db:
+            await db.execute(
+                __import__("sqlalchemy").text(
+                    "UPDATE devices SET last_seen_at = :now WHERE id = :id"
+                ),
+                {"now": datetime.utcnow(), "id": str(device_id)},
+            )
+            await db.commit()
+    except Exception as e:
+        logger.debug(f"Failed to update last_seen_at: {e}")
+
+
 @router.websocket("/bridge")
 async def bridge_websocket(websocket: WebSocket):
     """
@@ -107,6 +124,9 @@ async def bridge_websocket(websocket: WebSocket):
         websocket=websocket,
         device_name=device.device_name,
     )
+
+    # Mark device as seen
+    await _touch_device(device_id)
 
     # Broadcast connection event to Village
     try:
@@ -150,9 +170,10 @@ async def bridge_websocket(websocket: WebSocket):
                 accepted = manager.update_telemetry(device_id, readings, timestamp)
 
                 if accepted:
-                    # Store to database (fire and forget)
+                    # Store to database and update last_seen
                     try:
                         await _store_telemetry(device_id, user_id, readings)
+                        await _touch_device(device_id)
                     except Exception as e:
                         logger.debug(f"Telemetry store failed: {e}")
 
