@@ -16,6 +16,7 @@ import VillageIsometric from '@/components/village/VillageIsometric.vue'
 import Village3D from '@/components/village/Village3D.vue'
 import VillageTaskDialog from '@/components/village/VillageTaskDialog.vue'
 import VillageResultPanel from '@/components/village/VillageResultPanel.vue'
+import QuestHUD from '@/components/village/QuestHUD.vue'
 import TaskTickerBar from '@/components/village/TaskTickerBar.vue'
 import TaskDetailPanel from '@/components/village/TaskDetailPanel.vue'
 import { useVillageTasking } from '@/composables/useVillageTasking'
@@ -575,6 +576,9 @@ onUnmounted(() => {
             @webgl-error="handleWebGLError"
           />
         </div>
+
+        <!-- Quest HUD (G2) — bottom-left overlay, 3D mode only -->
+        <QuestHUD v-if="viewMode === '3d'" class="absolute bottom-4 left-4 z-10" />
       </div>
 
       <!-- Right Sidebar: Task Detail Panel -->
