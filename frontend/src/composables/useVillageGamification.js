@@ -186,6 +186,7 @@ export function useVillageGamification() {
   })
   const questLoading = ref(false)
   const lastServerMilestones = ref([]) // Newly unlocked from last check
+  const lastStageTransition = ref(null) // { from: 'seeker', to: 'adept' } when stage completes
 
   // --- Computed levels ---
 
@@ -378,7 +379,9 @@ export function useVillageGamification() {
       }
 
       if (milestoneResult.stage_complete && milestoneResult.new_stage) {
+        const oldStage = questProgress.quest_stage
         questProgress.quest_stage = milestoneResult.new_stage
+        lastStageTransition.value = { from: oldStage, to: milestoneResult.new_stage }
       }
 
       // 2. Sync stats to server (less frequent — every 5 tasks)
@@ -459,6 +462,7 @@ export function useVillageGamification() {
     questProgress,
     questLoading,
     lastServerMilestones,
+    lastStageTransition,
     fetchQuestProgress,
     syncStatsToServer,
   }

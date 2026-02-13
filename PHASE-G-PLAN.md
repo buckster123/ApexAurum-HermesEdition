@@ -203,8 +203,8 @@ G1  Locked Village visuals          ✓ DEPLOYED (2eaa17e)
 G2  Quest HUD                       ✓ DEPLOYED (b6158ca)
 G3  Unlock Ceremonies               ✓ DEPLOYED (343c4ad)
 G4  Tutorial Overlay                ✓ DEPLOYED (157d0d4) — live-tested
-G5  Agent Unlock Progression        ← Depth (earn your team)
-G6  Stage Transitions               ← Grand moments (celebrate ascension)
+G5  Agent Unlock Progression        ✓ DEPLOYED — silhouettes + earn your team
+G6  Stage Transitions               ✓ DEPLOYED — grand ascension ceremonies
 ```
 
 G1 + G2 form the **minimum viable quest experience** — users can see what's locked and track progress.

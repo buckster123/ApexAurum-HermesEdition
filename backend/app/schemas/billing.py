@@ -156,13 +156,14 @@ class PortalSessionResponse(BaseModel):
 
 class PricingTier(BaseModel):
     """Pricing tier for display."""
-    id: str = Field(..., description="Tier ID: 'seeker', 'adept', 'opus', 'azothic'")
+    id: str = Field(..., description="Tier ID: 'seeker', 'adept', 'opus', 'azothic', or quest_ prefixed")
     name: str = Field(..., description="Display name")
     tagline: str = Field(..., description="Short tagline")
     price_monthly: float = Field(..., description="Monthly price in USD")
     messages_per_month: Optional[int] = Field(None, description="Message limit (None = unlimited)")
     features: List[str] = Field(..., description="List of feature descriptions")
     popular: bool = Field(False, description="Whether to highlight as popular")
+    tier_type: str = Field("classic", description="'classic' or 'quest'")
 
 
 class CreditPack(BaseModel):

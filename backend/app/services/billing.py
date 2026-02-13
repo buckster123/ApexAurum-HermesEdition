@@ -526,12 +526,16 @@ class BillingService:
         # Ensure we have a valid Stripe customer
         customer_id = await self._ensure_valid_stripe_customer(subscription, user)
 
-        # Get price ID for tier
+        # Get price ID for tier (classic + quest)
         tier_price_map = {
             "seeker": settings.stripe_price_seeker_monthly,
             "adept": settings.stripe_price_adept_monthly,
             "opus": settings.stripe_price_opus_monthly,
             "azothic": settings.stripe_price_azothic_monthly,
+            "quest_seeker": settings.stripe_price_quest_seeker_monthly,
+            "quest_adept": settings.stripe_price_quest_adept_monthly,
+            "quest_opus": settings.stripe_price_quest_opus_monthly,
+            "quest_azothic": settings.stripe_price_quest_azothic_monthly,
         }
         price_id = tier_price_map.get(tier)
         if not price_id:

@@ -1068,6 +1068,124 @@ export function useVillage3D(containerRef, options = {}) {
   }
 
   // =========================================================================
+  // G5: AGENT LOCK/UNLOCK VISUALS (Quest Engine)
+  // =========================================================================
+
+  const agentLockedState = new Map()
+
+  function _createMysteryNameSprite() {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    canvas.width = 160
+    canvas.height = 32
+
+    ctx.shadowColor = '#000000'
+    ctx.shadowBlur = 4
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)'
+    ctx.font = 'bold 22px monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('?', 80, 16)
+
+    const texture = new THREE.CanvasTexture(canvas)
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true })
+    const sprite = new THREE.Sprite(material)
+    sprite.scale.set(4.5, 0.9, 1)
+    return sprite
+  }
+
+  function setAgentLocked(agentId, locked) {
+    const agent = agents.get(agentId)
+    if (!agent) return
+
+    agentLockedState.set(agentId, locked)
+
+    if (locked) {
+      // Desaturate mesh — dark grey, low emissive
+      if (agent.mesh?.material) {
+        agent.mesh.material._origColor = agent.mesh.material.color?.clone()
+        agent.mesh.material._origEmissive = agent.mesh.material.emissive?.clone()
+        agent.mesh.material._origEmissiveIntensity = agent.mesh.material.emissiveIntensity
+        agent.mesh.material.color.set(0x333333)
+        agent.mesh.material.emissive.set(0x111111)
+        agent.mesh.material.emissiveIntensity = 0.1
+      }
+      // Also desaturate GLB children
+      agent.group.traverse((child) => {
+        if (child.isMesh && child !== agent.mesh && child !== agent.glowRing && child !== agent.selectionRing && child.material) {
+          child.material._origColor = child.material.color?.clone()
+          child.material._origEmissive = child.material.emissive?.clone()
+          child.material._origEmissiveIntensity = child.material.emissiveIntensity
+          child.material.color?.set(0x333333)
+          if (child.material.emissive) {
+            child.material.emissive.set(0x111111)
+            child.material.emissiveIntensity = 0.1
+          }
+        }
+      })
+
+      // Hide glow ring
+      agent.glowRing.material.opacity = 0
+      agent.glowRing.visible = false
+
+      // Replace nameplate with "?" mystery sprite
+      if (agent.nameSprite) {
+        agent.group.remove(agent.nameSprite)
+        agent.nameSprite.material.map?.dispose()
+        agent.nameSprite.material.dispose()
+      }
+      const mystery = _createMysteryNameSprite()
+      mystery.position.y = agent.glbSwapped ? 3.0 : 2.2
+      agent.group.add(mystery)
+      agent.nameSprite = mystery
+      agent.nameSprite.userData.mystery = true
+    } else {
+      // Restore original colors
+      if (agent.mesh?.material) {
+        if (agent.mesh.material._origColor) {
+          agent.mesh.material.color.copy(agent.mesh.material._origColor)
+        }
+        if (agent.mesh.material._origEmissive) {
+          agent.mesh.material.emissive.copy(agent.mesh.material._origEmissive)
+        }
+        if (agent.mesh.material._origEmissiveIntensity !== undefined) {
+          agent.mesh.material.emissiveIntensity = agent.mesh.material._origEmissiveIntensity
+        }
+      }
+      // Restore GLB children
+      agent.group.traverse((child) => {
+        if (child.isMesh && child !== agent.mesh && child !== agent.glowRing && child !== agent.selectionRing && child.material) {
+          if (child.material._origColor) child.material.color?.copy(child.material._origColor)
+          if (child.material._origEmissive) child.material.emissive?.copy(child.material._origEmissive)
+          if (child.material._origEmissiveIntensity !== undefined) {
+            child.material.emissiveIntensity = child.material._origEmissiveIntensity
+          }
+        }
+      })
+
+      // Restore glow ring
+      agent.glowRing.visible = true
+      agent.glowRing.material.opacity = agent.idleGlowBase || 0
+
+      // Restore proper nameplate (with level if gamification active)
+      if (agent.nameSprite?.userData?.mystery) {
+        agent.group.remove(agent.nameSprite)
+        agent.nameSprite.material.map?.dispose()
+        agent.nameSprite.material.dispose()
+        const sprite = _createAgentNameSprite(agentId, 0)
+        sprite.position.y = agent.glbSwapped ? 3.0 : 2.2
+        agent.group.add(sprite)
+        agent.nameSprite = sprite
+      }
+    }
+  }
+
+  function isAgentLocked(agentId) {
+    return agentLockedState.get(agentId) || false
+  }
+
+  // =========================================================================
   // G1: ZONE LOCK/UNLOCK VISUALS (Quest Engine)
   // =========================================================================
 
@@ -2225,6 +2343,7 @@ export function useVillage3D(containerRef, options = {}) {
     zoneLabelSprites.clear()
     zonePadlockSprites.clear()
     zoneLockedState.clear()
+    agentLockedState.clear()
     zoneMeshes.length = 0
     ceremonyQueue.length = 0
     ceremonyActive = false
@@ -2320,6 +2439,10 @@ export function useVillage3D(containerRef, options = {}) {
 
     // Quest Engine (G1)
     setZoneLocked,
+
+    // Agent Unlock Progression (G5)
+    setAgentLocked,
+    isAgentLocked,
 
     // Unlock Ceremonies (G3)
     playUnlockCeremony,

@@ -29,6 +29,10 @@ const props = defineProps({
     type: Object,
     default: () => ({})
   },
+  lockedAgents: {
+    type: Array,
+    default: () => []
+  },
 })
 
 const emit = defineEmits(['zone-click', 'agent-click', 'agent-task', 'webgl-error'])
@@ -89,6 +93,8 @@ const {
   playUnlockCeremony,
   skipCeremony,
   focusOnZone,
+  setAgentLocked,
+  isAgentLocked,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -145,6 +151,13 @@ defineExpose({
   returnToOverview() {
     returnToOverview()
   },
+  // Agent lock/unlock (G5)
+  setAgentLocked(agentId, locked) {
+    setAgentLocked(agentId, locked)
+  },
+  isAgentLocked(agentId) {
+    return isAgentLocked(agentId)
+  },
 })
 
 onMounted(() => {
@@ -174,6 +187,10 @@ const selectedAgentData = computed(() => {
 
 const selectedAgentLevel = computed(() =>
   props.agentLevels[selectedAgentData.value?.id] || 0
+)
+
+const selectedAgentLocked = computed(() =>
+  selectedAgentData.value ? props.lockedAgents.includes(selectedAgentData.value.id) : false
 )
 
 const isDivedIn = computed(() => cameraMode.value !== 'orbit')
@@ -379,37 +396,50 @@ watch(() => props.events, (newEvents) => {
     <transition name="popup">
       <div
         v-if="showAgentPopup && selectedAgentData"
-        class="agent-popup absolute bg-apex-dark/95 backdrop-blur-lg border border-apex-border rounded-lg shadow-2xl p-4 w-72"
+        class="agent-popup absolute bg-apex-dark/95 backdrop-blur-lg border rounded-lg shadow-2xl p-4 w-72"
+        :class="selectedAgentLocked ? 'border-gray-600' : 'border-apex-border'"
         :style="{ left: popupPosition.x + 'px', top: popupPosition.y + 'px' }"
       >
         <!-- Header -->
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-3">
             <div
-              class="w-10 h-10 rounded-full flex items-center justify-center text-black font-bold"
-              :style="{ backgroundColor: selectedAgentData.color }"
+              class="w-10 h-10 rounded-full flex items-center justify-center font-bold"
+              :style="selectedAgentLocked
+                ? { backgroundColor: '#333', color: '#666' }
+                : { backgroundColor: selectedAgentData.color, color: '#000' }"
             >
-              {{ selectedAgentData.id.charAt(0) }}
+              {{ selectedAgentLocked ? '?' : selectedAgentData.id.charAt(0) }}
             </div>
             <div>
-              <h3 class="font-medium text-white">{{ selectedAgentData.id }}</h3>
+              <h3 class="font-medium" :class="selectedAgentLocked ? 'text-gray-500' : 'text-white'">
+                {{ selectedAgentLocked ? '???' : selectedAgentData.id }}
+              </h3>
               <div class="flex items-center gap-1.5">
                 <span
-                  class="text-xs px-2 py-0.5 rounded"
-                  :class="{
-                    'bg-green-500/20 text-green-400': selectedAgentData.state === 'working',
-                    'bg-blue-500/20 text-blue-400': selectedAgentData.state === 'walking',
-                    'bg-gray-500/20 text-gray-400': selectedAgentData.state === 'idle'
-                  }"
+                  v-if="selectedAgentLocked"
+                  class="text-xs px-2 py-0.5 rounded bg-gray-700/50 text-gray-500"
                 >
-                  {{ selectedAgentData.state }}
+                  locked
                 </span>
-                <span
-                  v-if="selectedAgentLevel > 0"
-                  class="text-xs px-1.5 py-0.5 rounded bg-gold/20 text-gold font-medium"
-                >
-                  Lv.{{ selectedAgentLevel }}
-                </span>
+                <template v-else>
+                  <span
+                    class="text-xs px-2 py-0.5 rounded"
+                    :class="{
+                      'bg-green-500/20 text-green-400': selectedAgentData.state === 'working',
+                      'bg-blue-500/20 text-blue-400': selectedAgentData.state === 'walking',
+                      'bg-gray-500/20 text-gray-400': selectedAgentData.state === 'idle'
+                    }"
+                  >
+                    {{ selectedAgentData.state }}
+                  </span>
+                  <span
+                    v-if="selectedAgentLevel > 0"
+                    class="text-xs px-1.5 py-0.5 rounded bg-gold/20 text-gold font-medium"
+                  >
+                    Lv.{{ selectedAgentLevel }}
+                  </span>
+                </template>
               </div>
             </div>
           </div>
@@ -423,46 +453,58 @@ watch(() => props.events, (newEvents) => {
           </button>
         </div>
 
-        <!-- Location -->
-        <div class="space-y-2 text-sm">
-          <div class="flex items-center justify-between">
-            <span class="text-gray-500">Location</span>
-            <div class="flex items-center gap-2">
-              <span
-                class="w-2 h-2 rounded"
-                :style="{ backgroundColor: VILLAGE_LAYOUT[selectedAgentData.zone]?.color || '#888' }"
-              ></span>
-              <span class="text-white">{{ VILLAGE_LAYOUT[selectedAgentData.zone]?.label || selectedAgentData.zone }}</span>
+        <!-- Locked agent message -->
+        <div v-if="selectedAgentLocked" class="text-center py-4">
+          <div class="text-2xl mb-2 opacity-30">&#128274;</div>
+          <p class="text-gray-400 text-sm">
+            Complete the <span class="text-gold font-medium">Meet the Council</span> milestone to unlock this agent.
+          </p>
+          <p class="text-gray-600 text-xs mt-2">Chat with 2 different agents to earn this milestone.</p>
+        </div>
+
+        <!-- Unlocked agent info -->
+        <template v-else>
+          <!-- Location -->
+          <div class="space-y-2 text-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-gray-500">Location</span>
+              <div class="flex items-center gap-2">
+                <span
+                  class="w-2 h-2 rounded"
+                  :style="{ backgroundColor: VILLAGE_LAYOUT[selectedAgentData.zone]?.color || '#888' }"
+                ></span>
+                <span class="text-white">{{ VILLAGE_LAYOUT[selectedAgentData.zone]?.label || selectedAgentData.zone }}</span>
+              </div>
+            </div>
+
+            <!-- Current Tool -->
+            <div v-if="selectedAgentData.tool" class="flex items-center justify-between">
+              <span class="text-gray-500">Running</span>
+              <span class="text-gold">{{ selectedAgentData.tool }}</span>
+            </div>
+
+            <!-- No Activity -->
+            <div v-else class="text-center py-3 text-gray-500">
+              <span class="text-xs">Agent is idle</span>
             </div>
           </div>
 
-          <!-- Current Tool -->
-          <div v-if="selectedAgentData.tool" class="flex items-center justify-between">
-            <span class="text-gray-500">Running</span>
-            <span class="text-gold">{{ selectedAgentData.tool }}</span>
+          <!-- Actions -->
+          <div class="mt-4 pt-3 border-t border-apex-border flex gap-2">
+            <button
+              class="flex-1 text-xs px-3 py-2 bg-gold/10 hover:bg-gold/20 text-gold rounded transition-colors"
+              @click="assignAgentTask"
+            >
+              Assign Task
+            </button>
+            <button
+              class="flex-1 text-xs px-3 py-2 bg-white/5 hover:bg-white/10 rounded transition-colors text-gray-300"
+              @click="closeAgentPopup"
+            >
+              Close
+            </button>
           </div>
-
-          <!-- No Activity -->
-          <div v-else class="text-center py-3 text-gray-500">
-            <span class="text-xs">Agent is idle</span>
-          </div>
-        </div>
-
-        <!-- Actions -->
-        <div class="mt-4 pt-3 border-t border-apex-border flex gap-2">
-          <button
-            class="flex-1 text-xs px-3 py-2 bg-gold/10 hover:bg-gold/20 text-gold rounded transition-colors"
-            @click="assignAgentTask"
-          >
-            Assign Task
-          </button>
-          <button
-            class="flex-1 text-xs px-3 py-2 bg-white/5 hover:bg-white/10 rounded transition-colors text-gray-300"
-            @click="closeAgentPopup"
-          >
-            Close
-          </button>
-        </div>
+        </template>
       </div>
     </transition>
   </div>

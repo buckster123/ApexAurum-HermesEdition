@@ -9,11 +9,33 @@ const billing = useBillingStore()
 const auth = useAuthStore()
 
 const activeTab = ref('plans')
+const planMode = ref('classic')  // 'classic' or 'quest'
 const loadingAction = ref(null)
 const checkoutError = ref(null)
 const couponCode = ref('')
 const couponMessage = ref(null)
 const selectedResource = ref('opus_messages')
+
+// Split tiers by type
+const classicTiers = computed(() =>
+  (billing.pricing?.tiers || []).filter(t => t.tier_type !== 'quest')
+)
+const questTiers = computed(() =>
+  (billing.pricing?.tiers || []).filter(t => t.tier_type === 'quest')
+)
+const hasQuestTiers = computed(() => questTiers.value.length > 0)
+const displayedTiers = computed(() =>
+  planMode.value === 'quest' ? questTiers.value : classicTiers.value
+)
+
+// Price display for current plan (handles both classic and quest tiers)
+const currentPlanPrice = computed(() => {
+  const tier = billing.status.tier
+  if (!tier || tier === 'free_trial') return null
+  const allTiers = billing.pricing?.tiers || []
+  const match = allTiers.find(t => t.id === tier)
+  return match ? match.price_monthly : null
+})
 
 // Check for success redirect
 const checkoutSuccess = computed(() => route.query.session_id)
@@ -157,7 +179,7 @@ function formatDate(dateStr) {
           <div class="text-sm text-gray-400 mb-1">Current Plan</div>
           <div class="text-2xl font-bold text-gold">{{ billing.tierName }}</div>
           <div class="text-sm text-gray-500 mt-1">
-            {{ billing.isFreeTrial ? 'Free Trial' : `${{ free_trial: '0', seeker: '10', adept: '30', opus: '100', azothic: '300' }[billing.status.tier] || '?'}/month` }}
+            {{ billing.isFreeTrial ? 'Free Trial' : currentPlanPrice !== null ? `$${currentPlanPrice}/month` : '' }}
           </div>
         </div>
 
@@ -264,22 +286,62 @@ function formatDate(dateStr) {
     </div>
 
     <!-- Plans Tab -->
-    <div v-if="activeTab === 'plans'" class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div v-if="activeTab === 'plans'">
+      <!-- Classic / Quest toggle -->
+      <div v-if="hasQuestTiers" class="flex justify-center mb-8">
+        <div class="inline-flex bg-gray-800 rounded-lg p-1 border border-gray-700">
+          <button
+            @click="planMode = 'classic'"
+            :class="[
+              'px-5 py-2 rounded-lg text-sm transition-all',
+              planMode === 'classic'
+                ? 'bg-gold text-black font-semibold'
+                : 'text-gray-400 hover:text-white'
+            ]"
+          >Classic</button>
+          <button
+            @click="planMode = 'quest'"
+            :class="[
+              'px-5 py-2 rounded-lg text-sm transition-all',
+              planMode === 'quest'
+                ? 'bg-purple-500 text-white font-semibold'
+                : 'text-gray-400 hover:text-white'
+            ]"
+          >Quest Path</button>
+        </div>
+      </div>
+
+      <!-- Quest Path description -->
+      <div v-if="planMode === 'quest'" class="text-center mb-6">
+        <p class="text-purple-300 text-sm max-w-2xl mx-auto">
+          Half the price, full the adventure. Start with the Workshop and earn every zone, tool, and agent
+          through milestones. The Village awakens as you progress.
+        </p>
+      </div>
+
+      <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
       <div
-        v-for="tier in (billing.pricing?.tiers || [])"
+        v-for="tier in displayedTiers"
         :key="tier.id"
         :class="[
           'relative rounded-xl p-6 border transition-all',
-          tier.popular
-            ? 'bg-gold/5 border-gold shadow-lg shadow-gold/10'
-            : 'bg-surface border-gray-700 hover:border-gray-600',
+          tier.popular && tier.tier_type === 'quest'
+            ? 'bg-purple-500/5 border-purple-500 shadow-lg shadow-purple-500/10'
+            : tier.popular
+              ? 'bg-gold/5 border-gold shadow-lg shadow-gold/10'
+              : 'bg-surface border-gray-700 hover:border-gray-600',
           billing.status.tier === tier.id && 'ring-2 ring-gold/50'
         ]"
       >
         <!-- Popular Badge -->
         <div
           v-if="tier.popular"
-          class="absolute -top-3 left-1/2 -translate-x-1/2 bg-gold text-black text-xs font-bold px-3 py-1 rounded-full"
+          :class="[
+            'absolute -top-3 left-1/2 -translate-x-1/2 text-xs font-bold px-3 py-1 rounded-full',
+            tier.tier_type === 'quest'
+              ? 'bg-purple-500 text-white'
+              : 'bg-gold text-black'
+          ]"
         >
           MOST POPULAR
         </div>
@@ -322,9 +384,11 @@ function formatDate(dateStr) {
           :disabled="tier.id === 'free_trial' || billing.status.tier === tier.id || loadingAction === tier.id"
           :class="[
             'w-full py-3 rounded-lg font-medium transition-all',
-            tier.popular
-              ? 'bg-gold text-black hover:bg-gold/90'
-              : 'bg-surface border border-gray-600 hover:border-gold/50',
+            tier.popular && tier.tier_type === 'quest'
+              ? 'bg-purple-500 text-white hover:bg-purple-500/90'
+              : tier.popular
+                ? 'bg-gold text-black hover:bg-gold/90'
+                : 'bg-surface border border-gray-600 hover:border-gold/50',
             (tier.id === 'free_trial' || billing.status.tier === tier.id) && 'opacity-50 cursor-not-allowed'
           ]"
         >
@@ -338,6 +402,7 @@ function formatDate(dateStr) {
                   : `Upgrade to ${tier.name}`
           }}
         </button>
+      </div>
       </div>
     </div>
 

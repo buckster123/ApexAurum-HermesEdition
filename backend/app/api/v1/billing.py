@@ -117,10 +117,14 @@ async def create_subscription_checkout(
 
     After successful payment, Stripe webhook will update the subscription.
     """
-    if request.tier not in ("seeker", "adept", "opus", "azothic"):
+    valid_tiers = (
+        "seeker", "adept", "opus", "azothic",
+        "quest_seeker", "quest_adept", "quest_opus", "quest_azothic",
+    )
+    if request.tier not in valid_tiers:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid tier. Must be 'seeker', 'adept', 'opus', or 'azothic'."
+            detail=f"Invalid tier. Must be one of: {', '.join(valid_tiers)}"
         )
 
     # Build URLs - prefer HTTPS production URL over localhost
@@ -537,6 +541,86 @@ async def get_pricing():
             popular=False,
         ),
     ]
+
+    # Quest tiers — half price, features unlock through gameplay
+    # Only include when at least one quest price ID is configured
+    has_quest_prices = any([
+        settings.stripe_price_quest_seeker_monthly,
+        settings.stripe_price_quest_adept_monthly,
+        settings.stripe_price_quest_opus_monthly,
+        settings.stripe_price_quest_azothic_monthly,
+    ])
+    if has_quest_prices:
+        tiers.extend([
+            PricingTier(
+                id="quest_seeker",
+                name="Seeker Quest",
+                tagline="Begin the Great Work",
+                price_monthly=5,
+                messages_per_month=200,
+                features=[
+                    "200 messages per month",
+                    "Haiku + Sonnet models",
+                    "Features unlock through milestones",
+                    "Guided Village progression",
+                    "Unlock ceremonies + achievements",
+                    "Start with Workshop — earn the rest",
+                ],
+                popular=False,
+                tier_type="quest",
+            ),
+            PricingTier(
+                id="quest_adept",
+                name="Adept Quest",
+                tagline="Walk the Path",
+                price_monthly=15,
+                messages_per_month=1000,
+                features=[
+                    "1,000 messages per month",
+                    "All models + 50 Opus/month",
+                    "Features unlock through milestones",
+                    "Full gamified Village experience",
+                    "Stage ceremonies + progression HUD",
+                    "Earn tools, agents, and zones",
+                ],
+                popular=True,
+                tier_type="quest",
+            ),
+            PricingTier(
+                id="quest_opus",
+                name="Opus Quest",
+                tagline="Master the Athanor",
+                price_monthly=50,
+                messages_per_month=5000,
+                features=[
+                    "5,000 messages + 500 Opus/month",
+                    "All models + Legacy",
+                    "Features unlock through milestones",
+                    "Accelerated progression path",
+                    "Full Nursery access (when earned)",
+                    "5GB vault storage (when earned)",
+                ],
+                popular=False,
+                tier_type="quest",
+            ),
+            PricingTier(
+                id="quest_azothic",
+                name="Azothic Quest",
+                tagline="The Philosopher's Stone awaits",
+                price_monthly=150,
+                messages_per_month=20000,
+                features=[
+                    "20,000 messages + 2,000 Opus/month",
+                    "Everything in Opus Quest tier",
+                    "Features unlock through milestones",
+                    "Fastest progression path",
+                    "20GB vault storage (when earned)",
+                    "Priority routing",
+                ],
+                popular=False,
+                tier_type="quest",
+            ),
+        ])
 
     credit_packs = [
         CreditPack(

@@ -18,6 +18,7 @@ import VillageTaskDialog from '@/components/village/VillageTaskDialog.vue'
 import VillageResultPanel from '@/components/village/VillageResultPanel.vue'
 import QuestHUD from '@/components/village/QuestHUD.vue'
 import VillageTutorial from '@/components/village/VillageTutorial.vue'
+import StageTransition from '@/components/village/StageTransition.vue'
 import TaskTickerBar from '@/components/village/TaskTickerBar.vue'
 import TaskDetailPanel from '@/components/village/TaskDetailPanel.vue'
 import { useVillageTasking } from '@/composables/useVillageTasking'
@@ -51,6 +52,7 @@ const {
   getZoneStats,
   questProgress,
   lastServerMilestones,
+  lastStageTransition,
   fetchQuestProgress,
 } = useVillageGamification()
 
@@ -198,6 +200,26 @@ function handleTutorialComplete() {
   if (village3dRef.value) village3dRef.value.returnToOverview()
 }
 
+// G6: Stage Transition ceremony
+const activeStageTransition = ref(null)
+
+watch(lastStageTransition, (transition) => {
+  if (transition && viewMode.value === '3d') {
+    // Delay slightly to let milestone ceremonies finish
+    setTimeout(() => {
+      activeStageTransition.value = { ...transition }
+    }, 2000)
+  }
+})
+
+function handleStageTransitionComplete() {
+  activeStageTransition.value = null
+  // Refresh lock states — new stage may unlock new zones
+  applyQuestLockState()
+  // Play fanfare
+  sounds.devModeActivate()
+}
+
 // F6+G3: React to server milestone unlocks with unlock ceremonies
 watch(lastServerMilestones, (milestones) => {
   if (!milestones?.length || viewMode.value !== '3d' || !village3dRef.value) return
@@ -215,6 +237,15 @@ watch(lastServerMilestones, (milestones) => {
       sounds.devModeActivate()
     }
   }
+})
+
+// G5: Compute which agents should be locked based on quest progress
+// AZOTH is always unlocked. Others locked until 'all_agents' feature is earned.
+const lockedAgents = computed(() => {
+  if (!questProgress.quest_active) return []
+  const unlocked = new Set(questProgress.features_unlocked || [])
+  if (unlocked.has('all_agents')) return []
+  return ['VAJRA', 'ELYSIAN', 'KETHER']
 })
 
 // G1: Feature-to-zone mapping for lock/unlock visuals
@@ -237,6 +268,13 @@ function applyQuestLockState() {
   }
   // Village Square is always unlocked
   village3dRef.value.setZoneLocked('village_square', false)
+
+  // G5: Apply agent lock state
+  for (const agentId of ['VAJRA', 'ELYSIAN', 'KETHER']) {
+    village3dRef.value.setAgentLocked(agentId, lockedAgents.value.includes(agentId))
+  }
+  // AZOTH is always unlocked
+  village3dRef.value.setAgentLocked('AZOTH', false)
 }
 
 // Apply gamification visuals when 3D view initializes
@@ -608,6 +646,7 @@ onUnmounted(() => {
             :status="status"
             :agent-levels="agentLevels"
             :zone-levels="zoneLevels"
+            :locked-agents="lockedAgents"
             @agent-click="handleAgentClick"
             @zone-click="handleZoneClick"
             @agent-task="handleAgentTask"
@@ -624,6 +663,12 @@ onUnmounted(() => {
           :active="showTutorial"
           @step-camera="handleTutorialCamera"
           @complete="handleTutorialComplete"
+        />
+
+        <!-- Stage Transition Ceremony (G6) -->
+        <StageTransition
+          :transition="activeStageTransition"
+          @complete="handleStageTransitionComplete"
         />
       </div>
 
