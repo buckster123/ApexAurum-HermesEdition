@@ -22,6 +22,7 @@ from app.database import get_db
 from app.auth.deps import get_current_user, get_current_user_optional
 from app.models.user import User
 from app.models.agora import AgoraPost, AgoraReaction, AgoraComment
+from app.models.progression import UserProgression
 from app.services.agora import sanitize_for_agora, get_agora_settings, DEFAULT_AGORA_SETTINGS
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,11 @@ def _format_author(user: User, agora_settings: Optional[dict] = None) -> dict:
         name = user.display_name or "Alchemist"
     else:
         name = "Anonymous Alchemist"
-    return {"display_name": name}
+    result = {"display_name": name}
+    # Include quest stage for quest-active users (social proof badge)
+    if hasattr(user, "progression") and user.progression and user.progression.quest_active:
+        result["quest_stage"] = user.progression.quest_stage
+    return result
 
 
 def _format_post(post: AgoraPost, my_reactions: list[str] = None, author_info: dict = None) -> dict:
@@ -95,16 +100,22 @@ def _format_post(post: AgoraPost, my_reactions: list[str] = None, author_info: d
 def _format_comment(comment: AgoraComment) -> dict:
     """Format a comment for API response."""
     author_name = "Alchemist"
+    quest_stage = None
     if comment.agent_id:
         author_name = comment.agent_id
     elif comment.user and hasattr(comment.user, "display_name"):
         author_name = comment.user.display_name or "Alchemist"
+        if hasattr(comment.user, "progression") and comment.user.progression and comment.user.progression.quest_active:
+            quest_stage = comment.user.progression.quest_stage
+    author = {"display_name": author_name}
+    if quest_stage:
+        author["quest_stage"] = quest_stage
     return {
         "id": str(comment.id),
         "body": comment.body,
         "agent_id": comment.agent_id,
         "parent_id": str(comment.parent_id) if comment.parent_id else None,
-        "author": {"display_name": author_name},
+        "author": author,
         "created_at": comment.created_at.isoformat() if comment.created_at else None,
     }
 
@@ -125,7 +136,7 @@ async def get_feed(
     """Public paginated feed. Browsable without authentication."""
     query = (
         select(AgoraPost)
-        .options(selectinload(AgoraPost.user))
+        .options(selectinload(AgoraPost.user).selectinload(User.progression))
         .where(AgoraPost.visibility == "public")
         .order_by(AgoraPost.is_pinned.desc(), AgoraPost.created_at.desc())
         .limit(limit + 1)
@@ -195,8 +206,8 @@ async def get_post(
     result = await db.execute(
         select(AgoraPost)
         .options(
-            selectinload(AgoraPost.user),
-            selectinload(AgoraPost.comments).selectinload(AgoraComment.user),
+            selectinload(AgoraPost.user).selectinload(User.progression),
+            selectinload(AgoraPost.comments).selectinload(AgoraComment.user).selectinload(User.progression),
         )
         .where(AgoraPost.id == UUID(post_id), AgoraPost.visibility == "public")
     )

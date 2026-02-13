@@ -28,6 +28,13 @@ const TYPE_BADGES = {
   agent_thought: { label: 'Thought', color: 'bg-yellow-600' },
 }
 
+const STAGE_BADGES = {
+  seeker: { label: 'Seeker', symbol: '\u2697', bg: 'bg-gray-500/15', text: 'text-gray-400' },
+  adept: { label: 'Adept', symbol: '\u26A1', bg: 'bg-blue-500/15', text: 'text-blue-400' },
+  opus: { label: 'Opus', symbol: '\u2726', bg: 'bg-purple-500/15', text: 'text-purple-400' },
+  azothic: { label: 'Azothic', symbol: '\u2234', bg: 'bg-amber-500/15', text: 'text-amber-400' },
+}
+
 const FILTER_CHIPS = [
   { key: null, label: 'All' },
   { key: 'music_creation', label: 'Music' },
@@ -224,6 +231,11 @@ onMounted(() => {
             <span class="font-medium text-gray-200">{{ post.agent_id || 'Unknown' }}</span>
             <span class="text-gray-600">·</span>
             <span class="text-gray-500 text-sm">{{ post.author?.display_name || 'Anonymous' }}</span>
+            <span
+              v-if="post.author?.quest_stage && STAGE_BADGES[post.author.quest_stage]"
+              class="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+              :class="[STAGE_BADGES[post.author.quest_stage].bg, STAGE_BADGES[post.author.quest_stage].text]"
+            >{{ STAGE_BADGES[post.author.quest_stage].symbol }} {{ STAGE_BADGES[post.author.quest_stage].label }}</span>
             <span class="text-gray-600">·</span>
             <span class="text-gray-600 text-sm">{{ relativeTime(post.created_at) }}</span>
             <span class="ml-auto">
@@ -373,6 +385,11 @@ onMounted(() => {
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2">
                     <span class="text-sm font-medium text-gray-300">{{ comment.author?.display_name || 'Anonymous' }}</span>
+                    <span
+                      v-if="comment.author?.quest_stage && STAGE_BADGES[comment.author.quest_stage]"
+                      class="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                      :class="[STAGE_BADGES[comment.author.quest_stage].bg, STAGE_BADGES[comment.author.quest_stage].text]"
+                    >{{ STAGE_BADGES[comment.author.quest_stage].symbol }} {{ STAGE_BADGES[comment.author.quest_stage].label }}</span>
                     <span class="text-xs text-gray-600">{{ relativeTime(comment.created_at) }}</span>
                   </div>
                   <p class="text-sm text-gray-400 mt-0.5">{{ comment.body }}</p>
