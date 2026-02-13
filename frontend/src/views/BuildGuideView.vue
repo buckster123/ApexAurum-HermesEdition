@@ -6,9 +6,16 @@ import { useAuthStore } from '@/stores/auth'
 const router = useRouter()
 const auth = useAuthStore()
 const expandedStep = ref(null)
+const lightboxImage = ref(null)
+const lightboxAlt = ref('')
 
 function toggleStep(step) {
   expandedStep.value = expandedStep.value === step ? null : step
+}
+
+function openLightbox(src, alt) {
+  lightboxImage.value = src
+  lightboxAlt.value = alt
 }
 
 function copyCommand(text) {
@@ -381,12 +388,22 @@ const steps = [
 
             <!-- Expanded Content -->
             <div v-if="expandedStep === step.id" class="mt-4 pt-4 border-t border-apex-border">
-              <!-- Step Image -->
-              <img
-                :src="step.image"
-                :alt="step.title"
-                class="w-full h-48 sm:h-64 object-cover rounded-lg mb-4"
-              />
+              <!-- Step Image (click to expand) -->
+              <div
+                class="relative group cursor-pointer mb-4"
+                @click="openLightbox(step.image, step.title)"
+              >
+                <img
+                  :src="step.image"
+                  :alt="step.title"
+                  class="w-full h-64 sm:h-80 object-cover rounded-lg"
+                />
+                <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors rounded-lg flex items-center justify-center">
+                  <span class="opacity-0 group-hover:opacity-100 transition-opacity text-white text-sm bg-black/50 px-3 py-1 rounded-full">
+                    Click to expand
+                  </span>
+                </div>
+              </div>
 
               <!-- Instructions -->
               <div class="space-y-2 mb-4">
@@ -471,19 +488,25 @@ CAM1 (near power)   ── Camera Module 3 NoIR Wide</pre>
       <div class="card mb-8">
         <h2 class="text-xl font-bold mb-4">Reference Build</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+          <div
+            class="cursor-pointer group"
+            @click="openLightbox('/images/build-guide/assembly-angle.jpg', 'SensorHead assembled — angle view')"
+          >
             <img
               src="/images/build-guide/assembly-angle.jpg"
               alt="SensorHead assembled — angle view"
-              class="w-full h-48 object-cover rounded-lg"
+              class="w-full h-56 sm:h-64 object-cover rounded-lg group-hover:brightness-110 transition"
             />
             <p class="text-xs text-gray-500 mt-2">Side view: Oak platform, Pi 5, camera bracket, I2C sensors</p>
           </div>
-          <div>
+          <div
+            class="cursor-pointer group"
+            @click="openLightbox('/images/build-guide/workspace-blender.jpg', 'SensorHead workspace')"
+          >
             <img
               src="/images/build-guide/workspace-blender.jpg"
               alt="SensorHead workspace with laptop and Blender"
-              class="w-full h-48 object-cover rounded-lg"
+              class="w-full h-56 sm:h-64 object-cover rounded-lg group-hover:brightness-110 transition"
             />
             <p class="text-xs text-gray-500 mt-2">Workspace: SensorHead with BenQ display and development laptop</p>
           </div>
@@ -539,6 +562,29 @@ CAM1 (near power)   ── Camera Module 3 NoIR Wide</pre>
           </router-link>
         </div>
       </div>
+    </div>
+
+    <!-- Image Lightbox -->
+    <div
+      v-if="lightboxImage"
+      class="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 cursor-pointer"
+      @click="lightboxImage = null"
+    >
+      <button
+        class="absolute top-4 right-4 text-white/60 hover:text-white text-3xl z-10"
+        @click="lightboxImage = null"
+      >
+        &times;
+      </button>
+      <img
+        :src="lightboxImage"
+        :alt="lightboxAlt"
+        class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+        @click.stop
+      />
+      <p v-if="lightboxAlt" class="absolute bottom-6 left-0 right-0 text-center text-sm text-white/60">
+        {{ lightboxAlt }}
+      </p>
     </div>
   </div>
 </template>
