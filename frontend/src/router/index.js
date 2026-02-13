@@ -115,8 +115,7 @@ const router = createRouter({
     {
       path: '/dream',
       name: 'dream',
-      component: () => import('@/views/DreamView.vue'),
-      meta: { requiresAuth: true }
+      redirect: { name: 'neural', query: { panel: 'dream' } },
     },
     {
       path: '/athanor',
