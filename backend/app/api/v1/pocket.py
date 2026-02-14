@@ -2145,3 +2145,175 @@ async def pocket_sensor_snapshot(
             errors.append(f"{action}: {e}")
 
     return {**snapshot, "errors": errors, "total_duration_ms": int((time.time() - start) * 1000)}
+
+
+# ─── Sentinel (autonomous motion detection) ──────────────────────────
+
+
+def _get_user_sensorhead(device_and_user):
+    """Get bridge connection for user's SensorHead. Raises 503 if offline."""
+    device, user = device_and_user
+    from app.services.bridge_manager import get_bridge_manager
+
+    manager = get_bridge_manager()
+    conn = manager.find_device_for_user(user.id)
+    if not conn:
+        raise HTTPException(503, detail="No SensorHead connected")
+    return conn, user, manager
+
+
+@router.get("/sentinel/status")
+async def pocket_sentinel_status(
+    device_and_user: tuple = Depends(get_device_and_user),
+):
+    """Sentinel status from device (armed, config, stats)."""
+    conn, user, manager = _get_user_sensorhead(device_and_user)
+    try:
+        result = await manager.send_command(conn.device_id, "sentinel_status", {}, timeout=10)
+        return {"online": True, **(result.get("data", {}))}
+    except Exception:
+        return {"online": False, "armed": False}
+
+
+@router.post("/sentinel/arm")
+async def pocket_sentinel_arm(
+    device_and_user: tuple = Depends(get_device_and_user),
+):
+    """Arm the sentinel."""
+    conn, user, manager = _get_user_sensorhead(device_and_user)
+    result = await manager.send_command(conn.device_id, "sentinel_arm", {}, timeout=10)
+    return {"action": "armed", **(result.get("data", {}))}
+
+
+@router.post("/sentinel/disarm")
+async def pocket_sentinel_disarm(
+    device_and_user: tuple = Depends(get_device_and_user),
+):
+    """Disarm the sentinel."""
+    conn, user, manager = _get_user_sensorhead(device_and_user)
+    result = await manager.send_command(conn.device_id, "sentinel_disarm", {}, timeout=10)
+    return {"action": "disarmed", **(result.get("data", {}))}
+
+
+@router.post("/sentinel/configure")
+async def pocket_sentinel_configure(
+    body: dict,
+    device_and_user: tuple = Depends(get_device_and_user),
+):
+    """Update sentinel config."""
+    conn, user, manager = _get_user_sensorhead(device_and_user)
+    result = await manager.send_command(conn.device_id, "sentinel_configure", body, timeout=10)
+    return {"action": "configured", **(result.get("data", {}))}
+
+
+@router.post("/sentinel/presets/{preset_name}/load")
+async def pocket_sentinel_load_preset(
+    preset_name: str,
+    device_and_user: tuple = Depends(get_device_and_user),
+):
+    """Load a built-in preset."""
+    conn, user, manager = _get_user_sensorhead(device_and_user)
+    result = await manager.send_command(
+        conn.device_id, "sentinel_load_preset", {"preset": preset_name}, timeout=10
+    )
+    return {"action": "preset_loaded", "preset": preset_name, **(result.get("data", {}))}
+
+
+@router.get("/sentinel/events")
+async def pocket_sentinel_events(
+    limit: int = Query(default=30, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sentinel event timeline."""
+    conn, user, _ = _get_user_sensorhead(device_and_user)
+
+    result = await db.execute(
+        text("""
+            SELECT id, alert_type, data, acknowledged, created_at
+            FROM sensor_alerts
+            WHERE device_id = :did AND alert_type LIKE 'sentinel_%'
+            ORDER BY created_at DESC
+            LIMIT :limit OFFSET :offset
+        """),
+        {"did": str(conn.device_id), "limit": limit, "offset": offset},
+    )
+    events = []
+    for row in result.mappings().all():
+        event_data = json.loads(row["data"]) if row["data"] else {}
+        events.append({
+            "id": str(row["id"]),
+            "type": row["alert_type"].replace("sentinel_", ""),
+            "data": event_data,
+            "acknowledged": row["acknowledged"],
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "has_snapshot": bool(event_data.get("snapshot_b64")),
+        })
+
+    count_result = await db.execute(
+        text("""
+            SELECT COUNT(*) FROM sensor_alerts
+            WHERE device_id = :did AND alert_type LIKE 'sentinel_%' AND acknowledged = FALSE
+        """),
+        {"did": str(conn.device_id)},
+    )
+    unacked = count_result.scalar() or 0
+
+    return {"events": events, "unacked_count": unacked}
+
+
+@router.post("/sentinel/events/{event_id}/ack")
+async def pocket_sentinel_ack(
+    event_id: str,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Acknowledge a sentinel event."""
+    conn, user, _ = _get_user_sensorhead(device_and_user)
+    await db.execute(
+        text("UPDATE sensor_alerts SET acknowledged = TRUE WHERE id = :eid AND device_id = :did"),
+        {"eid": event_id, "did": str(conn.device_id)},
+    )
+    await db.commit()
+    return {"action": "acknowledged", "event_id": event_id}
+
+
+@router.post("/sentinel/events/ack-all")
+async def pocket_sentinel_ack_all(
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Acknowledge all sentinel events."""
+    conn, user, _ = _get_user_sensorhead(device_and_user)
+    result = await db.execute(
+        text("""
+            UPDATE sensor_alerts SET acknowledged = TRUE
+            WHERE device_id = :did AND alert_type LIKE 'sentinel_%' AND acknowledged = FALSE
+        """),
+        {"did": str(conn.device_id)},
+    )
+    await db.commit()
+    return {"action": "all_acknowledged", "count": result.rowcount}
+
+
+@router.get("/sentinel/events/{event_id}/snapshot")
+async def pocket_sentinel_snapshot(
+    event_id: str,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get snapshot image from a sentinel event."""
+    conn, user, _ = _get_user_sensorhead(device_and_user)
+    result = await db.execute(
+        text("SELECT data FROM sensor_alerts WHERE id = :eid AND device_id = :did"),
+        {"eid": event_id, "did": str(conn.device_id)},
+    )
+    row = result.mappings().first()
+    if not row:
+        raise HTTPException(404, detail="Event not found")
+    data = json.loads(row["data"]) if row["data"] else {}
+    snapshot = data.get("snapshot_b64")
+    if not snapshot:
+        raise HTTPException(404, detail="No snapshot")
+    return {"image_base64": snapshot, "event_id": event_id}
