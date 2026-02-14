@@ -2451,3 +2451,239 @@ async def pocket_sentinel_alert(
         "alert_type": body.alert_type,
         "created_at": datetime.utcnow().isoformat(),
     }
+
+
+# ─── CerebroCortex Memory API (Pocket) ────────────────────────────────
+# Rich memory system — search, list, stats, dream triggers from mobile.
+# Same CerebroCortex backend as the web, just device-auth'd.
+# =======================================================================
+
+
+class PocketCortexSearchRequest(BaseModel):
+    query: str
+    agent_id: Optional[str] = None
+    memory_types: Optional[list] = None
+    min_salience: float = 0.0
+    limit: int = 20
+
+
+@router.get("/cortex/memories")
+async def pocket_cortex_memories(
+    layer: Optional[str] = Query(None),
+    agent_id: Optional[str] = Query(None),
+    memory_type: Optional[str] = Query(None),
+    limit: int = Query(30, le=100),
+    offset: int = Query(0),
+    device_and_user: tuple = Depends(get_device_and_user),
+    db=Depends(get_db),
+):
+    """List CerebroCortex memories with optional filters."""
+    _, user = device_and_user
+    try:
+        from app.services.cerebro.pg_graph_store import PgGraphStore
+        store = PgGraphStore(db)
+        nodes = await store.get_memories(
+            user.id, limit=limit, offset=offset,
+            layer=layer, agent_id=agent_id, memory_type=memory_type,
+        )
+        return [_cortex_node_to_dict(n) for n in nodes]
+    except Exception as e:
+        logger.error(f"Pocket cortex memories error: {e}")
+        return []
+
+
+@router.post("/cortex/search")
+async def pocket_cortex_search(
+    request: PocketCortexSearchRequest,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db=Depends(get_db),
+):
+    """Semantic search through CerebroCortex memories."""
+    _, user = device_and_user
+    try:
+        from app.services.cerebro import get_cerebro_service
+        service = get_cerebro_service()
+        results = await service.recall(
+            db=db, user_id=user.id, query=request.query,
+            top_k=request.limit, memory_types=request.memory_types,
+            min_salience=request.min_salience, agent_id=request.agent_id,
+        )
+        return [
+            {
+                "id": r.memory_id,
+                "content": r.content[:500] if r.content else "",
+                "agent_id": r.agent_id or "AZOTH",
+                "layer": r.layer,
+                "memory_type": r.memory_type,
+                "salience": r.salience,
+                "score": round(r.final_score, 3),
+                "access_count": r.access_count,
+                "tags": r.tags,
+                "valence": r.valence,
+                "created_at": r.created_at,
+            }
+            for r in results
+        ]
+    except Exception as e:
+        logger.error(f"Pocket cortex search error: {e}")
+        return []
+
+
+@router.get("/cortex/stats")
+async def pocket_cortex_stats(
+    device_and_user: tuple = Depends(get_device_and_user),
+    db=Depends(get_db),
+):
+    """Get CerebroCortex memory statistics."""
+    _, user = device_and_user
+    try:
+        from app.services.cerebro import get_cerebro_service
+        service = get_cerebro_service()
+        stats = await service.stats(db, user.id)
+        return {
+            "total": stats.get("nodes", 0),
+            "by_layer": stats.get("layers", {}),
+            "by_agent": stats.get("agents", {}),
+            "by_memory_type": stats.get("memory_types", {}),
+            "links": stats.get("links", 0),
+            "episodes": stats.get("episodes", 0),
+        }
+    except Exception as e:
+        logger.error(f"Pocket cortex stats error: {e}")
+        return {"total": 0, "by_layer": {}, "by_agent": {}, "by_memory_type": {}, "links": 0, "episodes": 0}
+
+
+@router.delete("/cortex/memories/{memory_id}")
+async def pocket_cortex_delete_memory(
+    memory_id: str,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db=Depends(get_db),
+):
+    """Delete a CerebroCortex memory."""
+    _, user = device_and_user
+    result = await db.execute(
+        text("DELETE FROM cerebro_memory_nodes WHERE id = :id AND user_id = :uid RETURNING id"),
+        {"id": memory_id, "uid": user.id},
+    )
+    await db.commit()
+    if not result.fetchone():
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"deleted": memory_id}
+
+
+@router.get("/cortex/dream")
+async def pocket_cortex_dream_status(
+    device_and_user: tuple = Depends(get_device_and_user),
+    db=Depends(get_db),
+):
+    """Get dream engine status — cycles used, limit, last report."""
+    _, user = device_and_user
+    from app.services.cerebro.pg_graph_store import PgGraphStore
+    from app.config import TIER_LIMITS
+
+    store = PgGraphStore(db)
+
+    log = await store.get_dream_log(user.id, limit=1)
+    last_report = log[0] if log else None
+
+    month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    cycles_used = await store.count_dream_cycles_since(user.id, month_start)
+
+    billing_svc = BillingService(db)
+    sub = await billing_svc.get_or_create_subscription(user.id)
+    tier = sub.tier if sub else "free_trial"
+    tier_config = TIER_LIMITS.get(tier, TIER_LIMITS["free_trial"])
+    max_cycles = tier_config.get("dream_cycles_per_month", 0)
+
+    episodes = await store.get_unconsolidated_episodes(user.id)
+
+    return {
+        "cycles_used": cycles_used,
+        "cycles_limit": max_cycles,
+        "unconsolidated_episodes": len(episodes),
+        "last_report": last_report,
+        "tier": tier,
+    }
+
+
+@router.post("/cortex/dream")
+async def pocket_cortex_dream_run(
+    device_and_user: tuple = Depends(get_device_and_user),
+    db=Depends(get_db),
+):
+    """Trigger a dream consolidation cycle from mobile."""
+    _, user = device_and_user
+    from app.config import TIER_LIMITS
+
+    billing_svc = BillingService(db)
+    sub = await billing_svc.get_or_create_subscription(user.id)
+    tier = sub.tier if sub else "free_trial"
+    tier_config = TIER_LIMITS.get(tier, TIER_LIMITS["free_trial"])
+
+    max_cycles = tier_config.get("dream_cycles_per_month", 0)
+    if max_cycles == 0:
+        raise HTTPException(403, detail=f"Dream engine requires Seeker tier (current: {tier})")
+
+    from app.services.cerebro.pg_graph_store import PgGraphStore
+    store = PgGraphStore(db)
+    month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    used = await store.count_dream_cycles_since(user.id, month_start)
+    if used >= max_cycles:
+        raise HTTPException(429, detail=f"Dream cycle limit reached ({used}/{max_cycles} this month)")
+
+    max_calls = tier_config.get("dream_max_llm_calls", 20)
+
+    try:
+        from arq import create_pool
+        from arq.connections import RedisSettings
+        from app.config import get_settings
+        settings = get_settings()
+
+        pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        job = await pool.enqueue_job("run_dream_cycle", str(user.id), max_calls)
+        await pool.close()
+
+        return {
+            "status": "queued",
+            "job_id": job.job_id,
+            "max_llm_calls": max_calls,
+            "tier": tier,
+        }
+    except Exception:
+        from app.services.cerebro.dream import AsyncDreamEngine
+        llm = create_llm_service(provider="anthropic")
+        engine = AsyncDreamEngine(
+            user_id=user.id, llm=llm,
+            model="claude-haiku-4-5-20251001",
+            max_llm_calls=max_calls,
+        )
+        report = await engine.run_cycle()
+        return {
+            "status": "completed",
+            "fallback": True,
+            "report": report.to_dict(),
+        }
+
+
+def _cortex_node_to_dict(node) -> dict:
+    """Convert CerebroCortex MemoryNode to pocket-friendly dict."""
+    from app.cerebro.types import EmotionalValence
+
+    valence = node.metadata.valence
+    if isinstance(valence, EmotionalValence):
+        valence = valence.value
+
+    return {
+        "id": node.id,
+        "content": node.content[:500] if node.content else "",
+        "agent_id": node.metadata.agent_id or "AZOTH",
+        "layer": node.metadata.layer.value if hasattr(node.metadata.layer, "value") else node.metadata.layer,
+        "memory_type": node.metadata.memory_type.value if hasattr(node.metadata.memory_type, "value") else node.metadata.memory_type,
+        "salience": node.metadata.salience,
+        "valence": valence,
+        "access_count": node.strength.access_count,
+        "tags": node.metadata.tags,
+        "concepts": node.metadata.concepts,
+        "link_count": node.link_count,
+        "created_at": node.created_at.isoformat() if node.created_at else None,
+    }
