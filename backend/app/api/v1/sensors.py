@@ -271,3 +271,109 @@ async def sensor_snapshot(
         "total_duration_ms": int((time.time() - start) * 1000),
         "device_name": device.device_name,
     }
+
+
+@router.get("/{device_id}/sensors/trend")
+async def sensor_trend(
+    device_id: str,
+    hours: float = 3.0,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pressure trend + comfort index from recent telemetry.
+
+    Used by the indoor 'weather' bar. Computes barometric slope (hPa/hr)
+    and a simple comfort classification from latest readings.
+    """
+    device = await _get_user_device(device_id, user, db)
+    hours = max(0.5, min(hours, 24.0))
+
+    result = await db.execute(text("""
+        SELECT pressure_hpa, temperature_c, humidity_pct, iaq_score,
+               EXTRACT(EPOCH FROM created_at) as epoch
+        FROM sensor_telemetry
+        WHERE device_id = :device_id
+          AND created_at > NOW() - make_interval(hours => :hours)
+          AND pressure_hpa IS NOT NULL
+        ORDER BY created_at ASC
+        LIMIT 60
+    """), {"device_id": str(device.id), "hours": hours})
+    rows = result.mappings().all()
+
+    if len(rows) < 2:
+        return {
+            "trend": "unknown",
+            "pressure_slope_hpa_hr": None,
+            "comfort": None,
+            "comfort_detail": None,
+            "sample_count": len(rows),
+        }
+
+    # Linear regression: pressure vs time (least-squares, no numpy)
+    n = len(rows)
+    sum_x = sum(r["epoch"] for r in rows)
+    sum_y = sum(r["pressure_hpa"] for r in rows)
+    sum_xy = sum(r["epoch"] * r["pressure_hpa"] for r in rows)
+    sum_x2 = sum(r["epoch"] ** 2 for r in rows)
+    denom = n * sum_x2 - sum_x ** 2
+    if denom == 0:
+        slope_per_hr = 0.0
+    else:
+        slope_per_hr = ((n * sum_xy - sum_x * sum_y) / denom) * 3600
+
+    # Classify trend from slope
+    if slope_per_hr < -1.5:
+        trend_label = "stormy"
+    elif slope_per_hr < -0.5:
+        trend_label = "rain_likely"
+    elif slope_per_hr <= 0.5:
+        trend_label = "stable"
+    elif slope_per_hr <= 1.5:
+        trend_label = "improving"
+    else:
+        trend_label = "clear"
+
+    # Comfort index from latest reading
+    latest = rows[-1]
+    temp = latest.get("temperature_c")
+    hum = latest.get("humidity_pct")
+    iaq = latest.get("iaq_score")
+
+    comfort_parts = []
+    if temp is not None:
+        if temp < 18:
+            comfort_label = "cool"
+        elif temp > 26:
+            comfort_label = "warm"
+        else:
+            comfort_label = "comfortable"
+        comfort_parts.append(f"{temp:.1f}C")
+    else:
+        comfort_label = "unknown"
+
+    if hum is not None:
+        if hum > 60 and comfort_label == "comfortable":
+            comfort_label = "humid"
+        comfort_parts.append(f"{hum:.0f}% RH")
+
+    iaq_text = ""
+    if iaq is not None:
+        if iaq <= 50:
+            iaq_text = "Excellent air"
+        elif iaq <= 100:
+            iaq_text = "Good air"
+        elif iaq <= 150:
+            iaq_text = "Moderate air"
+        else:
+            iaq_text = "Stuffy"
+            if comfort_label == "comfortable":
+                comfort_label = "stuffy"
+        comfort_parts.append(iaq_text)
+
+    return {
+        "trend": trend_label,
+        "pressure_slope_hpa_hr": round(slope_per_hr, 3),
+        "comfort": comfort_label,
+        "comfort_detail": ", ".join(comfort_parts) if comfort_parts else None,
+        "sample_count": n,
+    }

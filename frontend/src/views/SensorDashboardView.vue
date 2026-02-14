@@ -1,11 +1,11 @@
 <script setup>
 /**
- * SensorHead Dashboard — The Ouroboros View
+ * SensorHead Dashboard — The Ouroboros View v2
  *
- * Live sensor data from SensorHead hardware via the Bridge WebSocket tunnel.
- * Direct REST access — zero LLM tokens burned.
+ * Camera-centric layout with indoor weather bar, thumbnail→big viewer,
+ * composite overlay mode, and collapsible sensor sidebar.
  *
- * "The ouroboros sees itself"
+ * "The ouroboros sees itself — through every spectrum"
  */
 
 import { ref, computed, onMounted, onUnmounted } from 'vue'
@@ -25,9 +25,28 @@ const error = ref(null)
 const images = ref({ visual: null, night: null, thermal: null })
 const capturing = ref({ visual: false, night: false, thermal: false, environment: false, snapshot: false })
 
+// Camera selection + composite
+const selectedCamera = ref('visual')
+const compositeOpacity = ref({ visual: 0.5, night: 0.3, thermal: 0.5 })
+
+// Trend / forecast
+const trend = ref(null)
+
+// Sidebar
+const showSidebar = ref(window.innerWidth >= 1024)
+
 // Auto-refresh
-const autoRefresh = ref(false)
-let refreshInterval = null
+const autoRefreshMode = ref('off')
+let envInterval = null
+let camInterval = null
+
+// Camera metadata
+const CAMERAS = {
+  visual: { name: 'Visual', chip: 'IMX500 AI' },
+  night: { name: 'Night', chip: 'IMX708 NoIR' },
+  thermal: { name: 'Thermal', chip: 'MLX90640 IR' },
+  composite: { name: 'Composite', chip: 'Multi-Layer' },
+}
 
 // ─── Computed ───────────────────────────────────────────────────────
 const online = computed(() => status.value?.online ?? false)
@@ -51,9 +70,46 @@ const uptimeText = computed(() => {
   return `${h}h ${m}m`
 })
 
+const bigViewerImage = computed(() => {
+  if (selectedCamera.value === 'composite') return null
+  return images.value[selectedCamera.value]
+})
+
+const isCapturingSelected = computed(() => {
+  if (selectedCamera.value === 'composite') {
+    return capturing.value.visual || capturing.value.night || capturing.value.thermal
+  }
+  return capturing.value[selectedCamera.value]
+})
+
+// Trend display
+const trendLabel = computed(() => {
+  const labels = {
+    stormy: 'Stormy', rain_likely: 'Rain Likely', stable: 'Stable',
+    improving: 'Improving', clear: 'Clear Skies', unknown: 'No Data',
+  }
+  return labels[trend.value?.trend] || 'No Data'
+})
+
+const trendIcon = computed(() => {
+  const icons = {
+    stormy: '\u2193\u2193', rain_likely: '\u2193', stable: '\u2192',
+    improving: '\u2191', clear: '\u2191\u2191', unknown: '\u2014',
+  }
+  return icons[trend.value?.trend] || '\u2014'
+})
+
+const trendColor = computed(() => {
+  const colors = {
+    stormy: 'text-red-400', rain_likely: 'text-yellow-400', stable: 'text-green-400',
+    improving: 'text-blue-400', clear: 'text-blue-300', unknown: 'text-gray-500',
+  }
+  return colors[trend.value?.trend] || 'text-gray-500'
+})
+
 // ─── IAQ helpers ────────────────────────────────────────────────────
 function iaqLabel(iaq) {
-  if (iaq == null) return '—'
+  if (iaq == null) return '\u2014'
   if (iaq <= 50) return 'Excellent'
   if (iaq <= 100) return 'Good'
   if (iaq <= 150) return 'Moderate'
@@ -93,11 +149,20 @@ async function fetchStatus() {
   }
 }
 
+async function fetchTrend() {
+  try {
+    const { data } = await api.get(`/api/v1/devices/${deviceId.value}/sensors/trend`)
+    trend.value = data
+  } catch {
+    // Trend is non-critical
+    trend.value = null
+  }
+}
+
 async function readEnvironment() {
   capturing.value.environment = true
   try {
     const { data } = await api.post(`/api/v1/devices/${deviceId.value}/sensors/environment`)
-    // Merge fresh readings into telemetry
     if (status.value) {
       status.value.telemetry = {
         readings: data.data,
@@ -130,6 +195,12 @@ async function captureCamera(camera) {
   }
 }
 
+async function captureComposite() {
+  for (const cam of ['visual', 'night', 'thermal']) {
+    await captureCamera(cam)
+  }
+}
+
 async function fullSnapshot() {
   capturing.value.snapshot = true
   capturing.value.environment = true
@@ -138,7 +209,6 @@ async function fullSnapshot() {
   capturing.value.thermal = true
   try {
     const { data } = await api.post(`/api/v1/devices/${deviceId.value}/sensors/snapshot`)
-    // Update environment
     if (data.environment && status.value) {
       status.value.telemetry = {
         readings: data.environment,
@@ -147,11 +217,9 @@ async function fullSnapshot() {
         source: 'live',
       }
     }
-    // Update images
     if (data.visual_base64) images.value.visual = data.visual_base64
     if (data.night_base64) images.value.night = data.night_base64
     if (data.thermal_base64) images.value.thermal = data.thermal_base64
-
     if (data.errors?.length) {
       error.value = `Partial snapshot: ${data.errors.join(', ')}`
     } else {
@@ -169,31 +237,42 @@ async function fullSnapshot() {
 }
 
 // ─── Auto-refresh ───────────────────────────────────────────────────
-function toggleAutoRefresh() {
-  autoRefresh.value = !autoRefresh.value
-  if (autoRefresh.value) {
-    refreshInterval = setInterval(() => {
+function setAutoRefreshMode(mode) {
+  if (envInterval) { clearInterval(envInterval); envInterval = null }
+  if (camInterval) { clearInterval(camInterval); camInterval = null }
+  autoRefreshMode.value = mode
+
+  if (mode === 'sensors' || mode === 'all') {
+    envInterval = setInterval(() => {
       readEnvironment()
+      fetchTrend()
     }, 30000)
-  } else {
-    clearInterval(refreshInterval)
-    refreshInterval = null
+  }
+
+  if (mode === 'all') {
+    camInterval = setInterval(async () => {
+      for (const cam of ['visual', 'night', 'thermal']) {
+        await captureCamera(cam)
+      }
+    }, 60000)
   }
 }
 
 // ─── Lifecycle ──────────────────────────────────────────────────────
 onMounted(() => {
   fetchStatus()
+  fetchTrend()
 })
 
 onUnmounted(() => {
-  if (refreshInterval) clearInterval(refreshInterval)
+  if (envInterval) clearInterval(envInterval)
+  if (camInterval) clearInterval(camInterval)
 })
 </script>
 
 <template>
   <div class="min-h-screen bg-apex-dark pt-20 pb-12 px-4">
-    <div class="max-w-5xl mx-auto">
+    <div class="max-w-7xl mx-auto">
 
       <!-- Back button -->
       <button
@@ -231,30 +310,13 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="flex items-center gap-2">
-            <!-- Auto-refresh toggle -->
-            <button
-              @click="toggleAutoRefresh"
-              :class="[
-                'text-xs px-3 py-1.5 rounded transition-colors',
-                autoRefresh
-                  ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                  : 'bg-white/5 text-gray-400 hover:bg-white/10'
-              ]"
-              :disabled="!online"
-            >
-              {{ autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh' }}
-            </button>
-
-            <!-- Full snapshot -->
-            <button
-              @click="fullSnapshot"
-              :disabled="!online || capturing.snapshot"
-              class="px-4 py-1.5 bg-gold text-black rounded text-sm font-medium hover:bg-gold/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {{ capturing.snapshot ? 'Capturing...' : 'Full Snapshot' }}
-            </button>
-          </div>
+          <button
+            @click="fullSnapshot"
+            :disabled="!online || capturing.snapshot"
+            class="px-4 py-1.5 bg-gold text-black rounded text-sm font-medium hover:bg-gold/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {{ capturing.snapshot ? 'Capturing...' : 'Full Snapshot' }}
+          </button>
         </div>
 
         <!-- Error -->
@@ -270,223 +332,352 @@ onUnmounted(() => {
           v-if="!online && telemetry"
           class="mb-4 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-400 text-xs text-center"
         >
-          SensorHead offline — showing cached data
+          SensorHead offline &mdash; showing cached data
           <span v-if="telemetryAge"> ({{ telemetryAge }})</span>
           <span v-if="telemetrySource === 'database'"> from database</span>
         </div>
 
-        <!-- ═══ Environment Gauges ══════════════════════════════════════ -->
-        <div class="mb-6">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-sm font-medium text-gray-400 uppercase tracking-wider">Environment</h2>
-            <div class="flex items-center gap-2">
-              <span v-if="telemetryAge && online" class="text-xs text-gray-600">{{ telemetryAge }}</span>
+        <!-- ═══ Indoor Weather Bar ═══════════════════════════════════════ -->
+        <div class="grid grid-cols-3 gap-3 mb-4">
+          <!-- Temperature -->
+          <div class="bg-white/5 border border-apex-border rounded-lg p-4">
+            <div class="text-3xl font-bold text-white">
+              {{ telemetry?.temperature_c != null ? telemetry.temperature_c.toFixed(1) : '--' }}<span class="text-lg text-gray-500">&deg;C</span>
+            </div>
+            <div class="text-xs text-gray-500 mt-1">Temperature</div>
+          </div>
+
+          <!-- Humidity -->
+          <div class="bg-white/5 border border-apex-border rounded-lg p-4">
+            <div class="text-3xl font-bold text-white">
+              {{ telemetry?.humidity_pct != null ? Math.round(telemetry.humidity_pct) : '--' }}<span class="text-lg text-gray-500">%</span>
+            </div>
+            <div class="text-xs text-gray-500 mt-1">Humidity</div>
+          </div>
+
+          <!-- Forecast -->
+          <div class="bg-white/5 border border-apex-border rounded-lg p-4">
+            <div class="text-2xl font-bold" :class="trendColor">
+              {{ trendIcon }} {{ trendLabel }}
+            </div>
+            <div class="text-xs text-gray-500 mt-1 truncate">
+              {{ trend?.comfort_detail || 'Awaiting sensor data' }}
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ Main Content Area (viewer + sidebar) ═════════════════════ -->
+        <div class="flex gap-4">
+
+          <!-- LEFT: Cameras -->
+          <div class="flex-1 min-w-0">
+
+            <!-- Camera Thumbnails (4-column) -->
+            <div class="grid grid-cols-4 gap-2 mb-4">
               <button
-                @click="readEnvironment"
-                :disabled="!online || capturing.environment"
-                class="text-xs px-2 py-1 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded transition-colors disabled:opacity-40"
+                v-for="cam in ['visual', 'night', 'thermal', 'composite']"
+                :key="cam"
+                @click="selectedCamera = cam"
+                :class="[
+                  'relative bg-white/5 border rounded-lg overflow-hidden transition-all text-left',
+                  selectedCamera === cam
+                    ? 'border-gold ring-1 ring-gold/40'
+                    : 'border-apex-border hover:border-white/20'
+                ]"
               >
-                {{ capturing.environment ? 'Reading...' : 'Refresh' }}
+                <!-- Thumbnail image -->
+                <div class="aspect-[4/3] bg-black/40 flex items-center justify-center relative">
+                  <template v-if="cam !== 'composite'">
+                    <img
+                      v-if="images[cam]"
+                      :src="'data:image/jpeg;base64,' + images[cam]"
+                      class="w-full h-full object-contain"
+                      :alt="CAMERAS[cam].name"
+                    />
+                    <span v-else class="text-gray-600 text-[10px]">No image</span>
+                  </template>
+                  <template v-else>
+                    <!-- Composite mini-preview -->
+                    <div v-if="images.visual || images.night || images.thermal" class="absolute inset-0">
+                      <img v-if="images.visual" :src="'data:image/jpeg;base64,' + images.visual"
+                        class="absolute inset-0 w-full h-full object-contain" style="opacity: 0.4" />
+                      <img v-if="images.night" :src="'data:image/jpeg;base64,' + images.night"
+                        class="absolute inset-0 w-full h-full object-contain" style="opacity: 0.3" />
+                      <img v-if="images.thermal" :src="'data:image/jpeg;base64,' + images.thermal"
+                        class="absolute inset-0 w-full h-full object-contain" style="opacity: 0.3" />
+                    </div>
+                    <span v-else class="text-gray-600 text-[10px] z-10">Layers</span>
+                  </template>
+                </div>
+                <!-- Label -->
+                <div class="p-1.5 flex items-center justify-between">
+                  <span class="text-[11px] text-white truncate">{{ CAMERAS[cam].name }}</span>
+                  <button
+                    v-if="cam !== 'composite'"
+                    @click.stop="captureCamera(cam)"
+                    :disabled="!online || capturing[cam]"
+                    class="text-[10px] px-1.5 py-0.5 bg-white/10 hover:bg-white/20 rounded text-gray-400 disabled:opacity-30"
+                  >
+                    {{ capturing[cam] ? '...' : 'Snap' }}
+                  </button>
+                </div>
               </button>
             </div>
+
+            <!-- ═══ Big Viewer ═══════════════════════════════════════════ -->
+            <div class="bg-white/5 border border-apex-border rounded-lg overflow-hidden mb-4">
+              <!-- Viewer header -->
+              <div class="p-3 border-b border-white/5 flex items-center justify-between">
+                <div>
+                  <span class="text-white font-medium">{{ CAMERAS[selectedCamera].name }}</span>
+                  <span class="text-gray-600 text-xs ml-2">{{ CAMERAS[selectedCamera].chip }}</span>
+                </div>
+                <button
+                  @click="selectedCamera === 'composite' ? captureComposite() : captureCamera(selectedCamera)"
+                  :disabled="!online || isCapturingSelected"
+                  class="text-xs px-3 py-1 bg-gold/20 text-gold hover:bg-gold/30 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {{ isCapturingSelected ? 'Capturing...' : 'Capture' }}
+                </button>
+              </div>
+
+              <!-- Image area -->
+              <div class="aspect-[4/3] bg-black/60 relative flex items-center justify-center">
+                <!-- Normal camera view -->
+                <template v-if="selectedCamera !== 'composite'">
+                  <img
+                    v-if="bigViewerImage"
+                    :src="'data:image/jpeg;base64,' + bigViewerImage"
+                    class="w-full h-full object-contain"
+                    :alt="CAMERAS[selectedCamera].name"
+                  />
+                  <div v-else-if="isCapturingSelected" class="text-gray-500 text-sm animate-pulse">
+                    Capturing...
+                  </div>
+                  <div v-else class="text-gray-600 text-sm">
+                    Click Capture to take a photo
+                  </div>
+                </template>
+
+                <!-- Composite overlay view -->
+                <template v-else>
+                  <div
+                    v-if="images.visual || images.night || images.thermal"
+                    class="absolute inset-0"
+                  >
+                    <img
+                      v-if="images.visual"
+                      :src="'data:image/jpeg;base64,' + images.visual"
+                      class="absolute inset-0 w-full h-full object-contain"
+                      :style="{ opacity: compositeOpacity.visual }"
+                    />
+                    <img
+                      v-if="images.night"
+                      :src="'data:image/jpeg;base64,' + images.night"
+                      class="absolute inset-0 w-full h-full object-contain"
+                      :style="{ opacity: compositeOpacity.night }"
+                    />
+                    <img
+                      v-if="images.thermal"
+                      :src="'data:image/jpeg;base64,' + images.thermal"
+                      class="absolute inset-0 w-full h-full object-contain"
+                      :style="{ opacity: compositeOpacity.thermal }"
+                    />
+                  </div>
+                  <div v-else class="text-gray-600 text-sm z-10">
+                    Capture cameras first to build a composite
+                  </div>
+                </template>
+              </div>
+
+              <!-- Composite sliders -->
+              <div
+                v-if="selectedCamera === 'composite'"
+                class="p-3 border-t border-white/5 grid grid-cols-3 gap-4"
+              >
+                <div v-for="cam in ['visual', 'night', 'thermal']" :key="cam">
+                  <label class="text-[11px] text-gray-400 block mb-1">
+                    {{ CAMERAS[cam].name }}: {{ Math.round(compositeOpacity[cam] * 100) }}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0" max="1" step="0.05"
+                    v-model.number="compositeOpacity[cam]"
+                    class="composite-slider w-full h-1"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Auto-refresh control -->
+            <div class="flex items-center gap-3 mb-4">
+              <label class="text-xs text-gray-500">Auto-refresh:</label>
+              <select
+                :value="autoRefreshMode"
+                @change="setAutoRefreshMode($event.target.value)"
+                :disabled="!online"
+                class="text-xs bg-white/5 border border-apex-border text-gray-300 rounded px-2 py-1.5 disabled:opacity-40"
+              >
+                <option value="off">Off</option>
+                <option value="sensors">Sensors only (30s)</option>
+                <option value="all">Sensors + Cameras (30s / 60s)</option>
+              </select>
+              <span
+                v-if="autoRefreshMode !== 'off'"
+                class="w-2 h-2 rounded-full bg-green-400 animate-pulse"
+              ></span>
+              <span v-if="telemetryAge && online" class="text-[10px] text-gray-600 ml-auto">
+                {{ telemetryAge }}
+              </span>
+            </div>
+
           </div>
 
-          <div v-if="telemetry" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <!-- Temperature -->
-            <div class="bg-white/5 border border-apex-border rounded-lg p-3 text-center">
-              <div class="text-2xl font-bold text-white">
-                {{ telemetry.temperature_c != null ? telemetry.temperature_c.toFixed(1) : '—' }}
-              </div>
-              <div class="text-xs text-gray-500 mt-1">Temperature &deg;C</div>
-            </div>
+          <!-- RIGHT: Collapsible Sidebar -->
+          <transition name="slide">
+            <div v-if="showSidebar" class="w-72 shrink-0">
+              <div class="bg-white/5 border border-apex-border rounded-lg p-4 sticky top-24 space-y-4">
+                <!-- Header -->
+                <div class="flex items-center justify-between">
+                  <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wider">Sensor Readouts</h3>
+                  <button @click="showSidebar = false" class="text-gray-600 hover:text-gray-400 text-sm transition-colors">
+                    &raquo;
+                  </button>
+                </div>
 
-            <!-- Humidity -->
-            <div class="bg-white/5 border border-apex-border rounded-lg p-3 text-center">
-              <div class="text-2xl font-bold text-white">
-                {{ telemetry.humidity_pct != null ? Math.round(telemetry.humidity_pct) : '—' }}
-              </div>
-              <div class="text-xs text-gray-500 mt-1">Humidity %</div>
-            </div>
+                <!-- Environment gauges -->
+                <div v-if="telemetry" class="space-y-2">
+                  <!-- Temperature -->
+                  <div class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                    <span class="text-xs text-gray-500">Temp</span>
+                    <span class="text-sm text-white font-mono">
+                      {{ telemetry.temperature_c != null ? telemetry.temperature_c.toFixed(1) + '°C' : '--' }}
+                    </span>
+                  </div>
+                  <!-- Humidity -->
+                  <div class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                    <span class="text-xs text-gray-500">Humidity</span>
+                    <span class="text-sm text-white font-mono">
+                      {{ telemetry.humidity_pct != null ? Math.round(telemetry.humidity_pct) + '%' : '--' }}
+                    </span>
+                  </div>
+                  <!-- Pressure -->
+                  <div class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                    <span class="text-xs text-gray-500">Pressure</span>
+                    <span class="text-sm text-white font-mono">
+                      {{ telemetry.pressure_hpa != null ? Math.round(telemetry.pressure_hpa) + ' hPa' : '--' }}
+                    </span>
+                  </div>
+                  <!-- IAQ -->
+                  <div
+                    class="flex items-center justify-between px-2 py-1.5 rounded border"
+                    :class="[iaqBorderColor(telemetry.iaq)]"
+                    style="background: rgba(0,0,0,0.2)"
+                  >
+                    <span class="text-xs text-gray-500">IAQ</span>
+                    <span class="text-sm font-mono" :class="iaqColor(telemetry.iaq)">
+                      {{ telemetry.iaq != null ? Math.round(telemetry.iaq) : '--' }}
+                      <span class="text-[10px] ml-1">{{ iaqLabel(telemetry.iaq) }}</span>
+                    </span>
+                  </div>
+                  <!-- CO2 -->
+                  <div class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                    <span class="text-xs text-gray-500">CO2</span>
+                    <span class="text-sm text-white font-mono">
+                      {{ telemetry.co2_ppm != null ? Math.round(telemetry.co2_ppm) + ' ppm' : '--' }}
+                    </span>
+                  </div>
+                  <!-- VOC -->
+                  <div class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                    <span class="text-xs text-gray-500">VOC</span>
+                    <span class="text-sm text-white font-mono">
+                      {{ telemetry.voc_ppm != null ? telemetry.voc_ppm.toFixed(3) + ' ppm' : '--' }}
+                    </span>
+                  </div>
+                </div>
+                <div v-else class="text-xs text-gray-600 text-center py-4">
+                  No sensor data
+                </div>
 
-            <!-- Pressure -->
-            <div class="bg-white/5 border border-apex-border rounded-lg p-3 text-center">
-              <div class="text-2xl font-bold text-white">
-                {{ telemetry.pressure_hpa != null ? Math.round(telemetry.pressure_hpa) : '—' }}
-              </div>
-              <div class="text-xs text-gray-500 mt-1">Pressure hPa</div>
-            </div>
+                <!-- Thermal summary -->
+                <div v-if="telemetry && (telemetry.thermal_min_c != null || telemetry.thermal_max_c != null)">
+                  <h4 class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Thermal</h4>
+                  <div class="grid grid-cols-3 gap-1.5 text-center text-xs">
+                    <div class="bg-black/20 rounded p-1.5">
+                      <div class="text-blue-400 font-mono">{{ telemetry.thermal_min_c?.toFixed(1) ?? '--' }}</div>
+                      <div class="text-[9px] text-gray-600">Min</div>
+                    </div>
+                    <div class="bg-black/20 rounded p-1.5">
+                      <div class="text-yellow-400 font-mono">{{ telemetry.thermal_avg_c?.toFixed(1) ?? '--' }}</div>
+                      <div class="text-[9px] text-gray-600">Avg</div>
+                    </div>
+                    <div class="bg-black/20 rounded p-1.5">
+                      <div class="text-red-400 font-mono">{{ telemetry.thermal_max_c?.toFixed(1) ?? '--' }}</div>
+                      <div class="text-[9px] text-gray-600">Max</div>
+                    </div>
+                  </div>
+                </div>
 
-            <!-- IAQ -->
-            <div
-              class="bg-white/5 border rounded-lg p-3 text-center"
-              :class="iaqBorderColor(telemetry.iaq)"
-            >
-              <div class="text-2xl font-bold" :class="iaqColor(telemetry.iaq)">
-                {{ telemetry.iaq != null ? Math.round(telemetry.iaq) : '—' }}
-              </div>
-              <div class="text-xs text-gray-500 mt-1">
-                IAQ
-                <span v-if="telemetry.iaq != null" :class="iaqColor(telemetry.iaq)">
-                  &middot; {{ iaqLabel(telemetry.iaq) }}
-                </span>
+                <!-- Refresh button -->
+                <button
+                  @click="readEnvironment(); fetchTrend()"
+                  :disabled="!online || capturing.environment"
+                  class="w-full text-xs px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded transition-colors disabled:opacity-40"
+                >
+                  {{ capturing.environment ? 'Reading...' : 'Refresh Sensors' }}
+                </button>
               </div>
             </div>
+          </transition>
 
-            <!-- CO2 -->
-            <div class="bg-white/5 border border-apex-border rounded-lg p-3 text-center">
-              <div class="text-2xl font-bold text-white">
-                {{ telemetry.co2_ppm != null ? Math.round(telemetry.co2_ppm) : '—' }}
-              </div>
-              <div class="text-xs text-gray-500 mt-1">CO2 ppm</div>
-            </div>
-
-            <!-- VOC -->
-            <div class="bg-white/5 border border-apex-border rounded-lg p-3 text-center">
-              <div class="text-2xl font-bold text-white">
-                {{ telemetry.voc_ppm != null ? telemetry.voc_ppm.toFixed(2) : '—' }}
-              </div>
-              <div class="text-xs text-gray-500 mt-1">VOC ppm</div>
-            </div>
-          </div>
-
-          <!-- No telemetry -->
-          <div v-else class="bg-white/5 border border-apex-border rounded-lg p-6 text-center text-gray-500 text-sm">
-            No telemetry data available
-            <span v-if="online"> — click Refresh to read sensors</span>
-          </div>
         </div>
 
-        <!-- ═══ Thermal Summary ═════════════════════════════════════════ -->
-        <div
-          v-if="telemetry && (telemetry.thermal_min_c != null || telemetry.thermal_max_c != null)"
-          class="mb-6"
+        <!-- Sidebar toggle (when collapsed) -->
+        <button
+          v-if="!showSidebar"
+          @click="showSidebar = true"
+          class="fixed right-2 top-1/2 -translate-y-1/2 bg-white/5 border border-apex-border rounded-l-lg px-1.5 py-4 text-gray-500 hover:text-white hover:bg-white/10 transition-colors z-10"
+          title="Show sensor panel"
         >
-          <h2 class="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">Thermal Summary</h2>
-          <div class="grid grid-cols-3 gap-3">
-            <div class="bg-white/5 border border-blue-500/20 rounded-lg p-3 text-center">
-              <div class="text-xl font-bold text-blue-400">
-                {{ telemetry.thermal_min_c != null ? telemetry.thermal_min_c.toFixed(1) : '—' }}
-              </div>
-              <div class="text-xs text-gray-500 mt-1">Min &deg;C</div>
-            </div>
-            <div class="bg-white/5 border border-yellow-500/20 rounded-lg p-3 text-center">
-              <div class="text-xl font-bold text-yellow-400">
-                {{ telemetry.thermal_avg_c != null ? telemetry.thermal_avg_c.toFixed(1) : '—' }}
-              </div>
-              <div class="text-xs text-gray-500 mt-1">Avg &deg;C</div>
-            </div>
-            <div class="bg-white/5 border border-red-500/20 rounded-lg p-3 text-center">
-              <div class="text-xl font-bold text-red-400">
-                {{ telemetry.thermal_max_c != null ? telemetry.thermal_max_c.toFixed(1) : '—' }}
-              </div>
-              <div class="text-xs text-gray-500 mt-1">Max &deg;C</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ═══ Camera Panels ═══════════════════════════════════════════ -->
-        <div class="mb-6">
-          <h2 class="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">Cameras</h2>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-            <!-- Visual Camera -->
-            <div class="bg-white/5 border border-apex-border rounded-lg overflow-hidden">
-              <div class="p-3 border-b border-white/5 flex items-center justify-between">
-                <div>
-                  <span class="text-white text-sm font-medium">Visual</span>
-                  <span class="text-gray-600 text-xs ml-2">IMX500 AI</span>
-                </div>
-                <button
-                  @click="captureCamera('visual')"
-                  :disabled="!online || capturing.visual"
-                  class="text-xs px-2 py-1 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded transition-colors disabled:opacity-40"
-                >
-                  {{ capturing.visual ? 'Capturing...' : 'Capture' }}
-                </button>
-              </div>
-              <div class="aspect-[4/3] bg-black/40 flex items-center justify-center">
-                <img
-                  v-if="images.visual"
-                  :src="'data:image/jpeg;base64,' + images.visual"
-                  class="w-full h-full object-contain"
-                  alt="Visual camera"
-                />
-                <div v-else-if="capturing.visual" class="text-gray-500 text-sm animate-pulse">
-                  Capturing...
-                </div>
-                <div v-else class="text-gray-600 text-sm">
-                  No capture yet
-                </div>
-              </div>
-            </div>
-
-            <!-- Night Camera -->
-            <div class="bg-white/5 border border-apex-border rounded-lg overflow-hidden">
-              <div class="p-3 border-b border-white/5 flex items-center justify-between">
-                <div>
-                  <span class="text-white text-sm font-medium">Night</span>
-                  <span class="text-gray-600 text-xs ml-2">IMX708 NoIR</span>
-                </div>
-                <button
-                  @click="captureCamera('night')"
-                  :disabled="!online || capturing.night"
-                  class="text-xs px-2 py-1 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded transition-colors disabled:opacity-40"
-                >
-                  {{ capturing.night ? 'Capturing...' : 'Capture' }}
-                </button>
-              </div>
-              <div class="aspect-[4/3] bg-black/40 flex items-center justify-center">
-                <img
-                  v-if="images.night"
-                  :src="'data:image/jpeg;base64,' + images.night"
-                  class="w-full h-full object-contain"
-                  alt="Night camera"
-                />
-                <div v-else-if="capturing.night" class="text-gray-500 text-sm animate-pulse">
-                  Capturing...
-                </div>
-                <div v-else class="text-gray-600 text-sm">
-                  No capture yet
-                </div>
-              </div>
-            </div>
-
-            <!-- Thermal Camera -->
-            <div class="bg-white/5 border border-apex-border rounded-lg overflow-hidden">
-              <div class="p-3 border-b border-white/5 flex items-center justify-between">
-                <div>
-                  <span class="text-white text-sm font-medium">Thermal</span>
-                  <span class="text-gray-600 text-xs ml-2">MLX90640 IR</span>
-                </div>
-                <button
-                  @click="captureCamera('thermal')"
-                  :disabled="!online || capturing.thermal"
-                  class="text-xs px-2 py-1 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded transition-colors disabled:opacity-40"
-                >
-                  {{ capturing.thermal ? 'Capturing...' : 'Capture' }}
-                </button>
-              </div>
-              <div class="aspect-[4/3] bg-black/40 flex items-center justify-center">
-                <img
-                  v-if="images.thermal"
-                  :src="'data:image/jpeg;base64,' + images.thermal"
-                  class="w-full h-full object-cover"
-                  style=""
-                  alt="Thermal heatmap"
-                />
-                <div v-else-if="capturing.thermal" class="text-gray-500 text-sm animate-pulse">
-                  Capturing...
-                </div>
-                <div v-else class="text-gray-600 text-sm">
-                  No capture yet
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
+          &laquo;
+        </button>
 
       </template>
     </div>
   </div>
 </template>
+
+<style scoped>
+.slide-enter-active, .slide-leave-active {
+  transition: all 0.2s ease;
+}
+.slide-enter-from, .slide-leave-to {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+.composite-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  outline: none;
+}
+.composite-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #d4af37;
+  cursor: pointer;
+}
+.composite-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #d4af37;
+  cursor: pointer;
+  border: none;
+}
+</style>
