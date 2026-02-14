@@ -175,7 +175,7 @@ STATE_PROMPTS = {
 # =============================================================================
 
 POCKET_TOOLS = [
-    # Core
+    # ── Core ──
     "web_search",
     "web_fetch",
     "calculator",
@@ -183,23 +183,67 @@ POCKET_TOOLS = [
     "code_run",
     "agora_post",
     "agora_read",
-    # Stretch
+    # ── Music ──
     "music_generate",
     "music_status",
     "music_list",
     "music_download",
+    # ── Vault ──
     "vault_list",
     "vault_read",
+    "vault_write",
+    "vault_search",
+    "vault_edit",
+    # ── Knowledge Base ──
     "kb_search",
-    # SensorHead
+    "kb_lookup",
+    "kb_topics",
+    "kb_answer",
+    # ── CerebroCortex Memory ──
+    "cortex_remember",
+    "cortex_recall",
+    "cortex_village",
+    "cortex_stats",
+    "cortex_associate",
+    "cortex_neighbors",
+    "cortex_episode_start",
+    "cortex_episode_end",
+    "cortex_episode_add",
+    "cortex_store_procedure",
+    "cortex_list_procedures",
+    # ── Dream Engine ──
+    "cortex_dream_run",
+    "cortex_dream_status",
+    # ── SensorHead (full suite) ──
     "sensorhead_environment",
     "sensorhead_capture",
     "sensorhead_thermal",
+    "sensorhead_thermal_data",
     "sensorhead_detect",
+    "sensorhead_classify",
+    "sensorhead_pose",
     "sensorhead_status",
+    "sensorhead_sentinel_arm",
+    "sensorhead_sentinel_status",
+    "sensorhead_sentinel_events",
+    "sensorhead_sentinel_snapshot",
+    "sensorhead_sentinel_configure",
+    "sensorhead_weather",
+    "sensorhead_air_quality",
+    "sensorhead_speak",
+    "sensorhead_scene_report",
+    "sensorhead_night_vision",
+    # ── Scratch Pad ──
+    "scratch_store",
+    "scratch_get",
+    "scratch_list",
+    # ── Utilities ──
+    "random_number",
+    "uuid_generate",
+    "json_format",
 ]
 
-POCKET_TOOL_TIMEOUT = 30  # seconds — shorter than web's 120s
+POCKET_TOOL_TIMEOUT = 60  # seconds — bumped for scene_report + dream triggers
 POCKET_MAX_TOOL_TURNS = 3  # prevent infinite tool loops
 
 
