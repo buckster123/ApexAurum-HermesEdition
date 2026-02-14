@@ -2241,7 +2241,8 @@ async def pocket_sentinel_events(
     )
     events = []
     for row in result.mappings().all():
-        event_data = json.loads(row["data"]) if row["data"] else {}
+        raw = row["data"]
+        event_data = raw if isinstance(raw, dict) else (json.loads(raw) if raw else {})
         events.append({
             "id": str(row["id"]),
             "type": row["alert_type"].replace("sentinel_", ""),
