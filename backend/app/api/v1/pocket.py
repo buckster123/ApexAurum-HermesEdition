@@ -2710,6 +2710,64 @@ async def pocket_cortex_dream_run(
         }
 
 
+@router.get("/cortex/graph")
+async def pocket_cortex_graph(
+    limit: int = Query(80, le=100),
+    layer: Optional[str] = Query(None),
+    agent_id: Optional[str] = Query(None),
+    device_and_user=Depends(get_device_and_user),
+    db=Depends(get_db),
+):
+    """Graph data (nodes + edges) for mobile memory constellation."""
+    user = device_and_user[1]
+    try:
+        from app.services.cerebro.pg_graph_store import PgGraphStore
+
+        store = PgGraphStore(db)
+        nodes = await store.get_memories(
+            user.id, limit=limit, layer=layer, agent_id=agent_id,
+        )
+        response_nodes = [_cortex_node_to_dict(n) for n in nodes]
+
+        node_ids = [n.id for n in nodes]
+        links = await store.get_links_for_graph(user.id, node_ids)
+
+        edges = [
+            {
+                "source": link["source_id"],
+                "target": link["target_id"],
+                "type": link["link_type"],
+                "weight": float(link.get("weight", 0.5)),
+            }
+            for link in links
+        ]
+
+        return {"nodes": response_nodes, "edges": edges}
+    except Exception as e:
+        logger.error(f"Pocket cortex graph error: {e}")
+        return {"nodes": [], "edges": []}
+
+
+@router.get("/cortex/neighbors/{memory_id}")
+async def pocket_cortex_neighbors(
+    memory_id: str,
+    max_results: int = Query(10, le=20),
+    device_and_user=Depends(get_device_and_user),
+    db=Depends(get_db),
+):
+    """Get associative neighbors of a memory for mobile detail view."""
+    user = device_and_user[1]
+    try:
+        from app.services.cerebro import get_cerebro_service
+
+        service = get_cerebro_service()
+        neighbors = await service.get_neighbors(db, user.id, memory_id, max_results)
+        return {"memory_id": memory_id, "neighbors": neighbors}
+    except Exception as e:
+        logger.error(f"Pocket cortex neighbors error: {e}")
+        return {"memory_id": memory_id, "neighbors": []}
+
+
 def _cortex_node_to_dict(node) -> dict:
     """Convert CerebroCortex MemoryNode to pocket-friendly dict."""
     from app.cerebro.types import EmotionalValence
