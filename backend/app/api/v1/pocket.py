@@ -2492,6 +2492,48 @@ async def pocket_cortex_memories(
         return []
 
 
+class PocketCortexRememberRequest(BaseModel):
+    content: str
+    agent_id: str = "AZOTH"
+    memory_type: Optional[str] = None
+    tags: Optional[list] = None
+    salience: Optional[float] = None
+
+
+@router.post("/cortex/memories")
+async def pocket_cortex_remember(
+    request: PocketCortexRememberRequest,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db=Depends(get_db),
+):
+    """Create a CerebroCortex memory from the mobile app."""
+    _, user = device_and_user
+    try:
+        from app.services.cerebro import get_cerebro_service
+        service = get_cerebro_service()
+        result = await service.remember(
+            db=db,
+            user_id=user.id,
+            content=request.content,
+            memory_type=request.memory_type,
+            tags=request.tags,
+            salience=request.salience,
+            agent_id=request.agent_id,
+            source="pocket_app",
+        )
+        if result is None:
+            return {"status": "gated", "message": "Memory was filtered by gating"}
+        return {
+            "status": "stored",
+            "id": result.get("id", ""),
+            "memory_type": result.get("memory_type", "semantic"),
+            "salience": result.get("salience", 0.5),
+        }
+    except Exception as e:
+        logger.error(f"Pocket cortex remember error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to store memory")
+
+
 @router.post("/cortex/search")
 async def pocket_cortex_search(
     request: PocketCortexSearchRequest,
