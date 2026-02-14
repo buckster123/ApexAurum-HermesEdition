@@ -555,7 +555,8 @@ onUnmounted(() => {
                     <img
                       v-if="images.night"
                       :src="'data:image/jpeg;base64,' + images.night"
-                      class="absolute inset-0 w-full h-full object-contain"
+                      class="absolute inset-0 w-full h-full"
+                      :class="nightCropMode ? 'object-cover' : 'object-contain'"
                       :style="{ opacity: compositeOpacity.night }"
                     />
                     <img
