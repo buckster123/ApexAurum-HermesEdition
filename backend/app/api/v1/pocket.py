@@ -2297,7 +2297,9 @@ async def pocket_sentinel_ack_all(
     result = await db.execute(
         text("""
             UPDATE sensor_alerts SET acknowledged = TRUE
-            WHERE device_id = :did AND alert_type LIKE 'sentinel_%' AND acknowledged = FALSE
+            WHERE device_id = :did
+              AND (alert_type LIKE 'sentinel_%' OR alert_type LIKE 'pocket_%')
+              AND acknowledged = FALSE
         """),
         {"did": str(conn.device_id)},
     )
@@ -2367,7 +2369,7 @@ async def pocket_sentinel_alert(
     await db.execute(
         text("""
             INSERT INTO sensor_alerts (id, device_id, user_id, alert_type, data)
-            VALUES (:id, :device_id, :user_id, :alert_type, :data::jsonb)
+            VALUES (:id, :device_id, :user_id, :alert_type, :data)
         """),
         {
             "id": alert_id,

@@ -512,7 +512,9 @@ async def sentinel_ack_all(
     result = await db.execute(
         text("""
             UPDATE sensor_alerts SET acknowledged = TRUE
-            WHERE device_id = :did AND alert_type LIKE 'sentinel_%' AND acknowledged = FALSE
+            WHERE device_id = :did
+              AND (alert_type LIKE 'sentinel_%' OR alert_type LIKE 'pocket_%')
+              AND acknowledged = FALSE
         """),
         {"did": str(device.id)},
     )
@@ -542,7 +544,7 @@ async def sentinel_stats(
                 COUNT(*) FILTER (WHERE acknowledged = FALSE) as unacked
             FROM sensor_alerts
             WHERE device_id = :did
-              AND alert_type LIKE 'sentinel_%'
+              AND (alert_type LIKE 'sentinel_%' OR alert_type LIKE 'pocket_%')
               AND created_at > NOW() - make_interval(hours => :hours)
             GROUP BY alert_type
             ORDER BY count DESC
