@@ -335,10 +335,10 @@ async def sensor_trend(
 
     # Linear regression: pressure vs time (least-squares, no numpy)
     n = len(rows)
-    sum_x = sum(r["epoch"] for r in rows)
-    sum_y = sum(r["pressure_hpa"] for r in rows)
-    sum_xy = sum(r["epoch"] * r["pressure_hpa"] for r in rows)
-    sum_x2 = sum(r["epoch"] ** 2 for r in rows)
+    sum_x = sum(float(r["epoch"]) for r in rows)
+    sum_y = sum(float(r["pressure_hpa"]) for r in rows)
+    sum_xy = sum(float(r["epoch"]) * float(r["pressure_hpa"]) for r in rows)
+    sum_x2 = sum(float(r["epoch"]) ** 2 for r in rows)
     denom = n * sum_x2 - sum_x ** 2
     if denom == 0:
         slope_per_hr = 0.0

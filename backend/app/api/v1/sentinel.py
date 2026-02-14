@@ -221,7 +221,7 @@ async def sentinel_presets(
             "id": str(row["id"]),
             "name": row["name"],
             "is_builtin": False,
-            "config": json.loads(row["config"]) if row["config"] else {},
+            "config": row["config"] if isinstance(row["config"], dict) else (json.loads(row["config"]) if row["config"] else {}),
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
         }
         for row in result.mappings().all()
@@ -394,7 +394,8 @@ async def sentinel_events(
     )
     events = []
     for row in result.mappings().all():
-        event_data = json.loads(row["data"]) if row["data"] else {}
+        raw = row["data"]
+        event_data = raw if isinstance(raw, dict) else (json.loads(raw) if raw else {})
         events.append({
             "id": str(row["id"]),
             "type": row["alert_type"].replace("sentinel_", ""),
@@ -452,7 +453,7 @@ async def sentinel_event_snapshot(
     if not row:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Event not found")
 
-    data = json.loads(row["data"]) if row["data"] else {}
+    data = row["data"] if isinstance(row["data"], dict) else (json.loads(row["data"]) if row["data"] else {})
     snapshot = data.get("snapshot_b64")
     if not snapshot:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No snapshot for this event")
