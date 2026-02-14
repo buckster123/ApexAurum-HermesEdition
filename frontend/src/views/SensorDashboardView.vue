@@ -1,11 +1,12 @@
 <script setup>
 /**
- * SensorHead Dashboard — The Ouroboros View v2
+ * SensorHead Dashboard — The Ouroboros View v3
  *
  * Camera-centric layout with indoor weather bar, thumbnail→big viewer,
- * composite overlay mode, and collapsible sensor sidebar.
+ * composite overlay mode, AI vision panel (IMX500 on-chip inference),
+ * BSEC2 deep readouts, NoIR FOV alignment, and collapsible sensor sidebar.
  *
- * "The ouroboros sees itself — through every spectrum"
+ * "The ouroboros opens its third eye"
  */
 
 import { ref, computed, onMounted, onUnmounted } from 'vue'
@@ -34,6 +35,17 @@ const trend = ref(null)
 
 // Sidebar
 const showSidebar = ref(window.innerWidth >= 1024)
+
+// AI vision
+const aiResult = ref(null)
+const aiRunning = ref(false)
+const aiAction = ref(null)
+
+// Night camera FOV
+const nightCropMode = ref(true)
+
+// Advanced sidebar
+const showAdvanced = ref(false)
 
 // Auto-refresh
 const autoRefreshMode = ref('off')
@@ -136,6 +148,18 @@ function iaqBorderColor(iaq) {
   return 'border-red-500/30'
 }
 
+function accuracyLabel(level) {
+  const labels = ['stabilizing', 'uncertain', 'calibrating', 'calibrated']
+  return labels[level] ?? 'unknown'
+}
+
+function accuracyColor(level) {
+  if (level >= 3) return 'text-green-400'
+  if (level >= 2) return 'text-yellow-400'
+  if (level >= 1) return 'text-orange-400'
+  return 'text-gray-500'
+}
+
 // ─── API calls ──────────────────────────────────────────────────────
 async function fetchStatus() {
   try {
@@ -182,9 +206,13 @@ async function readEnvironment() {
 async function captureCamera(camera) {
   capturing.value[camera] = true
   try {
-    const endpoint = camera === 'thermal'
-      ? `/api/v1/devices/${deviceId.value}/sensors/thermal`
-      : `/api/v1/devices/${deviceId.value}/sensors/capture/${camera}`
+    let endpoint
+    if (camera === 'thermal') {
+      endpoint = `/api/v1/devices/${deviceId.value}/sensors/thermal`
+    } else {
+      const cropParam = camera === 'night' && nightCropMode.value ? '?crop=true' : ''
+      endpoint = `/api/v1/devices/${deviceId.value}/sensors/capture/${camera}${cropParam}`
+    }
     const { data } = await api.post(endpoint)
     images.value[camera] = data.image_base64
     error.value = null
@@ -192,6 +220,21 @@ async function captureCamera(camera) {
     error.value = e.response?.data?.detail || `${camera} capture failed`
   } finally {
     capturing.value[camera] = false
+  }
+}
+
+async function runAI(action) {
+  aiAction.value = action
+  aiRunning.value = true
+  aiResult.value = null
+  try {
+    const { data } = await api.post(`/api/v1/devices/${deviceId.value}/sensors/ai/${action}`)
+    aiResult.value = { action, ...data }
+    error.value = null
+  } catch (e) {
+    error.value = e.response?.data?.detail || `AI ${action} failed`
+  } finally {
+    aiRunning.value = false
   }
 }
 
@@ -428,9 +471,22 @@ onUnmounted(() => {
             <div class="bg-white/5 border border-apex-border rounded-lg overflow-hidden mb-4">
               <!-- Viewer header -->
               <div class="p-3 border-b border-white/5 flex items-center justify-between">
-                <div>
+                <div class="flex items-center gap-3">
                   <span class="text-white font-medium">{{ CAMERAS[selectedCamera].name }}</span>
-                  <span class="text-gray-600 text-xs ml-2">{{ CAMERAS[selectedCamera].chip }}</span>
+                  <span class="text-gray-600 text-xs">{{ CAMERAS[selectedCamera].chip }}</span>
+                  <!-- Night camera FOV toggle -->
+                  <div v-if="selectedCamera === 'night'" class="flex items-center gap-1 text-[10px]">
+                    <button
+                      @click="nightCropMode = false"
+                      :class="!nightCropMode ? 'text-gold bg-gold/15' : 'text-gray-500 hover:text-gray-300'"
+                      class="px-1.5 py-0.5 rounded transition-colors"
+                    >Wide</button>
+                    <button
+                      @click="nightCropMode = true"
+                      :class="nightCropMode ? 'text-gold bg-gold/15' : 'text-gray-500 hover:text-gray-300'"
+                      class="px-1.5 py-0.5 rounded transition-colors"
+                    >Standard</button>
+                  </div>
                 </div>
                 <button
                   @click="selectedCamera === 'composite' ? captureComposite() : captureCamera(selectedCamera)"
@@ -439,6 +495,31 @@ onUnmounted(() => {
                 >
                   {{ isCapturingSelected ? 'Capturing...' : 'Capture' }}
                 </button>
+              </div>
+
+              <!-- AI toolbar (visual camera only) -->
+              <div
+                v-if="selectedCamera === 'visual'"
+                class="px-3 py-2 border-b border-white/5 flex items-center gap-2"
+              >
+                <span class="text-[10px] text-gray-600 mr-1">AI:</span>
+                <button
+                  v-for="ai in [
+                    { key: 'detect', label: 'Detect Objects' },
+                    { key: 'classify', label: 'Classify Scene' },
+                    { key: 'pose', label: 'Estimate Pose' },
+                  ]"
+                  :key="ai.key"
+                  @click="runAI(ai.key)"
+                  :disabled="!online || aiRunning"
+                  class="text-[11px] px-2.5 py-1 border rounded transition-colors disabled:opacity-30"
+                  :class="aiAction === ai.key && aiRunning
+                    ? 'border-gold/50 text-gold bg-gold/10 animate-pulse'
+                    : 'border-white/10 text-gray-400 hover:text-gold hover:border-gold/30 hover:bg-gold/5'"
+                >
+                  {{ aiAction === ai.key && aiRunning ? 'Running...' : ai.label }}
+                </button>
+                <span v-if="!aiResult && !aiRunning" class="text-[9px] text-gray-600 ml-auto" title="First run loads model (~5s)">On-chip ISP</span>
               </div>
 
               <!-- Image area -->
@@ -488,6 +569,54 @@ onUnmounted(() => {
                     Capture cameras first to build a composite
                   </div>
                 </template>
+              </div>
+
+              <!-- AI Results panel -->
+              <div
+                v-if="aiResult && selectedCamera === 'visual'"
+                class="p-3 border-t border-white/5"
+              >
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs text-gray-400">
+                    {{ aiResult.model }}
+                    <span v-if="aiResult.count != null" class="text-gold ml-1">{{ aiResult.count }} detected</span>
+                    <span v-if="aiResult.people_detected != null" class="text-gold ml-1">{{ aiResult.people_detected }} person(s)</span>
+                  </span>
+                  <span v-if="aiResult.performance" class="text-[10px] text-gray-600">
+                    DNN: {{ aiResult.performance.dnn_ms }}ms | DSP: {{ aiResult.performance.dsp_ms }}ms
+                  </span>
+                </div>
+
+                <!-- Detection results -->
+                <div v-if="aiResult.action === 'detect' && aiResult.detections?.length" class="flex flex-wrap gap-1.5">
+                  <span
+                    v-for="(det, i) in aiResult.detections"
+                    :key="i"
+                    class="text-[11px] px-2 py-0.5 bg-gold/10 border border-gold/20 rounded text-gold"
+                  >
+                    {{ det.label }} {{ Math.round(det.confidence * 100) }}%
+                  </span>
+                </div>
+                <div v-else-if="aiResult.action === 'detect'" class="text-xs text-gray-500">No objects detected</div>
+
+                <!-- Classification results -->
+                <div v-if="aiResult.action === 'classify' && aiResult.predictions?.length" class="space-y-1">
+                  <div v-for="(pred, i) in aiResult.predictions" :key="i" class="flex items-center gap-2">
+                    <span class="text-[11px] text-gray-300 w-28 truncate">{{ pred.label }}</span>
+                    <div class="flex-1 h-1.5 bg-white/5 rounded overflow-hidden">
+                      <div class="h-full bg-gold rounded" :style="{ width: (pred.confidence * 100) + '%' }"></div>
+                    </div>
+                    <span class="text-[10px] text-gray-500 w-10 text-right font-mono">{{ Math.round(pred.confidence * 100) }}%</span>
+                  </div>
+                </div>
+
+                <!-- Pose results -->
+                <div v-if="aiResult.action === 'pose'" class="text-xs">
+                  <div v-if="aiResult.poses?.length" class="text-gray-300">
+                    {{ aiResult.poses[0].keypoints_detected }}/{{ aiResult.poses[0].total_keypoints }} keypoints detected
+                  </div>
+                  <div v-else class="text-gray-500">No pose detected</div>
+                </div>
               </div>
 
               <!-- Composite sliders -->
@@ -594,6 +723,85 @@ onUnmounted(() => {
                       {{ telemetry.voc_ppm != null ? telemetry.voc_ppm.toFixed(3) + ' ppm' : '--' }}
                     </span>
                   </div>
+
+                  <!-- BSEC2 Advanced (collapsible) -->
+                  <button
+                    @click="showAdvanced = !showAdvanced"
+                    class="w-full text-[10px] text-gray-500 hover:text-gray-300 flex items-center justify-between pt-2 transition-colors"
+                  >
+                    <span class="uppercase tracking-wider">Advanced</span>
+                    <span>{{ showAdvanced ? '\u25B2' : '\u25BC' }}</span>
+                  </button>
+
+                  <template v-if="showAdvanced">
+                    <!-- IAQ Accuracy -->
+                    <div class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                      <span class="text-xs text-gray-500">IAQ Acc.</span>
+                      <div class="flex items-center gap-1.5">
+                        <div class="flex gap-0.5">
+                          <div v-for="i in 4" :key="i" class="w-2.5 h-1.5 rounded-sm" :class="(telemetry.iaq_accuracy ?? 0) >= i ? 'bg-green-400' : 'bg-white/10'"></div>
+                        </div>
+                        <span class="text-[10px] font-mono" :class="accuracyColor(telemetry.iaq_accuracy)">
+                          {{ accuracyLabel(telemetry.iaq_accuracy) }}
+                        </span>
+                      </div>
+                    </div>
+                    <!-- CO2 Accuracy -->
+                    <div v-if="telemetry.co2_accuracy != null" class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                      <span class="text-xs text-gray-500">CO2 Acc.</span>
+                      <div class="flex items-center gap-1.5">
+                        <div class="flex gap-0.5">
+                          <div v-for="i in 4" :key="i" class="w-2.5 h-1.5 rounded-sm" :class="telemetry.co2_accuracy >= i ? 'bg-green-400' : 'bg-white/10'"></div>
+                        </div>
+                        <span class="text-[10px] font-mono" :class="accuracyColor(telemetry.co2_accuracy)">
+                          {{ accuracyLabel(telemetry.co2_accuracy) }}
+                        </span>
+                      </div>
+                    </div>
+                    <!-- VOC Accuracy -->
+                    <div v-if="telemetry.breath_voc_accuracy != null" class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                      <span class="text-xs text-gray-500">VOC Acc.</span>
+                      <div class="flex items-center gap-1.5">
+                        <div class="flex gap-0.5">
+                          <div v-for="i in 4" :key="i" class="w-2.5 h-1.5 rounded-sm" :class="telemetry.breath_voc_accuracy >= i ? 'bg-green-400' : 'bg-white/10'"></div>
+                        </div>
+                        <span class="text-[10px] font-mono" :class="accuracyColor(telemetry.breath_voc_accuracy)">
+                          {{ accuracyLabel(telemetry.breath_voc_accuracy) }}
+                        </span>
+                      </div>
+                    </div>
+                    <!-- Gas Resistance -->
+                    <div v-if="telemetry.raw_gas_resistance_ohm != null" class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                      <span class="text-xs text-gray-500">Gas Res.</span>
+                      <span class="text-sm text-white font-mono">
+                        {{ (telemetry.raw_gas_resistance_ohm / 1000).toFixed(1) }} k&Omega;
+                      </span>
+                    </div>
+                    <!-- Gas Classification -->
+                    <div v-if="telemetry.gas_percentage != null" class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                      <span class="text-xs text-gray-500">Gas Class.</span>
+                      <span class="text-sm text-white font-mono">{{ telemetry.gas_percentage.toFixed(1) }}%</span>
+                    </div>
+                    <!-- Air Quality Description -->
+                    <div v-if="telemetry.air_quality_description" class="px-2 py-1.5 bg-black/20 rounded">
+                      <span class="text-xs text-gray-500">Air Quality</span>
+                      <div class="text-[11px] text-gray-300 mt-0.5 italic">{{ telemetry.air_quality_description }}</div>
+                    </div>
+                    <!-- Raw vs Compensated -->
+                    <div v-if="telemetry.raw_temperature_c != null" class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                      <span class="text-xs text-gray-500">Raw Temp</span>
+                      <span class="text-sm text-gray-400 font-mono">{{ telemetry.raw_temperature_c.toFixed(1) }}&deg;C</span>
+                    </div>
+                    <div v-if="telemetry.raw_humidity_pct != null" class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                      <span class="text-xs text-gray-500">Raw Humid</span>
+                      <span class="text-sm text-gray-400 font-mono">{{ Math.round(telemetry.raw_humidity_pct) }}%</span>
+                    </div>
+                    <!-- BSEC Version -->
+                    <div v-if="telemetry.bsec_version" class="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded">
+                      <span class="text-xs text-gray-500">BSEC</span>
+                      <span class="text-[10px] text-gray-500 font-mono">v{{ telemetry.bsec_version }}</span>
+                    </div>
+                  </template>
                 </div>
                 <div v-else class="text-xs text-gray-600 text-center py-4">
                   No sensor data

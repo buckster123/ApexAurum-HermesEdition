@@ -86,6 +86,7 @@ def _normalize_env(raw: dict | None) -> dict | None:
     if not raw:
         return raw
     return {
+        # Core readings
         "temperature_c": raw.get("temperature_c"),
         "humidity_pct": raw.get("humidity_pct"),
         "pressure_hpa": raw.get("pressure_hpa"),
@@ -93,6 +94,19 @@ def _normalize_env(raw: dict | None) -> dict | None:
         "iaq": raw.get("iaq"),
         "iaq_accuracy": raw.get("iaq_accuracy"),
         "voc_ppm": raw.get("voc_ppm") or raw.get("breath_voc_ppm"),
+        # BSEC2 advanced intelligence
+        "iaq_accuracy_label": raw.get("iaq_accuracy_label"),
+        "co2_accuracy": raw.get("co2_accuracy"),
+        "breath_voc_accuracy": raw.get("breath_voc_accuracy"),
+        "gas_percentage": raw.get("gas_percentage"),
+        "gas_percentage_accuracy": raw.get("gas_percentage_accuracy"),
+        "raw_gas_resistance_ohm": raw.get("raw_gas_resistance_ohm"),
+        "raw_temperature_c": raw.get("raw_temperature_c"),
+        "raw_humidity_pct": raw.get("raw_humidity_pct"),
+        "air_quality": raw.get("air_quality"),
+        "air_quality_description": raw.get("air_quality_description"),
+        "bsec_version": raw.get("bsec_version"),
+        "stabilization_status": raw.get("stabilization_status"),
     }
 
 
@@ -186,12 +200,22 @@ async def sensor_environment(
 async def sensor_capture(
     device_id: str,
     camera: CameraType,
+    crop: bool = False,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Capture photo from visual or night camera. Returns base64 JPEG."""
+    """Capture photo from visual or night camera. Returns base64 JPEG.
+
+    For night camera, crop=true center-crops 16:9 wide-angle to 4:3
+    to match the IMX500 FOV for composite overlay alignment.
+    """
     device = await _get_user_device(device_id, user, db)
-    action = "capture_visual" if camera == CameraType.visual else "capture_night"
+    if camera == CameraType.visual:
+        action = "capture_visual"
+    elif crop:
+        action = "capture_night_cropped"
+    else:
+        action = "capture_night"
     result = await _send_sensor_command(device.id, action, timeout=20)
     return {
         "image_base64": result.get("data"),
@@ -376,4 +400,90 @@ async def sensor_trend(
         "comfort": comfort_label,
         "comfort_detail": ", ".join(comfort_parts) if comfort_parts else None,
         "sample_count": n,
+    }
+
+
+# ─── AI Vision Endpoints ─────────────────────────────────────────────
+
+
+@router.post("/{device_id}/sensors/ai/detect")
+async def sensor_ai_detect(
+    device_id: str,
+    confidence: float = 0.3,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run object detection on IMX500. Returns COCO-80 detections.
+
+    First call loads the model (~5s). Subsequent calls are fast (~50ms).
+    """
+    device = await _get_user_device(device_id, user, db)
+    confidence = max(0.1, min(confidence, 0.99))
+    result = await _send_sensor_command(
+        device.id, "detect_objects",
+        params={"confidence": confidence},
+        timeout=30,
+    )
+    data = result.get("data", {})
+    return {
+        "model": data.get("model"),
+        "detections": data.get("detections", []),
+        "count": data.get("count", 0),
+        "performance": data.get("performance"),
+        "duration_ms": result.get("duration_ms", 0),
+        "device_name": device.device_name,
+    }
+
+
+@router.post("/{device_id}/sensors/ai/classify")
+async def sensor_ai_classify(
+    device_id: str,
+    top_k: int = 5,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run scene classification on IMX500. Returns ImageNet top-K predictions.
+
+    First call loads the model (~5s). Subsequent calls are fast (~10ms).
+    """
+    device = await _get_user_device(device_id, user, db)
+    top_k = max(1, min(top_k, 20))
+    result = await _send_sensor_command(
+        device.id, "classify_scene",
+        params={"top_k": top_k},
+        timeout=30,
+    )
+    data = result.get("data", {})
+    return {
+        "model": data.get("model"),
+        "predictions": data.get("predictions", []),
+        "performance": data.get("performance"),
+        "duration_ms": result.get("duration_ms", 0),
+        "device_name": device.device_name,
+    }
+
+
+@router.post("/{device_id}/sensors/ai/pose")
+async def sensor_ai_pose(
+    device_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run pose estimation on IMX500. Returns 17 body keypoints.
+
+    First call loads the model (~5s). Subsequent calls are fast (~30ms).
+    """
+    device = await _get_user_device(device_id, user, db)
+    result = await _send_sensor_command(
+        device.id, "estimate_poses",
+        timeout=30,
+    )
+    data = result.get("data", {})
+    return {
+        "model": data.get("model"),
+        "poses": data.get("poses", []),
+        "people_detected": data.get("people_detected", 0),
+        "performance": data.get("performance"),
+        "duration_ms": result.get("duration_ms", 0),
+        "device_name": device.device_name,
     }
