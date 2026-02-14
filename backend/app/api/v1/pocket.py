@@ -2594,6 +2594,9 @@ async def pocket_cortex_dream_status(
     tier = sub.tier if sub else "free_trial"
     tier_config = TIER_LIMITS.get(tier, TIER_LIMITS["free_trial"])
     max_cycles = tier_config.get("dream_cycles_per_month", 0)
+    # None = unlimited (azothic) — normalize for JSON
+    if max_cycles is None:
+        max_cycles = -1  # -1 signals unlimited to mobile
 
     episodes = await store.get_unconsolidated_episodes(user.id)
 
@@ -2621,14 +2624,14 @@ async def pocket_cortex_dream_run(
     tier_config = TIER_LIMITS.get(tier, TIER_LIMITS["free_trial"])
 
     max_cycles = tier_config.get("dream_cycles_per_month", 0)
-    if max_cycles == 0:
+    if max_cycles is not None and max_cycles == 0:
         raise HTTPException(403, detail=f"Dream engine requires Seeker tier (current: {tier})")
 
     from app.services.cerebro.pg_graph_store import PgGraphStore
     store = PgGraphStore(db)
     month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     used = await store.count_dream_cycles_since(user.id, month_start)
-    if used >= max_cycles:
+    if max_cycles is not None and used >= max_cycles:
         raise HTTPException(429, detail=f"Dream cycle limit reached ({used}/{max_cycles} this month)")
 
     max_calls = tier_config.get("dream_max_llm_calls", 20)
