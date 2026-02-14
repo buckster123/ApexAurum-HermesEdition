@@ -629,4 +629,3 @@ watch(() => props.online, (online) => {
   border: none;
 }
 </style>
-</script>
