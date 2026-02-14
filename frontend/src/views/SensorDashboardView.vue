@@ -12,6 +12,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/services/api'
+import SentinelPanel from '@/components/sentinel/SentinelPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -660,6 +661,13 @@ onUnmounted(() => {
                 {{ telemetryAge }}
               </span>
             </div>
+
+            <!-- ═══ Sentinel Panel ════════════════════════════════════ -->
+            <SentinelPanel
+              v-if="deviceId"
+              :device-id="deviceId"
+              :online="online"
+            />
 
           </div>
 
