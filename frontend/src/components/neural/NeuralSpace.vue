@@ -57,6 +57,7 @@ const { playTone } = useSound()
 const nodeGroup = shallowRef(null)
 const connectionGroup = shallowRef(null)
 const nodeMap = new Map() // id -> mesh
+const auraMap = new Map() // id -> aura mesh (purple glow for queued nodes)
 const hoveredNode = ref(null)
 const selectedNode = ref(null)
 
@@ -90,6 +91,50 @@ function findMemoryNode(obj) {
   return null
 }
 
+// Purple aura for dream-queued nodes
+const auraMaterial = new THREE.MeshBasicMaterial({
+  color: 0x9c27b0,
+  transparent: true,
+  opacity: 0.12,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  side: THREE.BackSide,
+})
+
+function createAura(parentNode) {
+  const salience = parentNode.userData.memory?.salience ?? 0.5
+  const baseSize = 0.5 + salience * 1.5
+  const auraGeo = new THREE.SphereGeometry(baseSize * 2.2, 12, 12)
+  const aura = new THREE.Mesh(auraGeo, auraMaterial.clone())
+  aura.position.copy(parentNode.position)
+  aura.userData = { type: 'dream-aura', phase: Math.random() * Math.PI * 2 }
+  return aura
+}
+
+function syncAuras() {
+  if (!nodeGroup.value || !scene.value) return
+  const queuedIds = new Set(dreamStore.dreamQueue.map(q => q.memory_id))
+
+  // Remove auras for nodes no longer queued
+  for (const [id, aura] of auraMap) {
+    if (!queuedIds.has(id)) {
+      scene.value.remove(aura)
+      aura.geometry.dispose()
+      aura.material.dispose()
+      auraMap.delete(id)
+    }
+  }
+
+  // Add auras for newly queued nodes
+  for (const id of queuedIds) {
+    if (!auraMap.has(id) && nodeMap.has(id)) {
+      const aura = createAura(nodeMap.get(id))
+      scene.value.add(aura)
+      auraMap.set(id, aura)
+    }
+  }
+}
+
 // Build visualization from graph data
 function buildVisualization() {
   if (!scene.value) return
@@ -101,6 +146,13 @@ function buildVisualization() {
   if (connectionGroup.value) {
     scene.value.remove(connectionGroup.value)
   }
+  // Clear auras
+  for (const [, aura] of auraMap) {
+    scene.value.remove(aura)
+    aura.geometry.dispose()
+    aura.material.dispose()
+  }
+  auraMap.clear()
 
   nodeGroup.value = new THREE.Group()
   connectionGroup.value = new THREE.Group()
@@ -136,6 +188,9 @@ function buildVisualization() {
 
   scene.value.add(nodeGroup.value)
   scene.value.add(connectionGroup.value)
+
+  // Add purple auras for queued memories
+  syncAuras()
 }
 
 // Mouse handlers
@@ -270,6 +325,11 @@ watch(() => dreamStore.activePhase, (newPhase) => {
   }
 })
 
+// Sync purple auras when dream queue changes
+watch(() => dreamStore.dreamQueue, () => {
+  if (isInitialized.value) syncAuras()
+}, { deep: true })
+
 // Start/stop dream effects when dream cycle begins/ends
 watch(() => dreamStore.isRunning, (running, wasRunning) => {
   if (!effectsSystem) return
@@ -281,6 +341,24 @@ watch(() => dreamStore.isRunning, (running, wasRunning) => {
     effectsSystem.completeDream()
   }
 })
+
+// Aura breathing animation
+let removeAuraCallback = null
+let auraTime = 0
+
+function initAuraAnimation() {
+  if (removeAuraCallback) return
+  removeAuraCallback = addAnimationCallback((dt) => {
+    auraTime += dt
+    for (const [, aura] of auraMap) {
+      const phase = aura.userData.phase || 0
+      const breath = 0.08 + 0.06 * Math.sin(auraTime * 1.8 + phase)
+      aura.material.opacity = breath
+      const scale = 1.0 + 0.08 * Math.sin(auraTime * 1.2 + phase)
+      aura.scale.setScalar(scale)
+    }
+  })
+}
 
 // Initialize ambient system once scene is ready
 function initAmbient() {
@@ -336,6 +414,7 @@ onMounted(() => {
     initAmbient()
     initNexus()
     initEffects()
+    initAuraAnimation()
   } else {
     // Wait for initialization
     initCheckInterval = setInterval(() => {
@@ -344,6 +423,7 @@ onMounted(() => {
         initAmbient()
         initNexus()
         initEffects()
+        initAuraAnimation()
         clearInterval(initCheckInterval)
         initCheckInterval = null
       }
@@ -373,6 +453,12 @@ onUnmounted(() => {
     effectsSystem.dispose()
     effectsSystem = null
   }
+  if (removeAuraCallback) removeAuraCallback()
+  for (const [, aura] of auraMap) {
+    aura.geometry.dispose()
+    aura.material.dispose()
+  }
+  auraMap.clear()
   agentModels.disposeAll()
 })
 

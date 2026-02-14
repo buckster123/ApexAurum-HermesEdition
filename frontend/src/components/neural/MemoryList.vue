@@ -8,13 +8,23 @@
 
 import { computed } from 'vue'
 import { useNeoCortexStore, AGENT_COLORS, MEMORY_TYPES } from '@/stores/neocortex'
+import { useDreamStore } from '@/stores/dream'
+import { useSound } from '@/composables/useSound'
 
 const store = useNeoCortexStore()
+const dreamStore = useDreamStore()
+const { playTone } = useSound()
 
 const memories = computed(() => store.filteredNodes)
 
 function selectMemory(memory) {
   store.selectMemory(memory)
+}
+
+function toggleQueue(memory, event) {
+  event.stopPropagation()
+  dreamStore.toggleQueueMembership(memory.id)
+  playTone(dreamStore.isInQueue(memory.id) ? 330 : 770, 0.1, 'sine', 0.15)
 }
 
 function formatDate(dateStr) {
@@ -75,6 +85,7 @@ function valenceColor(v) {
           <th class="p-3 w-16 text-right">Sal.</th>
           <th class="p-3 w-10 text-center">Val.</th>
           <th class="p-3 w-36">Created</th>
+          <th v-if="!dreamStore.isFreeTier" class="p-3 w-10 text-center" title="Athanor Queue"></th>
         </tr>
       </thead>
       <tbody>
@@ -134,6 +145,16 @@ function valenceColor(v) {
           </td>
           <td class="p-3 text-xs text-gray-500">
             {{ formatDate(memory.created_at) }}
+          </td>
+          <td v-if="!dreamStore.isFreeTier" class="p-3 text-center">
+            <button
+              @click="toggleQueue(memory, $event)"
+              class="w-6 h-6 rounded transition-colors flex items-center justify-center text-sm"
+              :class="dreamStore.isInQueue(memory.id)
+                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                : 'text-gray-600 hover:text-purple-400 hover:bg-purple-500/10'"
+              :title="dreamStore.isInQueue(memory.id) ? 'Remove from Athanor' : 'Mark for Transmutation'"
+            >&#x2697;</button>
           </td>
         </tr>
       </tbody>
