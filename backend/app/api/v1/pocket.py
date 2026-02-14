@@ -607,9 +607,15 @@ async def _prepare_pocket_chat(
     # Resolve state and agent
     state = get_state_from_string(req.state)
     agent = req.agent.upper() if req.agent else "AZOTH"
-    # PAC LITE: full personality for app (Sonnet), compressed for OLED (Haiku)
-    pal = AGENT_PERSONALITIES_OLED if is_oled else AGENT_PERSONALITIES
-    personality = pal.get(agent, pal["AZOTH"])
+    # Prompt depth: lite (inline ~250 tok) or full (native file ~1500 tok)
+    prompt_mode = (device.soul_state or {}).get("prompt_mode", "lite")
+    if is_oled:
+        personality = AGENT_PERSONALITIES_OLED.get(agent, AGENT_PERSONALITIES_OLED["AZOTH"])
+    elif prompt_mode == "full":
+        from .chat import load_native_prompt
+        personality = load_native_prompt(agent) or AGENT_PERSONALITIES.get(agent, AGENT_PERSONALITIES["AZOTH"])
+    else:
+        personality = AGENT_PERSONALITIES.get(agent, AGENT_PERSONALITIES["AZOTH"])
 
     # Retrieve memories for this agent-user pair
     memory_block = ""
@@ -1276,8 +1282,9 @@ async def pocket_sync(
     """Sync soul state from device to cloud."""
     device, user = device_and_user
 
-    # Update device soul state
-    device.soul_state = {
+    # Update device soul state (preserve extra keys like prompt_mode)
+    existing = device.soul_state or {}
+    existing.update({
         "E": req.E,
         "E_floor": req.E_floor,
         "E_peak": req.E_peak,
@@ -1285,7 +1292,8 @@ async def pocket_sync(
         "total_care": req.total_care,
         "state": req.state,
         "synced_at": time.time(),
-    }
+    })
+    device.soul_state = existing
 
     if req.firmware_version:
         device.firmware_version = req.firmware_version
@@ -1302,6 +1310,30 @@ async def pocket_sync(
         "message": f"Soul synced. E={req.E:.1f}",
         "memories": memories,
     }
+
+
+@router.post("/settings")
+async def pocket_update_settings(
+    req: dict,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update device settings (prompt_mode, etc.)."""
+    device, user = device_and_user
+    updated = {}
+
+    # Validate and apply prompt_mode
+    prompt_mode = req.get("prompt_mode")
+    if prompt_mode is not None:
+        if prompt_mode not in ("lite", "full"):
+            return {"error": "prompt_mode must be 'lite' or 'full'"}
+        existing = device.soul_state or {}
+        existing["prompt_mode"] = prompt_mode
+        device.soul_state = existing
+        updated["prompt_mode"] = prompt_mode
+
+    await db.flush()
+    return {"success": True, "updated": updated}
 
 
 @router.get("/agents")
