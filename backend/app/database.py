@@ -1186,6 +1186,35 @@ END $$;
             );
         """))
         migrations.append("CREATE INDEX IF NOT EXISTS idx_sensor_alerts_user ON sensor_alerts(user_id, acknowledged, created_at DESC);")
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_sensor_alerts_device ON sensor_alerts(device_id, created_at DESC);")
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_sensor_alerts_type ON sensor_alerts(alert_type, created_at DESC);")
+
+        # ─── SensorHead Sentinel config & presets ───
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS sentinel_config (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                config JSONB DEFAULT '{}',
+                active_preset VARCHAR(50),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                UNIQUE(device_id)
+            );
+        """))
+
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS sentinel_presets (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name VARCHAR(100) NOT NULL,
+                config JSONB NOT NULL DEFAULT '{}',
+                is_builtin BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                UNIQUE(user_id, name)
+            );
+        """))
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_sentinel_presets_user ON sentinel_presets(user_id);")
 
         for migration in migrations:
             await conn.execute(text(migration))

@@ -259,9 +259,15 @@ async def _handle_alert(
     device_name: str,
     msg: dict,
 ):
-    """Handle autonomous alert from SensorHead."""
+    """Handle autonomous alert from SensorHead.
+
+    Stores to sensor_alerts, broadcasts to Village WebSocket,
+    and pushes sentinel alerts to pocket_pending_messages for
+    mobile notification delivery.
+    """
     alert_type = msg.get("alert_type", "unknown")
     alert_data = msg.get("data", {})
+    is_sentinel = alert_type.startswith("sentinel_")
 
     logger.info(f"SensorHead alert: {alert_type} from {device_name}")
 
@@ -287,17 +293,61 @@ async def _handle_alert(
     except Exception as e:
         logger.warning(f"Failed to store alert: {e}")
 
+    # Push sentinel alerts to mobile notification queue
+    if is_sentinel:
+        try:
+            from app.database import get_db_context
+
+            event_type = alert_data.get("event_type", "motion")
+            changed = alert_data.get("changed_pixels", 0)
+            delta = alert_data.get("thermal_delta", 0)
+            ai_count = len(alert_data.get("ai_detections", []))
+            ai_text = f" ({ai_count} AI detections)" if ai_count else ""
+
+            notify_text = (
+                f"[Sentinel] {event_type.title()} detected on {device_name} "
+                f"— {changed}px, {delta}°C delta{ai_text}"
+            )
+
+            async with get_db_context() as db:
+                await db.execute(
+                    __import__("sqlalchemy").text("""
+                        INSERT INTO pocket_pending_messages
+                            (user_id, agent_id, text, event_type, source_id)
+                        VALUES (:user_id, 'SYSTEM', :text, :event_type, :source_id)
+                    """),
+                    {
+                        "user_id": str(user_id),
+                        "text": notify_text,
+                        "event_type": "sentinel_alert",
+                        "source_id": f"sentinel_{device_name}",
+                    },
+                )
+                await db.commit()
+        except Exception as e:
+            logger.debug(f"Sentinel mobile notification failed: {e}")
+
     # Broadcast to Village
     try:
         from app.services.village_events import (
             get_village_broadcaster, VillageEvent, EventType,
         )
         broadcaster = get_village_broadcaster()
+
+        if is_sentinel:
+            event_type = alert_data.get("event_type", "motion")
+            message = (
+                f"[{device_name}] Sentinel: {event_type.title()} detected "
+                f"({alert_data.get('changed_pixels', 0)}px)"
+            )
+        else:
+            message = f"[{device_name}] {alert_type}: {json.dumps(alert_data)[:150]}"
+
         await broadcaster.broadcast(VillageEvent(
             type=EventType.TOOL_COMPLETE,
             agent_id="SYSTEM",
             zone="sensor_tower",
-            message=f"[{device_name}] {alert_type}: {json.dumps(alert_data)[:150]}",
+            message=message,
         ))
     except Exception:
         pass
