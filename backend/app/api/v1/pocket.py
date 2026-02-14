@@ -2233,7 +2233,8 @@ async def pocket_sentinel_events(
         text("""
             SELECT id, alert_type, data, acknowledged, created_at
             FROM sensor_alerts
-            WHERE device_id = :did AND alert_type LIKE 'sentinel_%'
+            WHERE device_id = :did
+              AND (alert_type LIKE 'sentinel_%' OR alert_type LIKE 'pocket_%')
             ORDER BY created_at DESC
             LIMIT :limit OFFSET :offset
         """),
@@ -2243,9 +2244,13 @@ async def pocket_sentinel_events(
     for row in result.mappings().all():
         raw = row["data"]
         event_data = raw if isinstance(raw, dict) else (json.loads(raw) if raw else {})
+        alert_type = row["alert_type"]
+        is_pocket = alert_type.startswith("pocket_")
+        event_type_name = alert_type.replace("pocket_", "").replace("sentinel_", "")
         events.append({
             "id": str(row["id"]),
-            "type": row["alert_type"].replace("sentinel_", ""),
+            "type": event_type_name,
+            "source": "pocket" if is_pocket else "sensorhead",
             "data": event_data,
             "acknowledged": row["acknowledged"],
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
@@ -2255,7 +2260,9 @@ async def pocket_sentinel_events(
     count_result = await db.execute(
         text("""
             SELECT COUNT(*) FROM sensor_alerts
-            WHERE device_id = :did AND alert_type LIKE 'sentinel_%' AND acknowledged = FALSE
+            WHERE device_id = :did
+              AND (alert_type LIKE 'sentinel_%' OR alert_type LIKE 'pocket_%')
+              AND acknowledged = FALSE
         """),
         {"did": str(conn.device_id)},
     )

@@ -369,12 +369,16 @@ async def sentinel_events(
     """Query sentinel event timeline. Supports filtering and pagination."""
     device = await _get_user_device(device_id, user, db)
 
-    where_clauses = ["device_id = :did", "alert_type LIKE 'sentinel_%'"]
+    where_clauses = [
+        "device_id = :did",
+        "(alert_type LIKE 'sentinel_%' OR alert_type LIKE 'pocket_%')",
+    ]
     params = {"did": str(device.id), "limit": limit, "offset": offset}
 
     if event_type:
-        where_clauses.append("alert_type = :etype")
+        where_clauses.append("(alert_type = :etype OR alert_type = :ptype)")
         params["etype"] = f"sentinel_{event_type}"
+        params["ptype"] = f"pocket_{event_type}"
 
     if unacked_only:
         where_clauses.append("acknowledged = FALSE")
@@ -396,9 +400,13 @@ async def sentinel_events(
     for row in result.mappings().all():
         raw = row["data"]
         event_data = raw if isinstance(raw, dict) else (json.loads(raw) if raw else {})
+        alert_type = row["alert_type"]
+        is_pocket = alert_type.startswith("pocket_")
+        event_type_name = alert_type.replace("pocket_", "").replace("sentinel_", "")
         events.append({
             "id": str(row["id"]),
-            "type": row["alert_type"].replace("sentinel_", ""),
+            "type": event_type_name,
+            "source": "pocket" if is_pocket else "sensorhead",
             "data": event_data,
             "acknowledged": row["acknowledged"],
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
@@ -416,7 +424,9 @@ async def sentinel_events(
     unacked_result = await db.execute(
         text("""
             SELECT COUNT(*) FROM sensor_alerts
-            WHERE device_id = :did AND alert_type LIKE 'sentinel_%' AND acknowledged = FALSE
+            WHERE device_id = :did
+              AND (alert_type LIKE 'sentinel_%' OR alert_type LIKE 'pocket_%')
+              AND acknowledged = FALSE
         """),
         {"did": str(device.id)},
     )

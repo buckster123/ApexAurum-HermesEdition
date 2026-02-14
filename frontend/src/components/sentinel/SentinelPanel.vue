@@ -219,13 +219,18 @@ function setupPolling() {
 
 // ─── Helpers ────────────────────────────────────────────────────────
 function eventIcon(type) {
-  const icons = { motion: '\u26A1', person: '\uD83D\uDEB6', cat: '\uD83D\uDC31', dog: '\uD83D\uDC36', bird: '\uD83D\uDC26' }
+  const icons = {
+    motion: '\u26A1', person: '\uD83D\uDEB6', cat: '\uD83D\uDC31', dog: '\uD83D\uDC36', bird: '\uD83D\uDC26',
+    camera: '\uD83D\uDCF7', sound: '\uD83D\uDD0A',
+  }
   return icons[type] || '\u26A0'
 }
 
 function eventColor(type) {
   if (type === 'person') return 'text-red-400'
   if (type === 'motion') return 'text-yellow-400'
+  if (type === 'camera') return 'text-amber-400'
+  if (type === 'sound') return 'text-purple-400'
   return 'text-blue-400'
 }
 
@@ -515,7 +520,14 @@ watch(() => props.online, (online) => {
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
             <span class="text-xs text-white font-medium capitalize">{{ ev.type }}</span>
-            <span v-if="ev.data?.changed_pixels" class="text-[10px] text-gray-500">
+            <span
+              v-if="ev.source === 'pocket'"
+              class="text-[9px] px-1 py-0 rounded bg-amber-500/15 border border-amber-500/25 text-amber-400"
+            >Pocket</span>
+            <span v-if="ev.data?.detail && ev.source === 'pocket'" class="text-[10px] text-gray-500">
+              {{ ev.data.detail }}
+            </span>
+            <span v-else-if="ev.data?.changed_pixels" class="text-[10px] text-gray-500">
               {{ ev.data.changed_pixels }}px &middot; {{ ev.data.thermal_delta }}&deg;C
             </span>
             <span v-if="ev.data?.ai_detections?.length" class="text-[10px] text-blue-400">
