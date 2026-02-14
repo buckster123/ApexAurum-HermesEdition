@@ -2312,8 +2312,88 @@ async def pocket_sentinel_snapshot(
     row = result.mappings().first()
     if not row:
         raise HTTPException(404, detail="Event not found")
-    data = json.loads(row["data"]) if row["data"] else {}
+    raw = row["data"]
+    data = raw if isinstance(raw, dict) else (json.loads(raw) if raw else {})
     snapshot = data.get("snapshot_b64")
     if not snapshot:
         raise HTTPException(404, detail="No snapshot")
     return {"image_base64": snapshot, "event_id": event_id}
+
+
+# ─── Pocket Sentinel (phone as guardian device) ──────────────────────
+
+
+class PocketAlertBody(BaseModel):
+    alert_type: str = "pocket_motion"  # pocket_motion | pocket_sound | pocket_tamper
+    snapshot_b64: Optional[str] = None
+    detection_mode: str = "camera"     # camera | sound | motion
+    magnitude: float = 0.0
+    detail: str = ""
+
+
+@router.post("/sentinel/pocket-alert")
+async def pocket_sentinel_alert(
+    body: PocketAlertBody,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Post an alert from the phone's own sensors (camera/mic/accelerometer)."""
+    device, user = device_and_user
+
+    # Find user's SensorHead device_id for alert storage (if connected)
+    from app.services.bridge_manager import get_bridge_manager
+    manager = get_bridge_manager()
+    conn = manager.find_device_for_user(user.id)
+    device_id = conn.device_id if conn else device.id
+
+    alert_id = str(uuid4())
+    alert_data = {
+        "source": "pocket",
+        "detection_mode": body.detection_mode,
+        "magnitude": body.magnitude,
+        "detail": body.detail,
+    }
+    if body.snapshot_b64:
+        alert_data["snapshot_b64"] = body.snapshot_b64
+
+    await db.execute(
+        text("""
+            INSERT INTO sensor_alerts (id, device_id, user_id, alert_type, data)
+            VALUES (:id, :device_id, :user_id, :alert_type, :data::jsonb)
+        """),
+        {
+            "id": alert_id,
+            "device_id": str(device_id),
+            "user_id": str(user.id),
+            "alert_type": body.alert_type,
+            "data": json.dumps(alert_data),
+        },
+    )
+
+    # Queue notification for pending messages (shows up on next poll)
+    detail_text = body.detail or body.alert_type.replace("pocket_", "").replace("_", " ").title()
+    await queue_pending_message(
+        db, user.id, "SENTINEL",
+        f"Pocket alert: {detail_text}",
+        event_type="sentinel_alert",
+        source_id=alert_id,
+    )
+    await db.commit()
+
+    # Broadcast to Village WebSocket (best-effort)
+    try:
+        from app.services.village_events import broadcast_village_event
+        await broadcast_village_event({
+            "type": "tool_complete",
+            "agent": "SENTINEL",
+            "tool": "pocket_sentinel",
+            "result": f"Pocket {body.detection_mode} alert: {detail_text}",
+        })
+    except Exception:
+        pass
+
+    return {
+        "id": alert_id,
+        "alert_type": body.alert_type,
+        "created_at": datetime.utcnow().isoformat(),
+    }
