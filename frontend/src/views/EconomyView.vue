@@ -11,6 +11,16 @@ import { useApexJouleStore } from '@/stores/apexjoule'
 const aj = useApexJouleStore()
 const activeTab = ref('leaderboard')
 
+// Purchase state
+const purchasing = ref(null) // item id currently being purchased
+const purchaseError = ref(null)
+const purchaseSuccess = ref(null)
+
+// Tip state
+const tippingAgent = ref(null)
+const tipAmount = ref(10)
+const tipError = ref(null)
+
 onMounted(async () => {
   await aj.initialize()
   await Promise.all([aj.fetchLeaderboard(), aj.fetchTransactions(), aj.fetchStats()])
@@ -62,6 +72,12 @@ function timeAgo(isoString) {
   return `${Math.floor(seconds / 86400)}d ago`
 }
 
+// Vitality from agentBalances (cross-referenced)
+function agentVitality(agentId) {
+  const bal = aj.agentBalances[agentId]
+  return bal?.vitality ?? 100
+}
+
 // Shop items formatted for display
 const shopItems = computed(() => {
   if (!aj.shopRates?.prices) return []
@@ -71,18 +87,66 @@ const shopItems = computed(() => {
     message_sonnet: 'Extra Sonnet Message',
     message_opus: 'Extra Opus Message',
     dream_cycle: 'Dream Cycle',
-    music_generation: 'Music Generation',
     council_session: 'Council Session',
-    training_job: 'Training Job',
+    suno_generation: 'Music Generation',
+    agent_spawn: 'Agent Spawn',
+    pac_mode_day: 'PAC Mode (1 day)',
+  }
+  const icons = {
+    message_haiku: '&#9672;',
+    message_sonnet: '&#9672;',
+    message_opus: '&#9672;',
+    dream_cycle: '&#9788;',
+    council_session: '&#127963;',
+    suno_generation: '&#9835;',
+    agent_spawn: '&#9670;',
+    pac_mode_day: '&#9733;',
   }
   return Object.entries(prices).map(([key, price]) => ({
     id: key,
     name: names[key] || key.replace(/_/g, ' '),
+    icon: icons[key] || '&#9670;',
     price,
+    canAfford: (aj.userBalance?.balance || 0) >= price,
   }))
 })
 
+async function handlePurchase(item) {
+  purchasing.value = item.id
+  purchaseError.value = null
+  purchaseSuccess.value = null
+
+  const result = await aj.purchaseItem(item.id)
+
+  if (result.success) {
+    purchaseSuccess.value = `Purchased ${item.name} for ${item.price} AJ`
+    setTimeout(() => { purchaseSuccess.value = null }, 3000)
+  } else {
+    purchaseError.value = result.error
+    setTimeout(() => { purchaseError.value = null }, 4000)
+  }
+  purchasing.value = null
+}
+
+async function handleTip() {
+  if (!tippingAgent.value || tipAmount.value <= 0) return
+  tipError.value = null
+
+  const result = await aj.tipAgent(tippingAgent.value, tipAmount.value)
+
+  if (result.success) {
+    tippingAgent.value = null
+    tipAmount.value = 10
+    // Refresh leaderboard to show updated balance
+    await aj.fetchLeaderboard()
+  } else {
+    tipError.value = result.error
+    setTimeout(() => { tipError.value = null }, 4000)
+  }
+}
+
 const stats = computed(() => aj.economyStats || {})
+const userAJ = computed(() => aj.userBalance?.balance || 0)
 </script>
 
 <template>
@@ -171,7 +235,7 @@ const stats = computed(() => aj.economyStats || {})
                 ></div>
               </div>
 
-              <!-- Agent name + level -->
+              <!-- Agent name + level + vitality -->
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
                   <span class="font-semibold text-sm" :style="{ color: agentColor(agent.agent_id) }">
@@ -189,7 +253,7 @@ const stats = computed(() => aj.economyStats || {})
                   </span>
                 </div>
 
-                <!-- Progress bar -->
+                <!-- Level progress bar -->
                 <div class="mt-2 h-1.5 bg-gray-800 rounded-full overflow-hidden">
                   <div
                     class="h-full rounded-full transition-all duration-500"
@@ -200,10 +264,72 @@ const stats = computed(() => aj.economyStats || {})
                   ></div>
                 </div>
 
-                <div class="flex gap-4 mt-1.5 text-[11px] text-gray-500">
+                <!-- Vitality gauge -->
+                <div class="mt-1.5 flex items-center gap-2">
+                  <span class="text-[10px] text-gray-600 w-12 shrink-0">vitality</span>
+                  <div class="flex-1 h-1 bg-gray-800/80 rounded-full overflow-hidden">
+                    <div
+                      class="h-full rounded-full transition-all duration-700"
+                      :style="{
+                        width: agentVitality(agent.agent_id) + '%',
+                        background: agentVitality(agent.agent_id) > 50
+                          ? 'linear-gradient(to right, #22c55e80, #22c55e)'
+                          : agentVitality(agent.agent_id) > 20
+                            ? 'linear-gradient(to right, #eab30880, #eab308)'
+                            : 'linear-gradient(to right, #ef444480, #ef4444)',
+                      }"
+                    ></div>
+                  </div>
+                  <span class="text-[10px] tabular-nums w-8 text-right"
+                    :class="agentVitality(agent.agent_id) > 50 ? 'text-green-500/70' : agentVitality(agent.agent_id) > 20 ? 'text-yellow-500/70' : 'text-red-400/70'"
+                  >
+                    {{ Math.round(agentVitality(agent.agent_id)) }}%
+                  </span>
+                </div>
+
+                <div class="flex items-center gap-4 mt-1.5 text-[11px] text-gray-500">
                   <span>total: {{ agent.total_earned.toFixed(1) }}</span>
                   <span>love: {{ agent.love_depth.toFixed(1) }}</span>
+                  <!-- Tip button -->
+                  <button
+                    @click.stop="tippingAgent = tippingAgent === agent.agent_id ? null : agent.agent_id"
+                    class="ml-auto text-[10px] px-2 py-0.5 rounded border transition-colors"
+                    :class="tippingAgent === agent.agent_id
+                      ? 'border-gold/40 text-gold bg-gold/10'
+                      : 'border-gray-700 text-gray-500 hover:border-gold/30 hover:text-gold/70'"
+                  >
+                    tip
+                  </button>
                 </div>
+
+                <!-- Tip input (expandable) -->
+                <Transition
+                  enter-active-class="transition-all duration-200 ease-out"
+                  leave-active-class="transition-all duration-150 ease-in"
+                  enter-from-class="opacity-0 -translate-y-1 max-h-0"
+                  enter-to-class="opacity-100 translate-y-0 max-h-16"
+                  leave-from-class="opacity-100 max-h-16"
+                  leave-to-class="opacity-0 max-h-0"
+                >
+                  <div v-if="tippingAgent === agent.agent_id" class="flex items-center gap-2 mt-2 overflow-hidden">
+                    <input
+                      v-model.number="tipAmount"
+                      type="number"
+                      min="1"
+                      max="1000"
+                      class="w-20 px-2 py-1 text-xs bg-apex-dark border border-apex-border rounded text-gold tabular-nums focus:border-gold/40 focus:outline-none"
+                    />
+                    <span class="text-[10px] text-gray-600">AJ</span>
+                    <button
+                      @click="handleTip"
+                      :disabled="tipAmount <= 0 || tipAmount > 1000"
+                      class="px-3 py-1 text-[10px] font-medium rounded border border-gold/30 text-gold bg-gold/5 hover:bg-gold/15 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      Send Tip
+                    </button>
+                    <span v-if="tipError" class="text-[10px] text-red-400">{{ tipError }}</span>
+                  </div>
+                </Transition>
               </div>
 
               <!-- Balance -->
@@ -232,9 +358,14 @@ const stats = computed(() => aj.economyStats || {})
             <!-- Amount -->
             <span
               class="text-sm font-semibold tabular-nums w-20 text-right shrink-0"
-              :class="tx.tx_type === 'earn' ? 'text-gold' : 'text-gray-400'"
+              :class="{
+                'text-gold': tx.tx_type === 'earn',
+                'text-red-400/70': tx.tx_type === 'self_sustain',
+                'text-amber-400/70': tx.tx_type === 'tip',
+                'text-gray-400': !['earn','self_sustain','tip'].includes(tx.tx_type),
+              }"
             >
-              {{ tx.tx_type === 'earn' ? '+' : '-' }}{{ parseFloat(tx.amount).toFixed(2) }}
+              {{ ['earn','tip'].includes(tx.tx_type) ? '+' : '-' }}{{ parseFloat(tx.amount).toFixed(2) }}
             </span>
 
             <!-- Direction arrow -->
@@ -287,18 +418,54 @@ const stats = computed(() => aj.economyStats || {})
           </div>
         </div>
 
-        <!-- ═══════ Section 4: Shop Preview ═══════ -->
+        <!-- ═══════ Section 4: Shop ═══════ -->
         <div v-if="activeTab === 'shop'">
+          <!-- Purchase feedback -->
+          <Transition
+            enter-active-class="transition-all duration-300"
+            leave-active-class="transition-all duration-300"
+            enter-from-class="opacity-0 -translate-y-2"
+            leave-to-class="opacity-0 -translate-y-2"
+          >
+            <div v-if="purchaseSuccess" class="mb-4 px-4 py-2.5 rounded-lg bg-green-500/10 border border-green-500/30 text-sm text-green-400">
+              {{ purchaseSuccess }}
+            </div>
+            <div v-else-if="purchaseError" class="mb-4 px-4 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-400">
+              {{ purchaseError }}
+            </div>
+          </Transition>
+
+          <!-- Your balance reminder -->
+          <div class="mb-4 text-xs text-gray-500">
+            Your balance: <span class="text-gold font-semibold tabular-nums">{{ userAJ.toFixed(1) }} AJ</span>
+          </div>
+
           <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             <div
               v-for="item in shopItems"
               :key="item.id"
-              class="rounded-xl border border-apex-border bg-apex-card p-4 flex flex-col items-center gap-2 opacity-60"
+              class="shop-card rounded-xl border p-4 flex flex-col items-center gap-2 transition-all duration-300"
+              :class="item.canAfford
+                ? 'bg-apex-card border-apex-border hover:border-gold/30'
+                : 'bg-apex-card border-apex-border/50 opacity-50'"
             >
+              <span class="text-lg text-gray-500" v-html="item.icon"></span>
               <span class="text-2xl font-semibold text-gold tabular-nums">{{ item.price }}</span>
               <span class="text-[10px] text-gray-600 uppercase tracking-wider">AJ</span>
               <span class="text-xs text-gray-300 text-center mt-1">{{ item.name }}</span>
-              <span class="text-[10px] text-amber-500/70 mt-auto">Coming Soon</span>
+              <button
+                @click="handlePurchase(item)"
+                :disabled="!item.canAfford || purchasing === item.id"
+                class="mt-auto w-full py-1.5 text-[11px] font-medium rounded-lg border transition-all duration-200"
+                :class="item.canAfford
+                  ? 'border-gold/30 text-gold bg-gold/5 hover:bg-gold/15 hover:border-gold/50'
+                  : 'border-gray-700 text-gray-600 cursor-not-allowed'"
+              >
+                <span v-if="purchasing === item.id" class="inline-flex items-center gap-1">
+                  <span class="w-3 h-3 border border-gold/30 border-t-gold rounded-full animate-spin"></span>
+                </span>
+                <span v-else>{{ item.canAfford ? 'Purchase' : 'Insufficient AJ' }}</span>
+              </button>
             </div>
           </div>
 
@@ -371,5 +538,9 @@ const stats = computed(() => aj.economyStats || {})
   letter-spacing: 0.05em;
   color: #666;
   margin-top: 0.25rem;
+}
+
+.shop-card:hover:not(.opacity-50) {
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.05);
 }
 </style>

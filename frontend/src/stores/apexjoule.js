@@ -138,10 +138,63 @@ export const useApexJouleStore = defineStore('apexjoule', () => {
     }
   }
 
+  // AJ settings
+  const ajSettings = ref({ aj_auto_spend: false, aj_auto_spend_daily_cap: 500 })
+
+  async function fetchSettings() {
+    try {
+      const res = await api.get('/api/v1/aj/settings')
+      ajSettings.value = res.data
+    } catch (err) {
+      if (err.response?.status !== 403) {
+        console.error('[ApexJoule] Settings fetch failed:', err)
+      }
+    }
+  }
+
+  async function updateSettings(patch) {
+    try {
+      const res = await api.patch('/api/v1/aj/settings', patch)
+      ajSettings.value = res.data
+      return { success: true }
+    } catch (err) {
+      console.error('[ApexJoule] Settings update failed:', err)
+      return { success: false, error: err.response?.data?.detail || 'Failed to update settings' }
+    }
+  }
+
+  async function purchaseItem(item, quantity = 1, entityId = null) {
+    try {
+      const res = await api.post('/api/v1/aj/purchase', {
+        item, quantity, entity_id: entityId,
+      })
+      // Refresh balances after purchase
+      await fetchBalances()
+      return res.data
+    } catch (err) {
+      const detail = err.response?.data?.detail
+      return { success: false, error: typeof detail === 'string' ? detail : 'Purchase failed' }
+    }
+  }
+
+  async function tipAgent(agentId, amount) {
+    try {
+      const res = await api.post('/api/v1/aj/tip', {
+        agent_id: agentId, amount,
+      })
+      // Refresh balances after tip
+      await fetchBalances()
+      return res.data
+    } catch (err) {
+      const detail = err.response?.data?.detail
+      return { success: false, error: typeof detail === 'string' ? detail : 'Tip failed' }
+    }
+  }
+
   async function initialize() {
     isLoading.value = true
     try {
-      await Promise.all([fetchBalances(), fetchShop()])
+      await Promise.all([fetchBalances(), fetchShop(), fetchSettings()])
     } finally {
       isLoading.value = false
     }
@@ -160,6 +213,7 @@ export const useApexJouleStore = defineStore('apexjoule', () => {
     error,
     lastEarn,
     earnHistory,
+    ajSettings,
 
     // Computed
     userLevel,
@@ -174,6 +228,10 @@ export const useApexJouleStore = defineStore('apexjoule', () => {
     fetchLeaderboard,
     fetchShop,
     fetchStats,
+    fetchSettings,
+    updateSettings,
+    purchaseItem,
+    tipAgent,
     recordEarn,
     recordLevelUp,
     initialize,

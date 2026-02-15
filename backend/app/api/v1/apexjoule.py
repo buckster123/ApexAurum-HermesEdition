@@ -1,8 +1,7 @@
 """
 ApexJoule Economy — REST API Endpoints
 
-Balance queries, transaction log, economy stats.
-Phase 1: read-only visibility. Phase 3 adds spending/tipping.
+Balance queries, transaction log, economy stats, purchasing, tipping.
 """
 
 import logging
@@ -10,12 +9,14 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.services.apexjoule.ledger import AJLedger
+from app.services.apexjoule.shop import AJShop
 from app.services.apexjoule.love_scorer import love_depth_tier_name
 from app.services.apexjoule.constants import (
     LEVEL_NAMES,
@@ -24,6 +25,24 @@ from app.services.apexjoule.constants import (
     LEVEL_THRESHOLDS,
     LOVE_DEPTH_TIERS,
 )
+
+
+# ─── Request schemas ─────────────────────────────────────────────────────────
+
+class PurchaseRequest(BaseModel):
+    item: str = Field(..., description="Shop item key (e.g. 'message_opus')")
+    quantity: int = Field(default=1, ge=1, le=100)
+    entity_id: Optional[str] = Field(default=None, description="Who pays: None=user, agent_id=agent")
+
+
+class TipRequest(BaseModel):
+    agent_id: str = Field(..., description="Agent to tip")
+    amount: float = Field(..., gt=0, le=1000)
+
+
+class AJSettingsUpdate(BaseModel):
+    aj_auto_spend: Optional[bool] = None
+    aj_auto_spend_daily_cap: Optional[int] = Field(default=None, ge=50, le=5000)
 
 logger = logging.getLogger("api.apexjoule")
 
@@ -152,3 +171,92 @@ async def get_leaderboard(
 
     agents.sort(key=lambda a: a["total_earned"], reverse=True)
     return {"agents": agents}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 3: Spending & Tipping
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@router.post("/purchase")
+async def purchase_item(
+    req: PurchaseRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Purchase a feature with AJ currency."""
+    shop = AJShop(db)
+    result = await shop.purchase(
+        user_id=user.id,
+        entity_id=req.entity_id,
+        item=req.item,
+        quantity=req.quantity,
+    )
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=result["error"],
+        )
+
+    await db.commit()
+    return result
+
+
+@router.post("/tip")
+async def tip_agent(
+    req: TipRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Tip an agent with AJ from your balance."""
+    shop = AJShop(db)
+    result = await shop.tip_agent(
+        user_id=user.id,
+        agent_id=req.agent_id,
+        amount=req.amount,
+    )
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=result["error"],
+        )
+
+    await db.commit()
+    return result
+
+
+@router.get("/settings")
+async def get_aj_settings(
+    user: User = Depends(get_current_user),
+):
+    """Get user's AJ auto-spend settings."""
+    settings = user.settings or {}
+    return {
+        "aj_auto_spend": settings.get("aj_auto_spend", False),
+        "aj_auto_spend_daily_cap": settings.get("aj_auto_spend_daily_cap", 500),
+    }
+
+
+@router.patch("/settings")
+async def update_aj_settings(
+    req: AJSettingsUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update AJ auto-spend settings."""
+    settings = dict(user.settings or {})
+
+    if req.aj_auto_spend is not None:
+        settings["aj_auto_spend"] = req.aj_auto_spend
+    if req.aj_auto_spend_daily_cap is not None:
+        settings["aj_auto_spend_daily_cap"] = req.aj_auto_spend_daily_cap
+
+    user.settings = settings
+    await db.commit()
+
+    return {
+        "aj_auto_spend": settings.get("aj_auto_spend", False),
+        "aj_auto_spend_daily_cap": settings.get("aj_auto_spend_daily_cap", 500),
+    }

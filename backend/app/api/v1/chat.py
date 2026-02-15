@@ -982,7 +982,8 @@ async def send_message(
                     from app.services.usage import UsageService
                     usage_svc = UsageService(db)
                     allowed, current, limit = await usage_svc.check_usage_limit(
-                        user.id, "messages_opus", opus_limit
+                        user.id, "messages_opus", opus_limit,
+                        agent_id=request.agent,
                     )
                     if not allowed:
                         raise HTTPException(
@@ -1428,12 +1429,16 @@ Work together to create something beautiful!
                                 await usage_svc.increment_usage(user.id, "messages_opus")
                                 opus_limit = tier_config.get("opus_messages_per_month", 0)
                                 if opus_limit is not None and opus_limit > 0:
-                                    await usage_svc.deduct_feature_credit_if_over_limit(
+                                    credit_used = await usage_svc.deduct_feature_credit_if_over_limit(
                                         user.id, "messages_opus", opus_limit
                                     )
+                                    if not credit_used and request.agent:
+                                        await usage_svc.deduct_aj_if_self_sustained(
+                                            user.id, request.agent, "messages_opus", opus_limit
+                                        )
                                 await db.commit()
                             except Exception as e:
-                                logger.warning(f"Opus feature credit deduction failed (non-fatal): {e}")
+                                logger.warning(f"Opus usage deduction failed (non-fatal): {e}")
                     except Exception as e:
                         logger.error(f"Failed to record streaming usage: {e}")
 
@@ -1635,7 +1640,7 @@ Work together to create something beautiful!
                 )
                 await db.commit()
 
-                # Deduct feature credit if over tier limit (Opus messages)
+                # Deduct feature credit or AJ if over tier limit (Opus messages)
                 if "opus" in model.lower():
                     try:
                         from app.services.usage import UsageService
@@ -1643,12 +1648,16 @@ Work together to create something beautiful!
                         await usage_svc.increment_usage(user.id, "messages_opus")
                         opus_limit = tier_config.get("opus_messages_per_month", 0)
                         if opus_limit is not None and opus_limit > 0:
-                            await usage_svc.deduct_feature_credit_if_over_limit(
+                            credit_used = await usage_svc.deduct_feature_credit_if_over_limit(
                                 user.id, "messages_opus", opus_limit
                             )
+                            if not credit_used and request.agent:
+                                await usage_svc.deduct_aj_if_self_sustained(
+                                    user.id, request.agent, "messages_opus", opus_limit
+                                )
                         await db.commit()
                     except Exception as e:
-                        logger.warning(f"Opus feature credit deduction failed (non-fatal): {e}")
+                        logger.warning(f"Opus usage deduction failed (non-fatal): {e}")
 
             # Store chat exchange as neural memories (for Neo-Cortex visualization)
             if assistant_content and len(assistant_content) > 10:

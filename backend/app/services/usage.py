@@ -170,18 +170,18 @@ class UsageService:
         user_id: UUID,
         counter_type: str,
         limit: Optional[int],
+        agent_id: Optional[str] = None,
     ) -> tuple[bool, int, Optional[int]]:
         """
         Check whether a user is within their usage limit.
 
-        If user is at their tier limit but has purchased feature credits
-        for this resource, access is still allowed (credits will be
-        deducted after the action succeeds).
+        Fallback chain: tier limit -> feature credits -> AJ self-sustain.
 
         Args:
             user_id: The user to check.
             counter_type: One of the COUNTER_* constants.
             limit: The maximum allowed count, or None for unlimited.
+            agent_id: Optional agent for AJ self-sustain check.
 
         Returns:
             Tuple of (allowed, current_count, limit):
@@ -211,6 +211,20 @@ class UsageService:
                     return (True, current, limit)
             except Exception as e:
                 logger.warning(f"Feature credit check failed (non-fatal): {e}")
+
+        # No feature credits -- check AJ self-sustain
+        if agent_id:
+            try:
+                from app.services.apexjoule.self_sustain import AJSelfSustain
+                sustain = AJSelfSustain(self.db)
+                if await sustain.can_self_sustain(user_id, agent_id, counter_type):
+                    logger.debug(
+                        f"User {user_id} at tier limit for {counter_type} "
+                        f"but agent {agent_id} can self-sustain via AJ"
+                    )
+                    return (True, current, limit)
+            except Exception as e:
+                logger.warning(f"AJ self-sustain check failed (non-fatal): {e}")
 
         return (False, current, limit)
 
@@ -300,6 +314,45 @@ class UsageService:
             return await credit_svc.deduct_credit(user_id, resource_type)
         except Exception as e:
             logger.warning(f"Feature credit deduction failed (non-fatal): {e}")
+            return False
+
+    async def deduct_aj_if_self_sustained(
+        self,
+        user_id: UUID,
+        agent_id: str,
+        counter_type: str,
+        tier_limit: Optional[int],
+    ) -> bool:
+        """Deduct AJ if the operation was self-sustained by an agent.
+
+        Called AFTER an action succeeds, AFTER feature credit deduction
+        returned False (no credits to deduct). If user is over tier limit
+        and no feature credit was used, deduct AJ from agent/user balance.
+        """
+        if tier_limit is None:
+            return False
+
+        current = await self.get_current_count(user_id, counter_type)
+        if current <= tier_limit:
+            return False
+
+        # Check if a feature credit was already deducted
+        resource_type = COUNTER_TO_RESOURCE.get(counter_type)
+        if resource_type:
+            try:
+                credit_svc = FeatureCreditService(self.db)
+                available = await credit_svc.get_available_credits(user_id, resource_type)
+                if available > 0:
+                    return False  # Feature credits handled it
+            except Exception:
+                pass
+
+        try:
+            from app.services.apexjoule.self_sustain import AJSelfSustain
+            sustain = AJSelfSustain(self.db)
+            return await sustain.deduct_self_sustain(user_id, agent_id, counter_type)
+        except Exception as e:
+            logger.warning(f"AJ self-sustain deduction failed (non-fatal): {e}")
             return False
 
     async def _check_usage_thresholds(

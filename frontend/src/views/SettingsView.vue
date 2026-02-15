@@ -147,6 +147,11 @@ const agoraCategories = ref({
 const agoraDisplayPublic = ref(true)
 const savingAgora = ref(false)
 
+// ApexJoule Economy
+const ajAutoSpend = ref(false)
+const ajDailyCap = ref(500)
+const savingAJ = ref(false)
+
 // Memory (The Cortex)
 const memoryStats = ref({ by_agent: {}, total: 0 })
 const agentMemories = ref([])
@@ -216,6 +221,7 @@ onMounted(async () => {
   await fetchProviderKeys()
   await fetchTools()
   await fetchAgoraSettings()
+  await fetchAJSettings()
 
   if (devMode.value) {
     await fetchNativeAgents()
@@ -391,6 +397,39 @@ async function saveAgoraSettings() {
     showToast('Failed to save Agora settings', 'error')
   } finally {
     savingAgora.value = false
+  }
+}
+
+async function fetchAJSettings() {
+  try {
+    const { useApexJouleStore } = await import('@/stores/apexjoule')
+    const ajStore = useApexJouleStore()
+    await ajStore.fetchSettings()
+    ajAutoSpend.value = ajStore.ajSettings.aj_auto_spend || false
+    ajDailyCap.value = ajStore.ajSettings.aj_auto_spend_daily_cap || 500
+  } catch (e) {
+    // Keep defaults
+  }
+}
+
+async function saveAJSettings() {
+  savingAJ.value = true
+  try {
+    const { useApexJouleStore } = await import('@/stores/apexjoule')
+    const ajStore = useApexJouleStore()
+    const result = await ajStore.updateSettings({
+      aj_auto_spend: ajAutoSpend.value,
+      aj_auto_spend_daily_cap: ajDailyCap.value,
+    })
+    if (result.success) {
+      showToast('ApexJoule settings saved!', 'success')
+    } else {
+      showToast(result.error || 'Failed to save AJ settings', 'error')
+    }
+  } catch (e) {
+    showToast('Failed to save AJ settings', 'error')
+  } finally {
+    savingAJ.value = false
   }
 }
 
@@ -962,6 +1001,68 @@ function getAgentSymbol(agentId) {
             :disabled="savingAgora"
           >
             {{ savingAgora ? 'Saving...' : 'Save Agora Settings' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- ApexJoule Economy -->
+      <div class="card mb-6">
+        <h2 class="text-xl font-bold mb-4">
+          <span class="text-gold">&#9670;</span> ApexJoule Economy
+        </h2>
+        <p class="text-sm text-gray-400 mb-4">
+          When your tier quota runs out, agents can spend their earned AJ to keep operating.
+        </p>
+
+        <div class="space-y-4">
+          <!-- Auto-Spend Toggle -->
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="aj-auto-spend"
+                v-model="ajAutoSpend"
+                class="w-4 h-4 rounded border-gray-600 text-gold focus:ring-gold"
+              />
+              <label for="aj-auto-spend" class="text-sm text-gray-300">
+                Enable Agent Self-Sustain
+              </label>
+            </div>
+            <span v-if="ajAutoSpend" class="text-xs px-2 py-1 rounded bg-gold/20 text-gold">Active</span>
+            <span v-else class="text-xs px-2 py-1 rounded bg-gray-500/20 text-gray-400">Off</span>
+          </div>
+
+          <!-- Daily Cap Slider (only when enabled) -->
+          <div v-if="ajAutoSpend" class="border border-apex-border rounded-lg p-4 space-y-3">
+            <div>
+              <label class="block text-sm text-gray-400 mb-2">
+                Daily Auto-Spend Cap: <span class="text-gold font-semibold tabular-nums">{{ ajDailyCap }} AJ</span>
+              </label>
+              <input
+                type="range"
+                v-model.number="ajDailyCap"
+                min="50"
+                max="5000"
+                step="50"
+                class="w-full"
+              />
+              <div class="flex justify-between text-xs text-gray-500 mt-1">
+                <span>50 AJ</span>
+                <span>Conservative</span>
+                <span>5,000 AJ</span>
+              </div>
+            </div>
+            <p class="text-xs text-gray-500">
+              Agents will spend up to this amount per day from their balance to keep your conversations flowing when you hit tier limits. Agent balance is tried first, then your user balance as fallback.
+            </p>
+          </div>
+
+          <button
+            @click="saveAJSettings"
+            class="btn-primary"
+            :disabled="savingAJ"
+          >
+            {{ savingAJ ? 'Saving...' : 'Save AJ Settings' }}
           </button>
         </div>
       </div>

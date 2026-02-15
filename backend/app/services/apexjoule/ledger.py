@@ -229,6 +229,19 @@ class AJLedger:
         bal.love_depth = Decimal(str(round(new_depth, 4)))
         bal.updated_at = datetime.utcnow()
 
+    @staticmethod
+    def compute_vitality(balance: float, user_has_quota: bool = True) -> float:
+        """Compute agent vitality gauge (0-100%).
+
+        When user has quota, agents are at full vitality.
+        When quota is exhausted, vitality = how many operations the agent can self-fund.
+        """
+        if user_has_quota:
+            return 100.0
+        AVG_OPERATION_COST = 5.0  # AJ per standard operation
+        ops_affordable = balance / AVG_OPERATION_COST
+        return min(100.0, ops_affordable * 5.0)  # 20 ops = 100%
+
     async def get_all_balances(self, user_id: UUID) -> list[ApexJouleBalance]:
         """Get all balances for a user (user + all agents)."""
         result = await self.db.execute(
@@ -269,7 +282,7 @@ class AJLedger:
                     "level": b.level,
                     "level_name": LEVEL_NAMES[min(b.level - 1, len(LEVEL_NAMES) - 1)],
                     "love_depth": float(b.love_depth),
-                    "vitality": float(b.vitality),
+                    "vitality": self.compute_vitality(float(b.balance)),
                 }
             else:
                 user_balance = float(b.balance)
