@@ -872,6 +872,8 @@ class PgGraphStore:
         duration_seconds: float = 0,
         notes: str = "",
         success: bool = True,
+        provider: str = "anthropic",
+        model_used: str = "",
     ) -> None:
         """Log a dream phase to the dream log."""
         await self.db.execute(
@@ -881,13 +883,15 @@ class PgGraphStore:
                     memories_processed, links_created, links_strengthened,
                     memories_pruned, schemas_extracted, procedures_extracted,
                     total_llm_calls, total_input_tokens, total_output_tokens,
-                    duration_seconds, notes, success
+                    duration_seconds, notes, success,
+                    provider, model_used
                 ) VALUES (
                     :user_id, :cycle_id, :phase, NOW() - INTERVAL '1 second' * :duration, NOW(),
                     :mem_proc, :links_c, :links_s,
                     :mem_pruned, :schemas, :procedures,
                     :llm_calls, :in_tokens, :out_tokens,
-                    :duration, :notes, :success
+                    :duration, :notes, :success,
+                    :provider, :model_used
                 )
             """),
             {
@@ -906,6 +910,8 @@ class PgGraphStore:
                 "out_tokens": total_output_tokens,
                 "notes": notes,
                 "success": success,
+                "provider": provider,
+                "model_used": model_used,
             },
         )
         await self.db.commit()

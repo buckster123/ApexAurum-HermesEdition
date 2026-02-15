@@ -20,6 +20,30 @@ const auth = useAuthStore()
 // Local UI state
 const triggerError = ref(null)
 
+// Model selector helpers
+function onProviderChange(e) {
+  const newProvider = e.target.value
+  const firstModel = dreamStore.dreamModels.find(m => m.provider === newProvider)
+  if (firstModel) {
+    dreamStore.setDreamModel(newProvider, firstModel.id).catch(() => {})
+  }
+}
+
+function onModelChange(e) {
+  dreamStore.setDreamModel(dreamStore.selectedProvider, e.target.value).catch(() => {})
+}
+
+function shortModelName(modelId) {
+  if (!modelId) return ''
+  // Strip provider prefixes and version suffixes for compact display
+  return modelId
+    .replace('meta-llama/', '')
+    .replace('deepseek-ai/', '')
+    .replace('claude-', '')
+    .replace('-20251001', '')
+    .replace('-20250929', '')
+}
+
 // Phase pipeline configuration (alchemy-themed)
 const PHASES = [
   { key: 'sws_replay', name: 'SWS Replay', color: '#4FC3F7', rgb: '79,195,247', symbol: '\u2248', alchemy: 'Aqua Regia' },
@@ -140,8 +164,38 @@ onMounted(() => {
           </span>
         </div>
 
-        <!-- Trigger button -->
-        <div class="flex items-center gap-3">
+        <!-- Model selector + Trigger button -->
+        <div class="flex items-center gap-3 flex-wrap">
+          <!-- Dream Model Selector -->
+          <div v-if="dreamStore.providers.length > 0" class="flex items-center gap-1.5">
+            <select
+              :value="dreamStore.selectedProvider"
+              @change="onProviderChange"
+              :disabled="dreamStore.isRunning"
+              class="dream-select text-xs bg-apex-dark/80 border border-apex-border text-gray-300
+                     rounded-lg px-2 py-1.5 focus:border-gold/50 focus:outline-none"
+            >
+              <option
+                v-for="p in dreamStore.providers"
+                :key="p.id"
+                :value="p.id"
+              >{{ p.name }}</option>
+            </select>
+            <select
+              :value="dreamStore.selectedModel"
+              @change="onModelChange"
+              :disabled="dreamStore.isRunning"
+              class="dream-select text-xs bg-apex-dark/80 border border-apex-border text-gray-300
+                     rounded-lg px-2 py-1.5 focus:border-gold/50 focus:outline-none min-w-[130px]"
+            >
+              <option
+                v-for="m in dreamStore.modelsForProvider"
+                :key="m.id"
+                :value="m.id"
+              >{{ m.name }}</option>
+            </select>
+          </div>
+
           <div v-if="dreamStore.isRunning" class="flex items-center gap-2 text-gold text-sm">
             <AlchemicalLoader size="sm" variant="ouroboros" />
             <span>Dreaming...</span>
@@ -257,7 +311,15 @@ onMounted(() => {
         <!-- ============================================================ -->
         <section v-if="dreamStore.lastReport" class="card dream-report-card">
           <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <h2 class="text-lg font-serif text-gold">Last Dream</h2>
+            <div class="flex items-center gap-3">
+              <h2 class="text-lg font-serif text-gold">Last Dream</h2>
+              <span
+                v-if="dreamStore.lastReport.provider || dreamStore.lastReport.model_used"
+                class="text-[10px] text-gray-500 bg-apex-dark/60 px-2 py-0.5 rounded-full border border-apex-border/50"
+              >
+                {{ dreamStore.lastReport.provider || 'anthropic' }} / {{ shortModelName(dreamStore.lastReport.model_used) || 'haiku' }}
+              </span>
+            </div>
             <span class="text-xs text-gray-500">
               {{ timeAgo(dreamStore.lastReport.completed_at || dreamStore.lastReport.started_at) }}
             </span>
@@ -356,6 +418,12 @@ onMounted(() => {
               <span class="text-xs text-gray-400 flex-shrink-0">
                 {{ entry.phases_completed || 0 }} phase{{ (entry.phases_completed || 0) === 1 ? '' : 's' }}
               </span>
+
+              <!-- Model badge -->
+              <span
+                v-if="entry.model_used"
+                class="text-[10px] text-gray-600 flex-shrink-0 hidden sm:inline"
+              >{{ shortModelName(entry.model_used) }}</span>
 
               <!-- Duration -->
               <span class="text-xs text-gray-500 ml-auto flex-shrink-0">
@@ -520,6 +588,28 @@ onMounted(() => {
 /* ====================================================================== */
 .dream-empty-icon {
   background: radial-gradient(circle at center, rgba(107, 114, 128, 0.05) 0%, transparent 70%);
+}
+
+/* ====================================================================== */
+/* Model selector                                                          */
+/* ====================================================================== */
+.dream-select {
+  appearance: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 22px;
+}
+
+.dream-select:hover:not(:disabled) {
+  border-color: rgba(212, 175, 55, 0.4);
+}
+
+.dream-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ====================================================================== */

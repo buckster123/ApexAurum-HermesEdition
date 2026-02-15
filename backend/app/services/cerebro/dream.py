@@ -87,6 +87,8 @@ class DreamReport:
     total_output_tokens: int = 0
     total_duration_seconds: float = 0.0
     success: bool = True
+    provider: str = "anthropic"
+    model_used: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -101,6 +103,8 @@ class DreamReport:
             "total_output_tokens": self.total_output_tokens,
             "total_duration_seconds": round(self.total_duration_seconds, 2),
             "success": self.success,
+            "provider": self.provider,
+            "model_used": self.model_used,
             "phases": [
                 {
                     "phase": p.phase.value,
@@ -138,6 +142,7 @@ class AsyncDreamEngine:
         llm=None,
         model: str = "claude-haiku-4-5-20251001",
         max_llm_calls: int = DREAM_MAX_LLM_CALLS,
+        provider: str = "anthropic",
     ):
         """Initialize async dream engine.
 
@@ -147,11 +152,13 @@ class AsyncDreamEngine:
                  If None, LLM phases are skipped (algorithmic only).
             model: Model ID for LLM calls.
             max_llm_calls: Total LLM call budget for this cycle.
+            provider: LLM provider ID for tracking.
         """
         from uuid import UUID as UUIDType
         self._user_id = user_id if isinstance(user_id, UUIDType) else UUIDType(str(user_id))
         self._llm = llm
         self._model = model
+        self._provider = provider
         self._max_llm_calls = max_llm_calls
         self._llm_calls_remaining = max_llm_calls
         self._total_input_tokens = 0
@@ -192,7 +199,7 @@ class AsyncDreamEngine:
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         cycle_id = f"dream_{uuid.uuid4().hex[:12]}"
-        report = DreamReport(cycle_id=cycle_id)
+        report = DreamReport(cycle_id=cycle_id, provider=self._provider, model_used=self._model)
         cycle_start = time.time()
 
         try:
@@ -788,6 +795,8 @@ class AsyncDreamEngine:
                 duration_seconds=report.duration_seconds,
                 notes=report.notes,
                 success=report.success,
+                provider=self._provider,
+                model_used=self._model,
             )
         except Exception as e:
             logger.error(f"Failed to log dream phase: {e}")

@@ -9,6 +9,7 @@ Docker expects: arq app.worker.WorkerSettings
 
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 from uuid import UUID
 
 from arq import cron
@@ -20,23 +21,56 @@ logger = logging.getLogger("arq-worker")
 settings = get_settings()
 
 
-async def run_dream_cycle(ctx: dict, user_id: str, max_llm_calls: int = 20) -> dict:
+async def _resolve_dream_api_key(user_id: str, provider: str) -> Optional[str]:
+    """Resolve API key for a dream provider at worker execution time.
+
+    Keys are never serialized to Redis — resolved fresh at execution.
+    """
+    if provider == "anthropic":
+        return None  # Let create_llm_service resolve from env
+
+    from app.database import get_db_context
+    from app.services.provider_access import resolve_provider_access
+    from app.services.billing import BillingService
+    from sqlalchemy import select
+    from app.models.user import User
+
+    async with get_db_context() as db:
+        result = await db.execute(select(User).where(User.id == UUID(user_id)))
+        user = result.scalar_one_or_none()
+        if not user:
+            return None
+
+        billing = BillingService(db)
+        sub = await billing.get_or_create_subscription(UUID(user_id))
+        tier = sub.tier if sub else "free_trial"
+
+        access = await resolve_provider_access(user, provider, tier, db)
+        return access.get("api_key")
+
+
+async def run_dream_cycle(
+    ctx: dict, user_id: str, max_llm_calls: int = 20,
+    provider: str = "anthropic", model: str = "claude-haiku-4-5-20251001",
+) -> dict:
     """Run a CerebroCortex dream consolidation cycle for a user.
 
     Called by: POST /cortex/dream/run or scheduled_dream_sweep
     """
-    logger.info(f"Dream cycle starting for user {user_id}")
+    logger.info(f"Dream cycle starting for user {user_id} (provider={provider}, model={model})")
 
     try:
         from app.services.cerebro.dream import AsyncDreamEngine
         from app.services.llm_provider import create_llm_service
 
-        llm = create_llm_service(provider="anthropic")
+        api_key = await _resolve_dream_api_key(user_id, provider)
+        llm = create_llm_service(provider=provider, api_key=api_key)
         engine = AsyncDreamEngine(
             user_id=UUID(user_id),
             llm=llm,
-            model="claude-haiku-4-5-20251001",
+            model=model,
             max_llm_calls=max_llm_calls,
+            provider=provider,
         )
         report = await engine.run_cycle()
 
@@ -54,7 +88,8 @@ async def run_dream_cycle(ctx: dict, user_id: str, max_llm_calls: int = 20) -> d
 
 
 async def run_targeted_dream_cycle(
-    ctx: dict, user_id: str, memory_ids: list[str], max_llm_calls: int = 20
+    ctx: dict, user_id: str, memory_ids: list[str], max_llm_calls: int = 20,
+    provider: str = "anthropic", model: str = "claude-haiku-4-5-20251001",
 ) -> dict:
     """Run a targeted dream cycle for specific queued memories.
 
@@ -66,13 +101,15 @@ async def run_targeted_dream_cycle(
         from app.services.cerebro.targeted_dream import TargetedDreamEngine
         from app.services.llm_provider import create_llm_service
 
-        llm = create_llm_service(provider="anthropic")
+        api_key = await _resolve_dream_api_key(user_id, provider)
+        llm = create_llm_service(provider=provider, api_key=api_key)
         engine = TargetedDreamEngine(
             user_id=UUID(user_id),
             memory_ids=memory_ids,
             llm=llm,
-            model="claude-haiku-4-5-20251001",
+            model=model,
             max_llm_calls=max_llm_calls,
+            provider=provider,
         )
         report = await engine.run_cycle()
 
@@ -100,6 +137,7 @@ async def scheduled_dream_sweep(ctx: dict) -> dict:
     """3 AM UTC sweep: find users with unconsolidated episodes, queue dream jobs.
 
     Respects tier limits (dream_cycles_per_month).
+    Always uses platform default (anthropic/haiku) — not user preferences.
     """
     logger.info("Scheduled dream sweep starting...")
 

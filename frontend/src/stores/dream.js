@@ -24,6 +24,11 @@ export const useDreamStore = defineStore('dream', () => {
   // Dream queue (targeted cycles)
   const dreamQueue = ref([]) // [{memory_id, content_preview, queued_at, source}]
 
+  // Dream model selection
+  const dreamModels = ref([])
+  const selectedProvider = ref('anthropic')
+  const selectedModel = ref('claude-haiku-4-5-20251001')
+
   // Computed
   const cyclesUsed = computed(() => status.value?.cycles_used || 0)
   const cyclesLimit = computed(() => status.value?.cycles_limit)
@@ -42,11 +47,32 @@ export const useDreamStore = defineStore('dream', () => {
   const queueCount = computed(() => dreamQueue.value.length)
   const hasQueue = computed(() => queueCount.value > 0)
 
+  // Group available models by provider
+  const providers = computed(() => {
+    const seen = new Map()
+    for (const m of dreamModels.value) {
+      if (!seen.has(m.provider)) {
+        seen.set(m.provider, { id: m.provider, name: m.provider_name })
+      }
+    }
+    return [...seen.values()]
+  })
+
+  const modelsForProvider = computed(() => {
+    return dreamModels.value.filter((m) => m.provider === selectedProvider.value)
+  })
+
   // Actions
   async function fetchStatus() {
     try {
       const res = await api.get('/api/v1/cortex/dream/status')
       status.value = res.data
+      // Sync preference from server if available
+      if (res.data.current_preference) {
+        const pref = res.data.current_preference
+        selectedProvider.value = pref.provider || 'anthropic'
+        selectedModel.value = pref.model || 'claude-haiku-4-5-20251001'
+      }
     } catch (err) {
       if (err.response?.status !== 403) {
         console.error('[Dream] Status fetch failed:', err)
@@ -65,6 +91,33 @@ export const useDreamStore = defineStore('dream', () => {
     }
   }
 
+  async function fetchDreamModels() {
+    try {
+      const res = await api.get('/api/v1/cortex/dream/models')
+      dreamModels.value = res.data.models || []
+      if (res.data.current_preference) {
+        const pref = res.data.current_preference
+        selectedProvider.value = pref.provider || 'anthropic'
+        selectedModel.value = pref.model || 'claude-haiku-4-5-20251001'
+      }
+    } catch (err) {
+      if (err.response?.status !== 403) {
+        console.error('[Dream] Models fetch failed:', err)
+      }
+    }
+  }
+
+  async function setDreamModel(provider, model) {
+    try {
+      await api.put('/api/v1/cortex/dream/models/preference', { provider, model })
+      selectedProvider.value = provider
+      selectedModel.value = model
+    } catch (err) {
+      error.value = err.response?.data?.detail || 'Failed to save model preference'
+      throw err
+    }
+  }
+
   async function triggerDream() {
     if (!canRunDream.value) return null
 
@@ -74,7 +127,10 @@ export const useDreamStore = defineStore('dream', () => {
     phaseStartTime.value = Date.now()
 
     try {
-      const res = await api.post('/api/v1/cortex/dream/run')
+      const res = await api.post('/api/v1/cortex/dream/run', {
+        provider: selectedProvider.value,
+        model: selectedModel.value,
+      })
       lastJobId.value = res.data.job_id || null
 
       // If it ran synchronously (fallback mode), update immediately
@@ -174,7 +230,10 @@ export const useDreamStore = defineStore('dream', () => {
     phaseStartTime.value = Date.now()
 
     try {
-      const res = await api.post('/api/v1/cortex/dream/run-targeted')
+      const res = await api.post('/api/v1/cortex/dream/run-targeted', {
+        provider: selectedProvider.value,
+        model: selectedModel.value,
+      })
       lastJobId.value = res.data.job_id || null
 
       if (res.data.status === 'completed') {
@@ -197,7 +256,7 @@ export const useDreamStore = defineStore('dream', () => {
   async function initialize() {
     isLoading.value = true
     try {
-      await Promise.all([fetchStatus(), fetchLog(), fetchQueue()])
+      await Promise.all([fetchStatus(), fetchLog(), fetchQueue(), fetchDreamModels()])
     } finally {
       isLoading.value = false
     }
@@ -222,9 +281,16 @@ export const useDreamStore = defineStore('dream', () => {
     dreamQueue,
     queueCount,
     hasQueue,
+    dreamModels,
+    selectedProvider,
+    selectedModel,
+    providers,
+    modelsForProvider,
     fetchStatus,
     fetchLog,
     fetchQueue,
+    fetchDreamModels,
+    setDreamModel,
     addToQueue,
     removeFromQueue,
     clearQueue,

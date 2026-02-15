@@ -1119,6 +1119,25 @@ END $$;
             END $$;
         """)
 
+        # Dream Engine v4: multi-provider model tracking
+        migrations.append("""
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cerebro_dream_log') THEN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'cerebro_dream_log' AND column_name = 'provider') THEN
+                        ALTER TABLE cerebro_dream_log ADD COLUMN provider VARCHAR(30) DEFAULT 'anthropic';
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'cerebro_dream_log' AND column_name = 'model_used') THEN
+                        ALTER TABLE cerebro_dream_log ADD COLUMN model_used VARCHAR(100) DEFAULT 'claude-haiku-4-5-20251001';
+                    END IF;
+                END IF;
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'Dream log v4 migration skipped';
+            END $$;
+        """)
+
         # ═══════════════════════════════════════════════════════════════════════
         # CEREBRO DREAM QUEUE - Targeted dream memory queue (The Athanor Queue)
         # ═══════════════════════════════════════════════════════════════════════

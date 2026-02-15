@@ -154,6 +154,7 @@ TIER_LIMITS = {
         "trial_days": 7,
         "dream_cycles_per_month": 0,
         "dream_max_llm_calls": 0,
+        "dream_byok_allowed": False,
         "memory_imports_per_month": 0,
         "import_max_file_mb": 0,
     },
@@ -182,6 +183,7 @@ TIER_LIMITS = {
         "platform_grants": [],
         "dream_cycles_per_month": 2,
         "dream_max_llm_calls": 10,
+        "dream_byok_allowed": True,
         "memory_imports_per_month": 50,
         "import_max_file_mb": 5,
     },
@@ -218,6 +220,7 @@ TIER_LIMITS = {
         "platform_grants": [],
         "dream_cycles_per_month": 10,
         "dream_max_llm_calls": 20,
+        "dream_byok_allowed": True,
         "memory_imports_per_month": 500,
         "import_max_file_mb": 10,
     },
@@ -259,6 +262,7 @@ TIER_LIMITS = {
         "platform_grants": [],
         "dream_cycles_per_month": 30,
         "dream_max_llm_calls": 30,
+        "dream_byok_allowed": True,
         "memory_imports_per_month": 5000,
         "import_max_file_mb": 25,
     },
@@ -301,9 +305,22 @@ TIER_LIMITS = {
         "platform_grants": [],
         "dream_cycles_per_month": None,  # Unlimited
         "dream_max_llm_calls": 50,
+        "dream_byok_allowed": True,
         "memory_imports_per_month": None,  # Unlimited
         "import_max_file_mb": 50,
     },
+}
+
+# Models eligible for dream engine (structured JSON extraction, no tools needed)
+# Curated: cheap, fast, decent instruction-following (27B+)
+DREAM_ELIGIBLE_MODELS = {
+    "anthropic": ["claude-haiku-4-5-20251001"],
+    "groq": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "qwen-qwq-32b"],
+    "together": ["meta-llama/Llama-3.3-70B-Instruct-Turbo", "deepseek-ai/DeepSeek-V3.1"],
+    "deepseek": ["deepseek-chat"],
+    "qwen": ["qwen-plus", "qwen-turbo"],
+    "moonshot": ["kimi-k2.5-instant"],
+    "openai": ["gpt-4o-mini"],
 }
 
 # Providers that support admin-controlled platform grants

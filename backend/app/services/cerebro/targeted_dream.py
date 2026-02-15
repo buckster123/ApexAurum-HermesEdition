@@ -42,8 +42,9 @@ class TargetedDreamEngine(AsyncDreamEngine):
         llm=None,
         model: str = "claude-haiku-4-5-20251001",
         max_llm_calls: int = 20,
+        provider: str = "anthropic",
     ):
-        super().__init__(user_id, llm, model, max_llm_calls)
+        super().__init__(user_id, llm, model, max_llm_calls, provider=provider)
         self._target_ids = set(memory_ids)
         self._expanded_ids: set[str] = set()
 
@@ -57,7 +58,7 @@ class TargetedDreamEngine(AsyncDreamEngine):
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         cycle_id = f"dream_t_{uuid.uuid4().hex[:10]}"
-        report = DreamReport(cycle_id=cycle_id)
+        report = DreamReport(cycle_id=cycle_id, provider=self._provider, model_used=self._model)
         report.scope = "targeted"
         report.target_count = len(self._target_ids)
         cycle_start = time.time()
