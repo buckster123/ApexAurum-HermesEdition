@@ -157,6 +157,7 @@ TIER_LIMITS = {
         "dream_byok_allowed": False,
         "memory_imports_per_month": 0,
         "import_max_file_mb": 0,
+        "aj_earning_enabled": False,
     },
     "seeker": {
         "name": "Seeker",
@@ -186,6 +187,7 @@ TIER_LIMITS = {
         "dream_byok_allowed": True,
         "memory_imports_per_month": 50,
         "import_max_file_mb": 5,
+        "aj_earning_enabled": True,
     },
     "adept": {
         "name": "Adept",
@@ -223,6 +225,7 @@ TIER_LIMITS = {
         "dream_byok_allowed": True,
         "memory_imports_per_month": 500,
         "import_max_file_mb": 10,
+        "aj_earning_enabled": True,
     },
     "opus": {
         "name": "Opus",
@@ -265,6 +268,7 @@ TIER_LIMITS = {
         "dream_byok_allowed": True,
         "memory_imports_per_month": 5000,
         "import_max_file_mb": 25,
+        "aj_earning_enabled": True,
     },
     "azothic": {
         "name": "Azothic",
@@ -308,6 +312,7 @@ TIER_LIMITS = {
         "dream_byok_allowed": True,
         "memory_imports_per_month": None,  # Unlimited
         "import_max_file_mb": 50,
+        "aj_earning_enabled": True,
     },
 }
 

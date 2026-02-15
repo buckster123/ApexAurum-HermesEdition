@@ -89,6 +89,7 @@
           <button onclick="showTab('agora')" data-tab="agora" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent hover:border-gold/50 transition-colors">Agora</button>
           <button onclick="showTab('dream')" data-tab="dream" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent hover:border-gold/50 transition-colors">Dream Engine</button>
           <button onclick="showTab('distribution')" data-tab="distribution" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent hover:border-gold/50 transition-colors">Distribution</button>
+          <button onclick="showTab('economy')" data-tab="economy" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent hover:border-gold/50 transition-colors">Economy</button>
         </div>
       </div>
 
@@ -840,6 +841,71 @@
           </div>
         </div>
 
+        <!-- Economy Tab (ApexJoule) -->
+        <div id="tab-economy" class="tab-content hidden">
+          <h2 class="text-xl font-bold mb-6" style="color:#FFD700;text-shadow:0 0 10px rgba(212,175,55,0.4)">ApexJoule Economy</h2>
+
+          <!-- Global Stats -->
+          <div class="grid md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="aj-total-minted" class="text-2xl font-bold text-gold">-</div>
+              <div class="text-sm text-gray-400">Total AJ Minted</div>
+            </div>
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="aj-total-spent" class="text-2xl font-bold text-red-400">-</div>
+              <div class="text-sm text-gray-400">Total AJ Spent</div>
+            </div>
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="aj-active-users" class="text-2xl font-bold text-green-400">-</div>
+              <div class="text-sm text-gray-400">Active AJ Users</div>
+            </div>
+            <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-4 text-center">
+              <div id="aj-tx-count" class="text-2xl font-bold text-blue-400">-</div>
+              <div class="text-sm text-gray-400">Transactions (24h)</div>
+            </div>
+          </div>
+
+          <!-- Top Agents Table -->
+          <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-6 mb-6">
+            <h3 class="text-lg font-semibold mb-4">Top Agents (Global)</h3>
+            <div id="aj-agents-loading" class="text-center py-4 text-gray-500">Loading...</div>
+            <table id="aj-agents-table" class="w-full text-sm hidden">
+              <thead>
+                <tr class="text-left text-gray-400 border-b border-apex-border">
+                  <th class="pb-3 pr-3">User</th>
+                  <th class="pb-3 pr-3">Agent</th>
+                  <th class="pb-3 pr-3">Balance</th>
+                  <th class="pb-3 pr-3">Total Earned</th>
+                  <th class="pb-3 pr-3">Level</th>
+                  <th class="pb-3">Love Depth</th>
+                </tr>
+              </thead>
+              <tbody id="aj-agents-body" class="divide-y divide-apex-border"></tbody>
+            </table>
+            <div id="aj-agents-empty" class="text-center py-4 text-gray-500 hidden">No AJ data yet.</div>
+          </div>
+
+          <!-- Recent Transactions -->
+          <div class="bg-apex-dark/50 border border-apex-border rounded-lg p-6">
+            <h3 class="text-lg font-semibold mb-4">Recent Transactions</h3>
+            <div id="aj-tx-loading" class="text-center py-4 text-gray-500">Loading...</div>
+            <table id="aj-tx-table" class="w-full text-sm hidden">
+              <thead>
+                <tr class="text-left text-gray-400 border-b border-apex-border">
+                  <th class="pb-3 pr-3">User</th>
+                  <th class="pb-3 pr-3">Type</th>
+                  <th class="pb-3 pr-3">Agent</th>
+                  <th class="pb-3 pr-3">Amount</th>
+                  <th class="pb-3 pr-3">Operation</th>
+                  <th class="pb-3">Time</th>
+                </tr>
+              </thead>
+              <tbody id="aj-tx-body" class="divide-y divide-apex-border"></tbody>
+            </table>
+            <div id="aj-tx-empty" class="text-center py-4 text-gray-500 hidden">No transactions yet.</div>
+          </div>
+        </div>
+
       </main>
     </div>
   </div>
@@ -998,6 +1064,7 @@
       if (tab === 'agora') { loadAgoraStats(); loadAgoraPosts(); }
       if (tab === 'dream') loadDreamStats();
       if (tab === 'distribution') loadDistribution();
+      if (tab === 'economy') loadEconomyStats();
     }
 
     // Coupons
@@ -2599,6 +2666,72 @@
         loadDistribution();
       } catch (err) {
         alert('Failed: ' + err.message);
+      }
+    }
+
+    // ApexJoule Economy
+    async function loadEconomyStats() {
+      const agentsLoading = document.getElementById('aj-agents-loading');
+      const agentsTable = document.getElementById('aj-agents-table');
+      const agentsBody = document.getElementById('aj-agents-body');
+      const agentsEmpty = document.getElementById('aj-agents-empty');
+      const txLoading = document.getElementById('aj-tx-loading');
+      const txTable = document.getElementById('aj-tx-table');
+      const txBody = document.getElementById('aj-tx-body');
+      const txEmpty = document.getElementById('aj-tx-empty');
+
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/admin/economy/stats`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Failed to load economy stats');
+        const data = await res.json();
+
+        // Stats cards
+        document.getElementById('aj-total-minted').textContent = data.total_minted?.toFixed(1) || '0';
+        document.getElementById('aj-total-spent').textContent = data.total_spent?.toFixed(1) || '0';
+        document.getElementById('aj-active-users').textContent = data.active_users || '0';
+        document.getElementById('aj-tx-count').textContent = data.tx_count_24h || '0';
+
+        // Top agents
+        agentsLoading.classList.add('hidden');
+        if (data.top_agents?.length > 0) {
+          agentsTable.classList.remove('hidden');
+          agentsBody.innerHTML = data.top_agents.map(a => `
+            <tr>
+              <td class="py-2 pr-3 text-gray-400">${a.user_email || '-'}</td>
+              <td class="py-2 pr-3 font-semibold text-gold">${a.agent_id}</td>
+              <td class="py-2 pr-3">${a.balance?.toFixed(1)} AJ</td>
+              <td class="py-2 pr-3">${a.total_earned?.toFixed(1)} AJ</td>
+              <td class="py-2 pr-3">${a.level}</td>
+              <td class="py-2">${a.love_depth?.toFixed(1)}</td>
+            </tr>
+          `).join('');
+        } else {
+          agentsEmpty.classList.remove('hidden');
+        }
+
+        // Recent transactions
+        txLoading.classList.add('hidden');
+        if (data.recent_transactions?.length > 0) {
+          txTable.classList.remove('hidden');
+          txBody.innerHTML = data.recent_transactions.map(t => `
+            <tr>
+              <td class="py-2 pr-3 text-gray-400">${t.user_email || '-'}</td>
+              <td class="py-2 pr-3"><span class="px-2 py-0.5 rounded text-xs ${t.tx_type === 'earn' ? 'bg-green-900/50 text-green-400' : t.tx_type === 'quest' ? 'bg-yellow-900/50 text-yellow-400' : 'bg-red-900/50 text-red-400'}">${t.tx_type}</span></td>
+              <td class="py-2 pr-3 font-semibold text-gold">${t.agent || '-'}</td>
+              <td class="py-2 pr-3">${t.amount?.toFixed(2)} AJ</td>
+              <td class="py-2 pr-3 text-gray-400">${t.operation_type || '-'}</td>
+              <td class="py-2 text-gray-500">${t.created_at ? new Date(t.created_at).toLocaleString() : '-'}</td>
+            </tr>
+          `).join('');
+        } else {
+          txEmpty.classList.remove('hidden');
+        }
+      } catch (err) {
+        console.error('Economy stats error:', err);
+        agentsLoading.textContent = 'Failed to load.';
+        txLoading.textContent = 'Failed to load.';
       }
     }
   </script>

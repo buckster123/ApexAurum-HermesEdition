@@ -75,6 +75,9 @@ class User(Base):
     # Quest Progression
     progression = relationship("UserProgression", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
+    # ApexJoule Economy
+    aj_balances = relationship("ApexJouleBalance", back_populates="user", cascade="all, delete-orphan")
+
     # Devices (ApexPocket, etc.)
     devices = relationship("Device", back_populates="user", cascade="all, delete-orphan")
 

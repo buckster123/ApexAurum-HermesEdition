@@ -1531,3 +1531,103 @@ async def get_dream_stats(
         pass
 
     return result
+
+
+@router.get("/economy/stats")
+async def get_economy_stats(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aggregated ApexJoule Economy statistics for admin dashboard."""
+    result = {
+        "total_minted": 0,
+        "total_spent": 0,
+        "active_users": 0,
+        "tx_count_24h": 0,
+        "top_agents": [],
+        "recent_transactions": [],
+    }
+
+    try:
+        # Global totals
+        totals = await db.execute(text("""
+            SELECT
+                COALESCE(SUM(total_earned), 0) AS minted,
+                COALESCE(SUM(total_spent), 0) AS spent,
+                COUNT(DISTINCT user_id) AS users
+            FROM apex_joule_balances
+        """))
+        row = totals.fetchone()
+        if row:
+            result["total_minted"] = float(row[0])
+            result["total_spent"] = float(row[1])
+            result["active_users"] = int(row[2])
+    except Exception:
+        pass
+
+    try:
+        # 24h transaction count
+        tx_count = await db.execute(text("""
+            SELECT COUNT(*) FROM apex_joule_transactions
+            WHERE created_at > NOW() - INTERVAL '24 hours'
+        """))
+        result["tx_count_24h"] = int(tx_count.scalar() or 0)
+    except Exception:
+        pass
+
+    try:
+        # Top agents by total earned
+        agents = await db.execute(text("""
+            SELECT
+                b.entity_id,
+                u.email,
+                b.balance,
+                b.total_earned,
+                b.level,
+                b.love_depth
+            FROM apex_joule_balances b
+            JOIN users u ON u.id = b.user_id
+            WHERE b.entity_id IS NOT NULL
+            ORDER BY b.total_earned DESC
+            LIMIT 20
+        """))
+        for r in agents.fetchall():
+            result["top_agents"].append({
+                "agent_id": r[0],
+                "user_email": r[1],
+                "balance": float(r[2]),
+                "total_earned": float(r[3]),
+                "level": int(r[4]),
+                "love_depth": float(r[5]),
+            })
+    except Exception:
+        pass
+
+    try:
+        # Recent transactions
+        txs = await db.execute(text("""
+            SELECT
+                t.to_entity,
+                u.email,
+                t.amount,
+                t.tx_type,
+                t.operation_type,
+                t.created_at
+            FROM apex_joule_transactions t
+            JOIN users u ON u.id = t.user_id
+            ORDER BY t.created_at DESC
+            LIMIT 50
+        """))
+        for r in txs.fetchall():
+            result["recent_transactions"].append({
+                "agent": r[0],
+                "user_email": r[1],
+                "amount": float(r[2]),
+                "tx_type": r[3],
+                "operation_type": r[4],
+                "created_at": r[5].isoformat() if r[5] else None,
+            })
+    except Exception:
+        pass
+
+    return result

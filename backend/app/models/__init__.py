@@ -27,6 +27,7 @@ from app.models.system import SystemSettings
 from app.models.device import Device
 from app.models.agora import AgoraPost, AgoraReaction, AgoraComment
 from app.models.progression import UserProgression
+from app.models.apexjoule import ApexJouleBalance, ApexJouleTransaction, LoveScore
 
 # User references all of the above, so import LAST
 from app.models.user import User
@@ -70,5 +71,8 @@ __all__ = [
     "AgoraReaction",
     "AgoraComment",
     "UserProgression",
+    "ApexJouleBalance",
+    "ApexJouleTransaction",
+    "LoveScore",
     # "UserVector",  # Temp disabled
 ]

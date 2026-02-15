@@ -835,6 +835,39 @@ async def execute_round(
         except Exception as e:
             logger.error(f"Failed to record council billing: {e}")
 
+    # ApexJoule Economy: compute and credit AJ per agent
+    try:
+        from app.config import TIER_LIMITS
+        from app.services.apexjoule.calculator import compute_aj_for_council_round
+        from app.services.billing import BillingService
+
+        billing_svc = BillingService(db)
+        sub = await billing_svc.get_or_create_subscription(user.id)
+        aj_tier = TIER_LIMITS.get(sub.tier if sub else "free_trial", TIER_LIMITS["free_trial"])
+
+        if aj_tier.get("aj_earning_enabled"):
+            for i, result in enumerate(agent_results):
+                if isinstance(result, Exception):
+                    continue
+                agent = active_agents[i]
+                if result.get("input_tokens", 0) > 0 or result.get("output_tokens", 0) > 0:
+                    await compute_aj_for_council_round(
+                        user_id=user.id,
+                        agent_id=agent.agent_id,
+                        provider=agent.provider or "anthropic",
+                        model=agent.model or session.model or COUNCIL_MODEL,
+                        input_tokens=result["input_tokens"],
+                        output_tokens=result["output_tokens"],
+                        convergence_score=convergence_score,
+                        round_number=round_number,
+                        session_complete=(new_state == "complete"),
+                        agora_posted=(new_state == "complete"),
+                        db=db,
+                    )
+            await db.commit()
+    except Exception as e:
+        logger.warning(f"AJ council calculation failed (non-fatal): {e}")
+
     # Store council messages in Neural memory (The Village)
     try:
         stored = await store_council_memories(

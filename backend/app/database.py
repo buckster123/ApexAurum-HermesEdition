@@ -1235,6 +1235,98 @@ END $$;
         """))
         migrations.append("CREATE INDEX IF NOT EXISTS idx_sentinel_presets_user ON sentinel_presets(user_id);")
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # APEXJOULE ECONOMY v1 — The thermodynamic currency of the Athanor
+        # ═══════════════════════════════════════════════════════════════════════
+        await conn.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+                               WHERE table_name = 'apex_joule_balances') THEN
+                    CREATE TABLE apex_joule_balances (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        entity_id VARCHAR(50),
+                        balance DECIMAL(14,4) NOT NULL DEFAULT 0.0,
+                        total_earned DECIMAL(14,4) NOT NULL DEFAULT 0.0,
+                        total_spent DECIMAL(14,4) NOT NULL DEFAULT 0.0,
+                        love_depth DECIMAL(10,4) NOT NULL DEFAULT 1.0,
+                        level INTEGER NOT NULL DEFAULT 1,
+                        vitality DECIMAL(6,2) NOT NULL DEFAULT 100.0,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        UNIQUE(user_id, entity_id)
+                    );
+                    RAISE NOTICE 'Created apex_joule_balances table';
+                END IF;
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'apex_joule_balances migration skipped: %', SQLERRM;
+            END $$;
+        """))
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_ajb_user ON apex_joule_balances(user_id);")
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_ajb_user_entity ON apex_joule_balances(user_id, entity_id);")
+
+        await conn.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+                               WHERE table_name = 'apex_joule_transactions') THEN
+                    CREATE TABLE apex_joule_transactions (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        from_entity VARCHAR(50),
+                        to_entity VARCHAR(50),
+                        amount DECIMAL(12,4) NOT NULL,
+                        tx_type VARCHAR(30) NOT NULL,
+                        reason VARCHAR(255),
+                        e_cost DECIMAL(10,4),
+                        w_output DECIMAL(10,4),
+                        kappa DECIMAL(6,4),
+                        l_multiplier DECIMAL(6,4),
+                        c_score DECIMAL(4,3),
+                        d_score DECIMAL(4,3),
+                        conversation_id UUID,
+                        message_id UUID,
+                        operation_type VARCHAR(50),
+                        provider VARCHAR(30),
+                        model_used VARCHAR(100),
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    RAISE NOTICE 'Created apex_joule_transactions table';
+                END IF;
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'apex_joule_transactions migration skipped: %', SQLERRM;
+            END $$;
+        """))
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_ajt_user_time ON apex_joule_transactions(user_id, created_at DESC);")
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_ajt_type ON apex_joule_transactions(tx_type);")
+
+        await conn.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+                               WHERE table_name = 'love_scores') THEN
+                    CREATE TABLE love_scores (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        agent_id VARCHAR(50) NOT NULL,
+                        interaction_type VARCHAR(30),
+                        c_score DECIMAL(4,3) NOT NULL,
+                        d_score DECIMAL(4,3) NOT NULL,
+                        c_breakdown JSONB,
+                        d_breakdown JSONB,
+                        love_depth_before DECIMAL(10,4),
+                        love_depth_after DECIMAL(10,4),
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    RAISE NOTICE 'Created love_scores table';
+                END IF;
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'love_scores migration skipped: %', SQLERRM;
+            END $$;
+        """))
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_ls_agent_time ON love_scores(user_id, agent_id, created_at DESC);")
+
         for migration in migrations:
             await conn.execute(text(migration))
         print(f"Database migrations complete (embedding_dim={embed_dim})")

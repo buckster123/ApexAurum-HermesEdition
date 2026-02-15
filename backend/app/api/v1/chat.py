@@ -1481,6 +1481,28 @@ Work together to create something beautiful!
                     except Exception as e:
                         logger.error(f"Failed to store neural memory: {e}")
 
+                # ApexJoule Economy: compute and credit AJ for this chat
+                if tier_config.get("aj_earning_enabled") and total_output_tokens > 0:
+                    try:
+                        from app.services.apexjoule.calculator import compute_aj_for_chat
+                        aj_result = await compute_aj_for_chat(
+                            user_id=user.id,
+                            agent_id=request.agent or "AZOTH",
+                            provider=provider,
+                            model=model,
+                            input_tokens=total_input_tokens,
+                            output_tokens=total_output_tokens,
+                            tool_turns=len(tool_calls),
+                            memory_created=bool(final_response and len(final_response) > 10),
+                            conversation_id=conversation.id if conversation else None,
+                            context_limit=tier_config.get("context_token_limit"),
+                            db=db,
+                        )
+                        if aj_result and aj_result.total > 0:
+                            await db.commit()
+                    except Exception as e:
+                        logger.warning(f"AJ calculation failed (non-fatal): {e}")
+
                 yield f"data: {json.dumps({'type': 'end', 'tool_calls': len(tool_calls), 'usage': {'input_tokens': total_input_tokens, 'output_tokens': total_output_tokens}})}\n\n"
 
             except Exception as e:
@@ -1632,6 +1654,31 @@ Work together to create something beautiful!
                 except Exception as e:
                     logger.error(f"Failed to store neural memory: {e}")
 
+            # ApexJoule Economy: compute and credit AJ for this chat
+            aj_info = None
+            if tier_config.get("aj_earning_enabled") and usage:
+                try:
+                    from app.services.apexjoule.calculator import compute_aj_for_chat
+                    aj_result = await compute_aj_for_chat(
+                        user_id=user.id,
+                        agent_id=request.agent or "AZOTH",
+                        provider=provider,
+                        model=response.get("model", model),
+                        input_tokens=usage.get("input_tokens", 0),
+                        output_tokens=usage.get("output_tokens", 0),
+                        tool_turns=len(tool_calls),
+                        memory_created=bool(assistant_content and len(assistant_content) > 10),
+                        conversation_id=conversation.id if conversation else None,
+                        message_id=assistant_msg_id if assistant_msg_id else None,
+                        context_limit=tier_config.get("context_token_limit"),
+                        db=db,
+                    )
+                    if aj_result and aj_result.total > 0:
+                        await db.commit()
+                        aj_info = {"earned": round(aj_result.total, 2), "agent": round(aj_result.agent_share, 2), "user": round(aj_result.user_share, 2)}
+                except Exception as e:
+                    logger.warning(f"AJ calculation failed (non-fatal): {e}")
+
             return {
                 "conversation_id": str(conversation.id) if conversation else None,
                 "message": assistant_content,
@@ -1641,6 +1688,7 @@ Work together to create something beautiful!
                 "tool_calls": tool_calls if tool_calls else None,
                 "tool_results": tool_results if tool_results else None,
                 "billing": usage_info,
+                "aj": aj_info,
             }
 
         except Exception as e:

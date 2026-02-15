@@ -426,6 +426,26 @@ class ProgressionService:
 
                 logger.info(f"Milestone completed: {milestone.id} for user {user_id}")
 
+                # ApexJoule Economy: credit quest bounty
+                try:
+                    from app.services.apexjoule.constants import QUEST_BOUNTIES, QUEST_AGENT_SPLIT, QUEST_USER_SPLIT
+                    from app.services.apexjoule.ledger import AJLedger
+
+                    bounty = QUEST_BOUNTIES.get(milestone.id, 0)
+                    if bounty > 0:
+                        aj_ledger = AJLedger(self.db)
+                        await aj_ledger.credit(
+                            user_id=user_id,
+                            agent_id="AZOTH",
+                            agent_share=bounty * QUEST_AGENT_SPLIT,
+                            user_share=bounty * QUEST_USER_SPLIT,
+                            operation_type="quest_completion",
+                            tx_type="quest",
+                            reason=f"quest:{milestone.id}",
+                        )
+                except Exception as e:
+                    logger.warning(f"AJ quest bounty failed (non-fatal): {e}")
+
         # Check stage completion
         stage_complete = False
         if all(m.id in (prog.milestones_completed or []) for m in stage_milestones):
