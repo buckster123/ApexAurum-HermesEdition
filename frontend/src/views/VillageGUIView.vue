@@ -23,6 +23,8 @@ import TaskTickerBar from '@/components/village/TaskTickerBar.vue'
 import TaskDetailPanel from '@/components/village/TaskDetailPanel.vue'
 import { useVillageTasking } from '@/composables/useVillageTasking'
 import { useVillageGamification } from '@/composables/useVillageGamification'
+import { useApexJouleStore } from '@/stores/apexjoule'
+import { useToast } from '@/composables/useToast'
 import { ZONES, AGENT_COLORS } from '@/composables/useVillage'
 import { ZONES_3D, AGENT_COLORS as AGENT_COLORS_3D } from '@/composables/useVillageIsometric'
 import { VILLAGE_LAYOUT } from '@/composables/useVillage3D'
@@ -519,6 +521,32 @@ function handleEvent(event) {
       } else {
         sounds.toolErrorJingle()
       }
+    }
+  }
+  else if (event.type === 'aj_earned') {
+    try {
+      const ajStore = useApexJouleStore()
+      const payload = JSON.parse(event.message)
+      ajStore.recordEarn({
+        earned: payload.amount,
+        agent_id: event.agent_id,
+        agent: payload.amount * 0.7,
+        user: payload.amount * 0.3,
+        l_multiplier: payload.l_multiplier,
+      })
+    } catch (e) {
+      console.warn('[Village] AJ earn event failed:', e)
+    }
+  }
+  else if (event.type === 'aj_level_up') {
+    try {
+      const ajStore = useApexJouleStore()
+      const payload = JSON.parse(event.message)
+      ajStore.recordLevelUp(event.agent_id, payload.new_level, payload.level_name)
+      const { showToast } = useToast()
+      showToast(`${event.agent_id} reached Level ${payload.new_level}: ${payload.level_name}!`, 'success', 5000)
+    } catch (e) {
+      console.warn('[Village] AJ level-up event failed:', e)
     }
   }
 }

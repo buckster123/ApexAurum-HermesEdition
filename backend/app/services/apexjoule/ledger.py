@@ -97,12 +97,14 @@ class AJLedger:
             return None
 
         # Credit agent balance
+        leveled_up = False
+        agent_bal = None
         if agent_share > 0:
             agent_bal = await self.get_or_create_balance(user_id, agent_id)
             agent_bal.balance += Decimal(str(round(agent_share, 4)))
             agent_bal.total_earned += Decimal(str(round(agent_share, 4)))
             agent_bal.updated_at = datetime.utcnow()
-            await self._check_level_up(agent_bal)
+            leveled_up = await self._check_level_up(agent_bal)
 
         # Credit user balance
         if user_share > 0:
@@ -138,6 +140,27 @@ class AJLedger:
             f"AJ credit: {agent_id}={agent_share:.2f}, "
             f"user={user_share:.2f} ({operation_type})"
         )
+
+        # Broadcast Village events (non-fatal)
+        try:
+            from app.services.village_events import get_village_broadcaster
+            broadcaster = get_village_broadcaster()
+            await broadcaster.broadcast_aj_earned(
+                agent_id=agent_id or "USER",
+                amount=total,
+                new_balance=float(agent_bal.balance) if agent_bal else 0,
+                l_multiplier=float(l_multiplier) if l_multiplier else 1.0,
+            )
+            if leveled_up and agent_bal:
+                level_name = LEVEL_NAMES[min(agent_bal.level - 1, len(LEVEL_NAMES) - 1)]
+                await broadcaster.broadcast_aj_level_up(
+                    agent_id=agent_id,
+                    new_level=agent_bal.level,
+                    level_name=level_name,
+                )
+        except Exception as e:
+            logger.warning(f"AJ village broadcast failed (non-fatal): {e}")
+
         return tx
 
     async def debit(

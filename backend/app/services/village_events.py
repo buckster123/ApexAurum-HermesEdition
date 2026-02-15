@@ -30,6 +30,8 @@ class EventType(str, Enum):
     APPROVAL_NEEDED = "approval_needed"
     INPUT_NEEDED = "input_needed"
     MUSIC_COMPLETE = "music_complete"
+    AJ_EARNED = "aj_earned"
+    AJ_LEVEL_UP = "aj_level_up"
 
 
 # Zone mapping - which tools belong to which village zone
@@ -361,6 +363,52 @@ class VillageEventBroadcaster:
             message=message
         )
         await self.broadcast(event)
+
+    # ═══════════════════════════════════════════════════════════════
+    # ApexJoule Economy events
+    # ═══════════════════════════════════════════════════════════════
+
+    async def broadcast_aj_earned(
+        self,
+        agent_id: str,
+        amount: float,
+        new_balance: float,
+        l_multiplier: float = 1.0,
+    ):
+        """Broadcast AJ earned event — triggers gold spark in Village."""
+        event = VillageEvent(
+            type=EventType.AJ_EARNED,
+            agent_id=agent_id,
+            zone="village_square",
+            result_preview=f"+{amount:.1f} AJ (L={l_multiplier:.1f}x)",
+            message=json.dumps({
+                "amount": round(amount, 2),
+                "new_balance": round(new_balance, 2),
+                "l_multiplier": round(l_multiplier, 2),
+            }),
+        )
+        await self.broadcast(event)
+        logger.debug(f"Village: {agent_id} earned {amount:.1f} AJ")
+
+    async def broadcast_aj_level_up(
+        self,
+        agent_id: str,
+        new_level: int,
+        level_name: str,
+    ):
+        """Broadcast agent level-up — triggers celebration in Village."""
+        event = VillageEvent(
+            type=EventType.AJ_LEVEL_UP,
+            agent_id=agent_id,
+            zone="village_square",
+            result_preview=f"Level {new_level}: {level_name}",
+            message=json.dumps({
+                "new_level": new_level,
+                "level_name": level_name,
+            }),
+        )
+        await self.broadcast(event)
+        logger.info(f"Village: {agent_id} leveled up to {new_level} ({level_name})")
 
     # ═══════════════════════════════════════════════════════════════
     # Synchronous versions for non-async contexts

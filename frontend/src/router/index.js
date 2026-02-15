@@ -142,6 +142,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/economy',
+      name: 'economy',
+      component: () => import('@/views/EconomyView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/billing',
       name: 'billing',
       component: () => import('@/views/BillingView.vue'),

@@ -1482,6 +1482,7 @@ Work together to create something beautiful!
                         logger.error(f"Failed to store neural memory: {e}")
 
                 # ApexJoule Economy: compute and credit AJ for this chat
+                aj_result = None
                 if tier_config.get("aj_earning_enabled") and total_output_tokens > 0:
                     try:
                         from app.services.apexjoule.calculator import compute_aj_for_chat
@@ -1503,7 +1504,18 @@ Work together to create something beautiful!
                     except Exception as e:
                         logger.warning(f"AJ calculation failed (non-fatal): {e}")
 
-                yield f"data: {json.dumps({'type': 'end', 'tool_calls': len(tool_calls), 'usage': {'input_tokens': total_input_tokens, 'output_tokens': total_output_tokens}})}\n\n"
+                aj_info = None
+                if aj_result and aj_result.total > 0:
+                    aj_info = {
+                        "earned": round(aj_result.total, 2),
+                        "agent": round(aj_result.agent_share, 2),
+                        "user": round(aj_result.user_share, 2),
+                        "agent_id": request.agent or "AZOTH",
+                        "l_multiplier": round(aj_result.l_multiplier, 2),
+                        "kappa": round(aj_result.kappa, 2),
+                    }
+
+                yield f"data: {json.dumps({'type': 'end', 'tool_calls': len(tool_calls), 'usage': {'input_tokens': total_input_tokens, 'output_tokens': total_output_tokens}, 'aj': aj_info})}\n\n"
 
             except Exception as e:
                 logger.error(f"Streaming error: {e}")
@@ -1675,7 +1687,14 @@ Work together to create something beautiful!
                     )
                     if aj_result and aj_result.total > 0:
                         await db.commit()
-                        aj_info = {"earned": round(aj_result.total, 2), "agent": round(aj_result.agent_share, 2), "user": round(aj_result.user_share, 2)}
+                        aj_info = {
+                            "earned": round(aj_result.total, 2),
+                            "agent": round(aj_result.agent_share, 2),
+                            "user": round(aj_result.user_share, 2),
+                            "agent_id": request.agent or "AZOTH",
+                            "l_multiplier": round(aj_result.l_multiplier, 2),
+                            "kappa": round(aj_result.kappa, 2),
+                        }
                 except Exception as e:
                     logger.warning(f"AJ calculation failed (non-fatal): {e}")
 

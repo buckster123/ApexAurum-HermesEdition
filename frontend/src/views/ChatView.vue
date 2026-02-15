@@ -1063,6 +1063,18 @@ function renderMarkdown(content) {
                 v-html="renderMarkdown(message.content)"
               />
               <div v-else>{{ message.content }}</div>
+
+              <!-- AJ earn badge -->
+              <div
+                v-if="message.aj && message.role === 'assistant'"
+                class="flex items-center justify-end gap-1.5 mt-1.5 select-none"
+              >
+                <span class="text-[10px] text-gold/50">&#9670;</span>
+                <span class="text-[10px] text-gold/50 tabular-nums">+{{ message.aj.earned }} AJ</span>
+                <span v-if="message.aj.l_multiplier > 1" class="text-[10px] text-gold/30 tabular-nums">
+                  {{ message.aj.l_multiplier }}x
+                </span>
+              </div>
             </div>
 
             <!-- User avatar -->
