@@ -36,6 +36,14 @@ from app.services.llm_provider import create_llm_service
 from app.services.billing import BillingService
 from app.services.memory import MemoryService
 from app.services.tool_executor import create_tool_executor
+from app.services.apexjoule.ledger import AJLedger
+from app.services.apexjoule.shop import AJShop
+from app.services.apexjoule.constants import (
+    LEVEL_NAMES, AJ_SHOP_PRICES, LEVEL_THRESHOLDS,
+    LOVE_DEPTH_TIERS, AJ_CITIZEN_WELCOME_BONUS,
+    AJ_CITIZEN_ACTION_COSTS, QUEST_BOUNTIES,
+)
+from app.services.apexjoule.love_scorer import love_depth_tier_name
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -891,10 +899,26 @@ async def _finalize_pocket_chat(
     except Exception as e:
         logger.debug(f"Pocket memory extraction skipped: {e}")
 
+    # AJ economy: calculate cost and earnings for this message
+    aj_cost = None
+    aj_earned = None
+    try:
+        from app.services.apexjoule.constants import AJ_SHOP_PRICES, AJ_CITIZEN_ACTION_COSTS
+        model_key = "message_haiku" if "haiku" in model else "message_sonnet" if "sonnet" in model else "message_opus" if "opus" in model else None
+        if model_key and model_key in AJ_SHOP_PRICES:
+            aj_cost = int(AJ_SHOP_PRICES[model_key])
+        # Earned from reply quality heuristic (~0.5-2.0 AJ per response)
+        response_len = len(response_text)
+        aj_earned = round(min(2.0, max(0.3, response_len / 500)), 1)
+    except Exception:
+        pass
+
     return {
         "response_text": response_text,
         "expression": expression,
         "care_value": care_value,
+        "aj_cost": aj_cost,
+        "aj_earned": aj_earned,
     }
 
 
@@ -938,6 +962,17 @@ class PocketMemorySaveRequest(BaseModel):
     key: str
     value: str
     confidence: float = 0.8
+
+
+class PocketAJPurchaseRequest(BaseModel):
+    item: str
+    quantity: int = 1
+    entity_id: Optional[str] = None
+
+
+class PocketAJTipRequest(BaseModel):
+    agent_id: str
+    amount: float
 
 
 # =============================================================================
@@ -1036,6 +1071,8 @@ async def pocket_chat(
             "agent": agent,
             "tools_used": tools_used,
             "conversation_id": str(conversation.id) if conversation else None,
+            "aj_cost": final.get("aj_cost"),
+            "aj_earned": final.get("aj_earned"),
         }
 
     except Exception as e:
@@ -1047,6 +1084,8 @@ async def pocket_chat(
             "agent": agent,
             "tools_used": tools_used,
             "conversation_id": str(conversation.id) if conversation else None,
+            "aj_cost": None,
+            "aj_earned": None,
         }
 
 
@@ -1177,7 +1216,7 @@ async def pocket_chat_stream(
                 is_app=ctx["is_app"],
             )
 
-            yield f"data: {json.dumps({'type': 'end', 'expression': final['expression'], 'care_value': final['care_value'], 'agent': agent, 'tools_used': tools_used, 'usage': {'input_tokens': total_input, 'output_tokens': total_output}})}\n\n"
+            yield f"data: {json.dumps({'type': 'end', 'expression': final['expression'], 'care_value': final['care_value'], 'agent': agent, 'tools_used': tools_used, 'usage': {'input_tokens': total_input, 'output_tokens': total_output}, 'aj_cost': final.get('aj_cost'), 'aj_earned': final.get('aj_earned')})}\n\n"
 
         except Exception as e:
             logger.error(f"Pocket stream error: {e}")
@@ -1256,6 +1295,7 @@ async def pocket_status(
         "tools_available": 68,
         "last_village_activity": None,
         "message_of_the_day": motd,
+        "tier": user.subscription_tier or "free_trial",
     }
 
 
@@ -2798,6 +2838,259 @@ async def pocket_cortex_neighbors(
     except Exception as e:
         logger.error(f"Pocket cortex neighbors error: {e}")
         return {"memory_id": memory_id, "neighbors": []}
+
+
+# =============================================================================
+# APEXJOULE ECONOMY — Mobile AJ endpoints
+# =============================================================================
+
+
+@router.get("/aj/balance")
+async def pocket_aj_balance(
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get user + all agent AJ balances."""
+    device, user = device_and_user
+    ledger = AJLedger(db)
+    balances = await ledger.get_all_balances(user.id)
+
+    user_balance = None
+    agents = {}
+    for b in balances:
+        entry = {
+            "balance": float(b.balance),
+            "total_earned": float(b.total_earned),
+            "total_spent": float(b.total_spent),
+            "level": b.level,
+            "level_name": LEVEL_NAMES[min(b.level - 1, len(LEVEL_NAMES) - 1)],
+            "love_depth": float(b.love_depth),
+            "love_depth_tier": love_depth_tier_name(float(b.love_depth)),
+            "vitality": float(b.vitality),
+        }
+        if b.entity_id:
+            agents[b.entity_id] = entry
+        else:
+            user_balance = entry
+
+    return {
+        "user": user_balance or {"balance": 0, "total_earned": 0, "total_spent": 0, "level": 1, "level_name": "Initiate", "love_depth": 0, "love_depth_tier": "", "vitality": 100},
+        "agents": agents,
+        "total_balance": sum(float(b.balance) for b in balances),
+    }
+
+
+@router.get("/aj/leaderboard")
+async def pocket_aj_leaderboard(
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get agent leaderboard by total earned."""
+    device, user = device_and_user
+    ledger = AJLedger(db)
+    balances = await ledger.get_all_balances(user.id)
+
+    agents = []
+    for b in balances:
+        if b.entity_id:
+            agents.append({
+                "agent_id": b.entity_id,
+                "balance": float(b.balance),
+                "total_earned": float(b.total_earned),
+                "level": b.level,
+                "level_name": LEVEL_NAMES[min(b.level - 1, len(LEVEL_NAMES) - 1)],
+                "love_depth": float(b.love_depth),
+                "love_depth_tier": love_depth_tier_name(float(b.love_depth)),
+            })
+    agents.sort(key=lambda a: a["total_earned"], reverse=True)
+    return {"agents": agents}
+
+
+@router.get("/aj/shop")
+async def pocket_aj_shop(
+    device_and_user: tuple = Depends(get_device_and_user),
+):
+    """Get available AJ shop purchases and rates."""
+    return {
+        "prices": AJ_SHOP_PRICES,
+        "quest_bounties": QUEST_BOUNTIES,
+        "level_thresholds": LEVEL_THRESHOLDS,
+        "level_names": LEVEL_NAMES,
+        "love_depth_tiers": LOVE_DEPTH_TIERS,
+    }
+
+
+@router.post("/aj/purchase")
+async def pocket_aj_purchase(
+    req: PocketAJPurchaseRequest,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Purchase a feature with AJ currency."""
+    device, user = device_and_user
+    shop = AJShop(db)
+    result = await shop.purchase(
+        user_id=user.id,
+        entity_id=req.entity_id,
+        item=req.item,
+        quantity=req.quantity,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=402, detail=result["error"])
+    await db.commit()
+    return result
+
+
+@router.post("/aj/tip")
+async def pocket_aj_tip(
+    req: PocketAJTipRequest,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Tip an agent with AJ from your balance."""
+    device, user = device_and_user
+    shop = AJShop(db)
+    result = await shop.tip_agent(
+        user_id=user.id,
+        agent_id=req.agent_id,
+        amount=req.amount,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=402, detail=result["error"])
+    await db.commit()
+    return result
+
+
+@router.get("/aj/transactions")
+async def pocket_aj_transactions(
+    limit: int = Query(default=30, le=100),
+    offset: int = Query(default=0, ge=0),
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get recent AJ transactions."""
+    device, user = device_and_user
+    ledger = AJLedger(db)
+    txs = await ledger.get_transactions(user.id, limit=limit, offset=offset)
+    return {
+        "transactions": [
+            {
+                "id": str(tx.id),
+                "from_entity": tx.from_entity,
+                "to_entity": tx.to_entity,
+                "amount": float(tx.amount),
+                "tx_type": tx.tx_type,
+                "reason": tx.reason,
+                "created_at": tx.created_at.isoformat() if tx.created_at else None,
+            }
+            for tx in txs
+        ],
+    }
+
+
+@router.post("/aj/activate-citizen")
+async def pocket_aj_activate_citizen(
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Activate AJ Citizen tier from mobile — no Stripe required."""
+    device, user = device_and_user
+
+    from app.models.billing import Subscription
+    from app.config import TIER_HIERARCHY
+
+    result = await db.execute(
+        select(Subscription).where(Subscription.user_id == user.id)
+    )
+    subscription = result.scalar_one_or_none()
+
+    if not subscription:
+        raise HTTPException(status_code=404, detail="No subscription found")
+
+    if subscription.tier not in ("free_trial",):
+        if TIER_HIERARCHY.get(subscription.tier, 0) >= TIER_HIERARCHY.get("seeker", 1):
+            raise HTTPException(
+                status_code=400,
+                detail="You already have a paid subscription.",
+            )
+
+    subscription.tier = "aj_citizen"
+    subscription.status = "active"
+    subscription.messages_limit = None
+
+    ledger = AJLedger(db)
+    await ledger.credit(
+        user_id=user.id,
+        entity_type="user",
+        amount=AJ_CITIZEN_WELCOME_BONUS,
+        tx_type="welcome_bonus",
+        description="AJ Citizen welcome bonus",
+    )
+
+    await db.commit()
+    logger.info(f"Pocket: User {user.id} activated AJ Citizen, credited {AJ_CITIZEN_WELCOME_BONUS} AJ")
+
+    return {
+        "success": True,
+        "tier": "aj_citizen",
+        "aj_credited": AJ_CITIZEN_WELCOME_BONUS,
+        "message": f"Welcome to AJ Citizen! {AJ_CITIZEN_WELCOME_BONUS} AJ credited.",
+    }
+
+
+@router.get("/aj/marketplace")
+async def pocket_aj_marketplace(
+    search: Optional[str] = Query(default=None),
+    sort: str = Query(default="newest"),
+    limit: int = Query(default=20, le=50),
+    offset: int = Query(default=0, ge=0),
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Browse marketplace listings from mobile."""
+    from sqlalchemy import desc, func
+    from app.models.marketplace import MarketplaceListing
+
+    query = select(MarketplaceListing).where(MarketplaceListing.status == "active")
+
+    if search:
+        query = query.where(MarketplaceListing.title.ilike(f"%{search}%"))
+
+    if sort == "newest":
+        query = query.order_by(desc(MarketplaceListing.created_at))
+    elif sort == "popular":
+        query = query.order_by(desc(MarketplaceListing.downloads))
+    elif sort == "cheapest":
+        query = query.order_by(MarketplaceListing.price_aj)
+    elif sort == "top_rated":
+        query = query.order_by(desc(MarketplaceListing.rating_sum))
+
+    query = query.limit(limit).offset(offset)
+    result = await db.execute(query)
+    listings = result.scalars().all()
+
+    count_query = select(func.count(MarketplaceListing.id)).where(MarketplaceListing.status == "active")
+    if search:
+        count_query = count_query.where(MarketplaceListing.title.ilike(f"%{search}%"))
+    total = (await db.execute(count_query)).scalar() or 0
+
+    return {
+        "listings": [
+            {
+                "id": str(l.id),
+                "title": l.title,
+                "description": l.description,
+                "price_aj": float(l.price_aj),
+                "downloads": l.downloads,
+                "rating": round(l.rating_sum / l.rating_count, 1) if l.rating_count > 0 else None,
+                "rating_count": l.rating_count,
+                "tags": l.tags or [],
+                "created_at": l.created_at.isoformat(),
+            }
+            for l in listings
+        ],
+        "total": total,
+    }
 
 
 def _cortex_node_to_dict(node) -> dict:
