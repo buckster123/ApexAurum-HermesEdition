@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     stripe_price_pack_flame: Optional[str] = None
     stripe_price_pack_inferno: Optional[str] = None
 
+    # Solana Pay
+    solana_rpc_url: str = "https://api.mainnet-beta.solana.com"
+    solana_recipient_address: Optional[str] = None  # Platform wallet pubkey
+    solana_usdc_mint: str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"  # Mainnet USDC
+
     # Email (stub - logs instead of sending)
     smtp_host: Optional[str] = None
     smtp_port: int = 587
@@ -158,6 +163,37 @@ TIER_LIMITS = {
         "memory_imports_per_month": 0,
         "import_max_file_mb": 0,
         "aj_earning_enabled": False,
+    },
+    "aj_citizen": {
+        "name": "AJ Citizen",
+        "price_monthly": 0,  # No Stripe — funded entirely by AJ
+        "messages_per_month": None,  # Unlimited, but every action costs AJ
+        "aj_pay_per_use": True,  # Gate: deduct AJ before each action
+        "models": [
+            "claude-haiku-4-5-20251001",
+            "claude-sonnet-4-5-20250929",
+        ],
+        "opus_messages_per_month": 0,
+        "tools_enabled": True,
+        "multi_provider": False,
+        "byok_allowed": False,
+        "api_access": False,
+        "context_token_limit": 128_000,
+        "council_sessions_per_month": None,  # Unlimited, AJ-gated
+        "council_max_rounds": 10,
+        "suno_generations_per_month": None,  # Unlimited, AJ-gated
+        "jam_sessions_per_month": 0,
+        "nursery_access": False,
+        "pac_mode": False,
+        "dev_mode": False,
+        "vault_storage_mb": 50,
+        "platform_grants": [],
+        "dream_cycles_per_month": None,  # Unlimited, AJ-gated
+        "dream_max_llm_calls": 10,
+        "dream_byok_allowed": False,
+        "memory_imports_per_month": 50,
+        "import_max_file_mb": 5,
+        "aj_earning_enabled": True,
     },
     "seeker": {
         "name": "Seeker",
@@ -332,7 +368,7 @@ DREAM_ELIGIBLE_MODELS = {
 GRANTABLE_PROVIDERS = ["together", "groq", "deepseek", "qwen", "moonshot", "openai", "suno"]
 
 # Tier hierarchy for >= comparisons
-TIER_HIERARCHY = {"free_trial": 0, "seeker": 1, "adept": 2, "opus": 3, "azothic": 4}
+TIER_HIERARCHY = {"free_trial": 0, "aj_citizen": 1, "seeker": 1, "adept": 2, "opus": 3, "azothic": 4}
 
 # Quest tiers map to their classic equivalents for base message limits
 # Quest users get the same message allocation but features unlock through gameplay

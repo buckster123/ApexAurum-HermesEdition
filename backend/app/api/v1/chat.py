@@ -848,6 +848,7 @@ async def send_message(
     # ═══════════════════════════════════════════════════════════════════════════
     billing_service = None
     subscription = None
+    billing_reason = None
     if settings.stripe_secret_key:
         billing_service = BillingService(db)
 
@@ -861,6 +862,15 @@ async def send_message(
                         "error": "trial_expired",
                         "message": "Your free trial has expired. Subscribe to continue your journey.",
                         "action": "subscribe"
+                    }
+                )
+            if billing_reason == "aj_balance_insufficient":
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail={
+                        "error": "aj_balance_insufficient",
+                        "message": "Your AJ balance is empty. Earn AJ through interactions or purchase more to continue.",
+                        "action": "buy_aj"
                     }
                 )
             raise HTTPException(
@@ -1439,6 +1449,23 @@ Work together to create something beautiful!
                                 await db.commit()
                             except Exception as e:
                                 logger.warning(f"Opus usage deduction failed (non-fatal): {e}")
+
+                        # AJ Citizen per-use deduction (every message costs AJ)
+                        if billing_reason == "aj_citizen":
+                            try:
+                                from app.services.apexjoule.ledger import AJLedger
+                                from app.services.apexjoule.constants import AJ_CITIZEN_ACTION_COSTS
+                                cost_key = "message_sonnet" if "sonnet" in model.lower() else "message_haiku"
+                                aj_cost = AJ_CITIZEN_ACTION_COSTS.get(cost_key, 5)
+                                ledger = AJLedger(db)
+                                await ledger.debit(
+                                    user_id=user.id, entity_type="user",
+                                    amount=aj_cost, tx_type="aj_citizen_use",
+                                    description=f"AJ Citizen: {cost_key}",
+                                )
+                                await db.commit()
+                            except Exception as e:
+                                logger.warning(f"AJ citizen deduction failed (non-fatal): {e}")
                     except Exception as e:
                         logger.error(f"Failed to record streaming usage: {e}")
 
@@ -1658,6 +1685,23 @@ Work together to create something beautiful!
                         await db.commit()
                     except Exception as e:
                         logger.warning(f"Opus usage deduction failed (non-fatal): {e}")
+
+                # AJ Citizen per-use deduction (every message costs AJ)
+                if billing_reason == "aj_citizen":
+                    try:
+                        from app.services.apexjoule.ledger import AJLedger
+                        from app.services.apexjoule.constants import AJ_CITIZEN_ACTION_COSTS
+                        cost_key = "message_sonnet" if "sonnet" in model.lower() else "message_haiku"
+                        aj_cost = AJ_CITIZEN_ACTION_COSTS.get(cost_key, 5)
+                        ledger = AJLedger(db)
+                        await ledger.debit(
+                            user_id=user.id, entity_type="user",
+                            amount=aj_cost, tx_type="aj_citizen_use",
+                            description=f"AJ Citizen: {cost_key}",
+                        )
+                        await db.commit()
+                    except Exception as e:
+                        logger.warning(f"AJ citizen deduction failed (non-fatal): {e}")
 
             # Store chat exchange as neural memories (for Neo-Cortex visualization)
             if assistant_content and len(assistant_content) > 10:

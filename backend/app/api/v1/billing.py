@@ -327,6 +327,68 @@ async def create_portal_session(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# AJ CITIZEN ACTIVATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/activate-citizen")
+async def activate_citizen(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Activate AJ Citizen tier — no Stripe required.
+
+    Switches user from free_trial to aj_citizen, grants 100 AJ welcome bonus.
+    Every action costs AJ. Earn through interactions or buy with crypto.
+    """
+    from app.models.billing import Subscription
+    from app.services.apexjoule.ledger import AJLedger
+    from app.services.apexjoule.constants import AJ_CITIZEN_WELCOME_BONUS
+
+    # Get current subscription
+    result = await db.execute(
+        select(Subscription).where(Subscription.user_id == user.id)
+    )
+    subscription = result.scalar_one_or_none()
+
+    if not subscription:
+        raise HTTPException(status_code=404, detail="No subscription found")
+
+    # Only allow from free_trial (or expired trial)
+    if subscription.tier not in ("free_trial",):
+        if TIER_HIERARCHY.get(subscription.tier, 0) >= TIER_HIERARCHY.get("seeker", 1):
+            raise HTTPException(
+                status_code=400,
+                detail="You already have a paid subscription. AJ Citizen is for users without a Stripe subscription."
+            )
+
+    # Activate citizen tier
+    subscription.tier = "aj_citizen"
+    subscription.status = "active"
+    subscription.messages_limit = None  # Unlimited, AJ-gated
+
+    # Credit welcome bonus
+    ledger = AJLedger(db)
+    await ledger.credit(
+        user_id=user.id,
+        entity_type="user",
+        amount=AJ_CITIZEN_WELCOME_BONUS,
+        tx_type="welcome_bonus",
+        description="AJ Citizen welcome bonus",
+    )
+
+    await db.commit()
+    logger.info(f"User {user.id} activated AJ Citizen tier, credited {AJ_CITIZEN_WELCOME_BONUS} AJ")
+
+    return {
+        "success": True,
+        "tier": "aj_citizen",
+        "aj_credited": AJ_CITIZEN_WELCOME_BONUS,
+        "message": f"Welcome to AJ Citizen! You've been credited {AJ_CITIZEN_WELCOME_BONUS} AJ to get started.",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # CREDIT TRANSACTIONS (Audit Log)
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -930,7 +992,7 @@ async def create_coupon(
     # Validate tier for tier_upgrade / subscription_discount
     if request.coupon_type in ("tier_upgrade", "subscription_discount"):
         valid_tiers = [
-            "free_trial", "seeker", "adept", "opus", "azothic",
+            "free_trial", "aj_citizen", "seeker", "adept", "opus", "azothic",
             "quest_seeker", "quest_adept", "quest_opus", "quest_azothic",
         ]
         if request.coupon_type == "tier_upgrade" and (not request.tier or request.tier not in valid_tiers):

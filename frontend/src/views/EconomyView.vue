@@ -7,6 +7,9 @@
 
 import { onMounted, computed, ref } from 'vue'
 import { useApexJouleStore } from '@/stores/apexjoule'
+import SolanaPayModal from '@/components/SolanaPayModal.vue'
+import AgentExportModal from '@/components/AgentExportModal.vue'
+import AgentImportModal from '@/components/AgentImportModal.vue'
 
 const aj = useApexJouleStore()
 const activeTab = ref('leaderboard')
@@ -20,6 +23,13 @@ const purchaseSuccess = ref(null)
 const tippingAgent = ref(null)
 const tipAmount = ref(10)
 const tipError = ref(null)
+
+// Solana Pay modal
+const showBuyAJ = ref(false)
+
+// Portability modals
+const showExport = ref(false)
+const showImport = ref(false)
 
 onMounted(async () => {
   await aj.initialize()
@@ -198,7 +208,7 @@ const userAJ = computed(() => aj.userBalance?.balance || 0)
         <!-- ═══════ Tab Navigation ═══════ -->
         <div class="flex gap-1 mb-6 border-b border-apex-border">
           <button
-            v-for="tab in ['leaderboard', 'transactions', 'shop']"
+            v-for="tab in ['leaderboard', 'transactions', 'shop', 'buy']"
             :key="tab"
             @click="activeTab = tab"
             class="px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px capitalize"
@@ -212,6 +222,21 @@ const userAJ = computed(() => aj.userBalance?.balance || 0)
 
         <!-- ═══════ Section 2: Agent Leaderboard ═══════ -->
         <div v-if="activeTab === 'leaderboard'" class="space-y-3">
+          <!-- Portability Controls -->
+          <div class="flex items-center justify-end gap-2 mb-2">
+            <button
+              @click="showExport = true"
+              class="px-3 py-1.5 text-xs text-gray-400 border border-gray-700 rounded-lg hover:border-gold/40 hover:text-gold transition-all"
+            >
+              Export Agent
+            </button>
+            <button
+              @click="showImport = true"
+              class="px-3 py-1.5 text-xs text-gray-400 border border-gray-700 rounded-lg hover:border-gold/40 hover:text-gold transition-all"
+            >
+              Import Agent
+            </button>
+          </div>
           <div v-if="aj.leaderboard.length === 0" class="text-center py-12 text-gray-500">
             <p class="text-lg">No agents have earned AJ yet</p>
             <p class="text-sm mt-1">Start a conversation to see the economy come alive</p>
@@ -501,8 +526,59 @@ const userAJ = computed(() => aj.userBalance?.balance || 0)
           </div>
         </div>
 
+        <!-- ═══════ Buy Tab — Crypto AJ Purchase ═══════ -->
+        <div v-if="activeTab === 'buy'" class="space-y-6">
+          <div class="text-center py-8">
+            <div class="text-3xl mb-3">&#9670;</div>
+            <h3 class="text-lg font-semibold text-gold mb-2">Buy AJ with Crypto</h3>
+            <p class="text-sm text-gray-400 max-w-md mx-auto">
+              Purchase ApexJoule with SOL or USDC via Solana Pay.
+              No account needed — just a wallet.
+            </p>
+          </div>
+
+          <!-- Pack cards -->
+          <div class="grid grid-cols-3 gap-3 max-w-lg mx-auto">
+            <button
+              v-for="pack in [
+                { id: 'spark', label: 'Spark', aj: '5,000', usd: '$5' },
+                { id: 'flame', label: 'Flame', aj: '11,000', usd: '$10' },
+                { id: 'blaze', label: 'Blaze', aj: '30,000', usd: '$25' },
+              ]"
+              :key="pack.id"
+              @click="showBuyAJ = true"
+              class="p-4 rounded-xl border border-gold/20 bg-black/30 hover:border-gold/50 hover:bg-gold/5 transition-all text-center group"
+            >
+              <div class="text-gold text-sm font-bold group-hover:scale-105 transition-transform">{{ pack.aj }}</div>
+              <div class="text-[10px] text-gray-500 uppercase mt-0.5">AJ</div>
+              <div class="text-xs text-gray-400 mt-2">{{ pack.usd }}</div>
+            </button>
+          </div>
+
+          <div class="text-center">
+            <button
+              @click="showBuyAJ = true"
+              class="px-6 py-2.5 rounded-lg bg-gold/15 border border-gold/30 text-gold text-sm font-medium hover:bg-gold/25 transition-all"
+            >
+              Open Payment
+            </button>
+          </div>
+
+          <div class="text-center text-[10px] text-gray-600 space-y-1">
+            <p>Payments verified on-chain. 1 USDC = 1,000 AJ.</p>
+            <p>SOL rate updates every 5 min via Jupiter.</p>
+          </div>
+        </div>
+
       </template>
     </div>
+
+    <!-- Solana Pay Modal -->
+    <SolanaPayModal v-if="showBuyAJ" @close="showBuyAJ = false" />
+
+    <!-- Portability Modals -->
+    <AgentExportModal v-if="showExport" @close="showExport = false" />
+    <AgentImportModal v-if="showImport" @close="showImport = false" @imported="aj.fetchLeaderboard()" />
   </div>
 </template>
 

@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useBillingStore } from '@/stores/billing'
 import { useAuthStore } from '@/stores/auth'
+import api from '@/services/api'
 
 const route = useRoute()
 const billing = useBillingStore()
@@ -135,6 +136,27 @@ function getBarColor(used, limit) {
   if (pct >= 90) return 'bg-red-500'
   if (pct >= 60) return 'bg-yellow-500'
   return 'bg-green-500'
+}
+
+const activatingCitizen = ref(false)
+const citizenMessage = ref(null)
+
+async function activateCitizen() {
+  activatingCitizen.value = true
+  citizenMessage.value = null
+  try {
+    const res = await api.post('/api/v1/billing/activate-citizen')
+    citizenMessage.value = { type: 'success', text: res.data.message }
+    await billing.fetchStatus()
+  } catch (e) {
+    citizenMessage.value = {
+      type: 'error',
+      text: e.response?.data?.detail || 'Activation failed',
+    }
+    setTimeout(() => citizenMessage.value = null, 5000)
+  } finally {
+    activatingCitizen.value = false
+  }
 }
 
 async function fetchUsageIfNeeded() {
@@ -328,6 +350,34 @@ function formatDate(dateStr) {
           Half the price, full the adventure. Start with the Workshop and earn every zone, tool, and agent
           through milestones. The Village awakens as you progress.
         </p>
+      </div>
+
+      <!-- AJ Citizen Card (shown to free_trial users) -->
+      <div
+        v-if="billing.status.tier === 'free_trial' && planMode === 'classic'"
+        class="mb-6 p-5 rounded-xl border border-gold/30 bg-gold/5"
+      >
+        <div class="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h3 class="text-gold font-semibold flex items-center gap-2">
+              <span>&#9670;</span> AJ Citizen — Free Tier
+            </h3>
+            <p class="text-sm text-gray-400 mt-1 max-w-lg">
+              No credit card needed. Every message costs AJ. Earn through interactions or buy with crypto.
+              Includes Haiku + Sonnet, tools, council, dream engine.
+            </p>
+            <div v-if="citizenMessage" class="mt-2 text-sm" :class="citizenMessage.type === 'success' ? 'text-green-400' : 'text-red-400'">
+              {{ citizenMessage.text }}
+            </div>
+          </div>
+          <button
+            @click="activateCitizen"
+            :disabled="activatingCitizen"
+            class="px-5 py-2.5 rounded-lg bg-gold/20 border border-gold/40 text-gold text-sm font-medium hover:bg-gold/30 transition-all disabled:opacity-50"
+          >
+            {{ activatingCitizen ? 'Activating...' : 'Activate + 100 AJ Bonus' }}
+          </button>
+        </div>
       </div>
 
       <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">

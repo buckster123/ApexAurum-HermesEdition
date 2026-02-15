@@ -186,6 +186,7 @@ class BillingService:
                 "jam_sessions_per_month": tier_config.get("jam_sessions_per_month"),
                 "opus_messages_per_month": tier_config.get("opus_messages_per_month", 0),
                 "byok_providers": tier_config.get("byok_providers"),
+                "aj_pay_per_use": tier_config.get("aj_pay_per_use", False),
             },
             "at_limit": at_limit,
             "near_limit": near_limit,
@@ -322,6 +323,19 @@ class BillingService:
             if datetime.now(tz.utc) > subscription.trial_end:
                 return False, "trial_expired"
 
+        # AJ Citizen: pay-per-use gating — check AJ balance instead of counter
+        if tier_config.get("aj_pay_per_use"):
+            try:
+                from app.services.apexjoule.ledger import AJLedger
+                ledger = AJLedger(self.db)
+                balance = await ledger.get_balance(user_id)
+                if balance and balance.balance > 0:
+                    return True, "aj_citizen"
+                return False, "aj_balance_insufficient"
+            except Exception as e:
+                logger.warning(f"AJ citizen balance check failed: {e}")
+                return False, "aj_balance_insufficient"
+
         # Check subscription limit
         messages_limit = tier_config["messages_per_month"]
         if messages_limit is None:
@@ -351,10 +365,9 @@ class BillingService:
 
         # Check model tier requirement
         required_tier = get_tier_for_model(model)
-        tier_hierarchy = {"free_trial": 0, "seeker": 1, "adept": 2, "opus": 3, "azothic": 4}
 
-        user_tier_level = tier_hierarchy.get(subscription.tier, 0)
-        required_tier_level = tier_hierarchy.get(required_tier, 0)
+        user_tier_level = TIER_HIERARCHY.get(subscription.tier, 0)
+        required_tier_level = TIER_HIERARCHY.get(required_tier, 0)
 
         return user_tier_level >= required_tier_level
 

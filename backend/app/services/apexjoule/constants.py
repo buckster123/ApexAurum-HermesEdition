@@ -155,6 +155,21 @@ QUEST_BOUNTIES = {
 # Shop prices (AJ cost per feature credit purchase)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# AJ Citizen per-use costs (deducted before each action)
+# Matches shop prices so the economy is consistent
+# ═══════════════════════════════════════════════════════════════════════════════
+
+AJ_CITIZEN_ACTION_COSTS = {
+    "message_haiku": 5,
+    "message_sonnet": 60,
+    "dream_cycle": 50,
+    "council_session": 500,
+    "suno_generation": 200,
+}
+
+AJ_CITIZEN_WELCOME_BONUS = 100  # Seeds ~20 Haiku messages or ~1 Sonnet
+
 AJ_SHOP_PRICES = {
     "message_haiku": 5,
     "message_sonnet": 60,

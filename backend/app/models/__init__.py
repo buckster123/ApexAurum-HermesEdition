@@ -28,6 +28,8 @@ from app.models.device import Device
 from app.models.agora import AgoraPost, AgoraReaction, AgoraComment
 from app.models.progression import UserProgression
 from app.models.apexjoule import ApexJouleBalance, ApexJouleTransaction, LoveScore
+from app.models.solana_payment import SolanaPayment
+from app.models.marketplace import MarketplaceListing, MarketplacePurchase
 
 # User references all of the above, so import LAST
 from app.models.user import User
@@ -74,5 +76,8 @@ __all__ = [
     "ApexJouleBalance",
     "ApexJouleTransaction",
     "LoveScore",
+    "SolanaPayment",
+    "MarketplaceListing",
+    "MarketplacePurchase",
     # "UserVector",  # Temp disabled
 ]

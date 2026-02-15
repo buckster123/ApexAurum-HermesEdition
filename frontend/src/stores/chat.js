@@ -250,6 +250,8 @@ export const useChatStore = defineStore('chat', () => {
                 errorMessage = `🔒 ${detail.message || 'This model requires a higher tier.'}\n\nTry switching to Haiku or Sonnet in settings, or upgrade your plan.`
               } else if (detail.error === 'tools_not_allowed') {
                 errorMessage = `🔧 ${detail.message || 'Tools require a Pro subscription.'}\n\nUpgrade to unlock AI tools.`
+              } else if (detail.error === 'aj_balance_insufficient') {
+                errorMessage = `⚡ Your AJ balance is empty. Earn AJ through interactions or [buy more with crypto](/economy).`
               } else if (detail.error === 'usage_limit') {
                 errorMessage = `📊 ${detail.message || 'You\'ve reached your message limit.'}\n\nUpgrade your plan or purchase credits to continue.`
               } else if (detail.error === 'multi_provider_not_allowed') {
