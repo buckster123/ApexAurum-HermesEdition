@@ -3021,10 +3021,11 @@ async def pocket_aj_activate_citizen(
     ledger = AJLedger(db)
     await ledger.credit(
         user_id=user.id,
-        entity_type="user",
-        amount=AJ_CITIZEN_WELCOME_BONUS,
+        agent_id="SYSTEM",
+        agent_share=0,
+        user_share=float(AJ_CITIZEN_WELCOME_BONUS),
         tx_type="welcome_bonus",
-        description="AJ Citizen welcome bonus",
+        reason="AJ Citizen welcome bonus",
     )
 
     await db.commit()
