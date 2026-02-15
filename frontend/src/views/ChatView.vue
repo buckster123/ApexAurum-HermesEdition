@@ -259,7 +259,7 @@ onMounted(async () => {
     }
     categoryCounts.value = counts
   } catch (e) {
-    toolsCount.value = 46  // Fallback to known count
+    toolsCount.value = 100  // Fallback to approximate count
   }
 
   // Fetch Agora settings for sidebar toggle visibility
@@ -937,29 +937,34 @@ function renderMarkdown(content) {
           </div>
 
           <!-- Welcome message if no messages (authenticated) -->
-          <div v-else-if="chat.messages.length === 0" class="text-center py-8">
-            <div class="text-6xl font-serif font-bold text-gold mb-2">Au</div>
-            <h2 class="text-2xl font-bold mb-1">Welcome to ApexAurum Cloud</h2>
-            <p class="text-gray-400 mb-4">68 Tools. Four Alchemists. One Village.</p>
-
-            <!-- 3D Tool Constellation (WebGL) or static buttons (fallback) -->
-            <ToolConstellation
-              v-if="isWebGLAvailable()"
-              @select="(cat) => inputMessage = `Show me the ${cat} tools`"
-              class="mb-4"
-            />
-            <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-xl mx-auto text-sm mb-4">
-              <button @click="inputMessage = 'What can you help me with?'" class="btn-secondary text-left">What can you do?</button>
-              <button @click="inputMessage = 'Tell me about the Village Protocol'" class="btn-secondary text-left">Village Protocol</button>
-              <button @click="inputMessage = 'Generate some music for me'" class="btn-secondary text-left">Generate Music</button>
-              <button @click="inputMessage = 'Spawn a research agent'" class="btn-secondary text-left">Spawn Agent</button>
+          <div v-else-if="chat.messages.length === 0" class="relative py-8">
+            <!-- Athanor Heart background -->
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+              <img
+                src="/images/athanor-heart.jpg"
+                alt=""
+                class="w-[500px] max-w-full opacity-[0.07] object-cover"
+                style="mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%); -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);"
+              />
             </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-xl mx-auto text-sm">
-              <button @click="inputMessage = 'What can you help me with?'" class="btn-secondary text-left">What can you do?</button>
-              <button @click="inputMessage = 'Tell me about the Village Protocol'" class="btn-secondary text-left">Village Protocol</button>
-              <button @click="inputMessage = 'Generate some music for me'" class="btn-secondary text-left">Generate Music</button>
-              <button @click="inputMessage = 'Spawn a research agent'" class="btn-secondary text-left">Spawn Agent</button>
+            <div class="relative z-10 text-center">
+              <div class="text-6xl font-serif font-bold text-gold mb-2">Au</div>
+              <h2 class="text-2xl font-bold mb-1">Welcome to ApexAurum</h2>
+              <p class="text-gray-400 mb-4">{{ toolsCount || 100 }}+ Tools. Four Alchemists. One Village.</p>
+
+              <!-- 3D Tool Constellation (WebGL) or static buttons (fallback) -->
+              <ToolConstellation
+                v-if="isWebGLAvailable()"
+                @select="(cat) => inputMessage = `Show me the ${cat} tools`"
+                class="mb-4"
+              />
+              <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-xl mx-auto text-sm">
+                <button @click="inputMessage = 'What can you help me with?'" class="btn-secondary text-left">What can you do?</button>
+                <button @click="inputMessage = 'Tell me about the Village Protocol'" class="btn-secondary text-left">Village Protocol</button>
+                <button @click="inputMessage = 'Generate some music for me'" class="btn-secondary text-left">Generate Music</button>
+                <button @click="inputMessage = 'Spawn a research agent'" class="btn-secondary text-left">Spawn Agent</button>
+              </div>
             </div>
           </div>
 
