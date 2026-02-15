@@ -331,7 +331,7 @@ onUnmounted(dispose)
 </script>
 
 <template>
-  <div ref="containerRef" class="w-full h-64 relative">
+  <div ref="containerRef" class="w-full h-[345px] relative">
     <!-- CSS fallback when WebGL unavailable -->
     <div v-if="webglFailed" class="absolute inset-0 flex flex-wrap items-center justify-center gap-3 p-4">
       <button

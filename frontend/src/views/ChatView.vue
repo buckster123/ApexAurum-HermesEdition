@@ -938,13 +938,13 @@ function renderMarkdown(content) {
 
           <!-- Welcome message if no messages (authenticated) -->
           <div v-else-if="chat.messages.length === 0" class="relative py-8">
-            <!-- Athanor Heart background -->
-            <div class="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+            <!-- Athanor Heart background — positioned below text, behind constellation -->
+            <div class="absolute inset-0 flex justify-center pointer-events-none overflow-hidden" style="padding-top: 100px;">
               <img
                 src="/images/athanor-heart.jpg"
                 alt=""
-                class="w-[500px] max-w-full opacity-[0.07] object-cover"
-                style="mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%); -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);"
+                class="w-[540px] max-w-full opacity-[0.10] object-cover"
+                style="mask-image: radial-gradient(ellipse at center, black 35%, transparent 72%); -webkit-mask-image: radial-gradient(ellipse at center, black 35%, transparent 72%);"
               />
             </div>
 
