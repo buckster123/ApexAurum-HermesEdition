@@ -1,0 +1,435 @@
+{
+  "meta": {
+    "title": "ApexAurum Cloud — Feature Power/Token Consumption Estimates",
+    "version": "1.0",
+    "date": "2026-02-15",
+    "notes": "Estimates for concept testing. Refine with production telemetry.",
+    "currency": "USD",
+    "token_unit": "tokens",
+    "cost_unit": "USD per operation"
+  },
+  "model_pricing": {
+    "description": "Per 1M tokens, as of Feb 2026",
+    "models": {
+      "anthropic/claude-haiku-4-5-20251001": { "input": 0.25, "output": 1.25, "speed": "fast" },
+      "anthropic/claude-sonnet-4-5-20250929": { "input": 3.00, "output": 15.00, "speed": "medium" },
+      "anthropic/claude-opus-4-6": { "input": 15.00, "output": 75.00, "speed": "slow" },
+      "deepseek/deepseek-chat": { "input": 0.14, "output": 0.28, "speed": "fast" },
+      "groq/llama-3.3-70b-versatile": { "input": 0.59, "output": 0.79, "speed": "very_fast" },
+      "together/meta-llama/Llama-3.3-70B-Instruct-Turbo": { "input": 0.88, "output": 0.88, "speed": "fast" },
+      "qwen/qwen-plus": { "input": 0.57, "output": 1.14, "speed": "fast" },
+      "openai/gpt-4o-mini": { "input": 0.15, "output": 0.60, "speed": "fast" },
+      "moonshot/kimi-k2.5-instant": { "input": 0.14, "output": 0.56, "speed": "fast" }
+    }
+  },
+  "features": [
+    {
+      "id": "chat_no_tools",
+      "name": "Chat (no tools)",
+      "category": "chat",
+      "api_calls": 1,
+      "input_tokens": 3700,
+      "output_tokens": 400,
+      "input_breakdown": {
+        "system_prompt": 1500,
+        "conversation_context": 2000,
+        "user_message": 200
+      },
+      "cost_by_model": {
+        "haiku": 0.0014,
+        "sonnet": 0.017,
+        "opus": 0.086
+      },
+      "compute_profile": "light",
+      "latency_seconds": [1, 3]
+    },
+    {
+      "id": "chat_2_tool_turns",
+      "name": "Chat (2 tool turns)",
+      "category": "chat",
+      "api_calls": 2,
+      "input_tokens": 14000,
+      "output_tokens": 550,
+      "input_breakdown": {
+        "system_prompt": 1500,
+        "conversation_context": 2000,
+        "user_message": 200,
+        "tool_schemas": 3000,
+        "tool_results_context": 7300
+      },
+      "cost_by_model": {
+        "haiku": 0.0042,
+        "sonnet": 0.050,
+        "opus": 0.252
+      },
+      "compute_profile": "medium",
+      "latency_seconds": [3, 8]
+    },
+    {
+      "id": "chat_5_tool_turns",
+      "name": "Chat (5 tool turns, max)",
+      "category": "chat",
+      "api_calls": 5,
+      "input_tokens": 40000,
+      "output_tokens": 1500,
+      "cost_by_model": {
+        "haiku": 0.012,
+        "sonnet": 0.143,
+        "opus": 0.713
+      },
+      "compute_profile": "heavy",
+      "latency_seconds": [10, 30]
+    },
+    {
+      "id": "council_10_rounds",
+      "name": "Council (10 rounds, 4 agents)",
+      "category": "council",
+      "api_calls": 40,
+      "input_tokens": 320000,
+      "output_tokens": 24000,
+      "notes": "Context grows per round. 4 agents each get full history. Average ~8K input per agent-turn.",
+      "cost_by_model": {
+        "haiku": 0.110,
+        "sonnet": 1.32,
+        "opus": 6.60
+      },
+      "compute_profile": "heavy",
+      "latency_seconds": [120, 300]
+    },
+    {
+      "id": "council_50_rounds",
+      "name": "Council (50 rounds, 4 agents)",
+      "category": "council",
+      "api_calls": 200,
+      "input_tokens": 2000000,
+      "output_tokens": 120000,
+      "cost_by_model": {
+        "haiku": 0.650,
+        "sonnet": 7.80,
+        "opus": 39.00
+      },
+      "compute_profile": "very_heavy",
+      "latency_seconds": [900, 1800]
+    },
+    {
+      "id": "dream_10_calls",
+      "name": "Dream Cycle (10 LLM calls)",
+      "category": "dream",
+      "api_calls": 10,
+      "input_tokens": 8000,
+      "output_tokens": 3000,
+      "input_breakdown": {
+        "per_call_memory_text": 600,
+        "per_call_prompt_template": 200
+      },
+      "cost_by_model": {
+        "haiku": 0.006,
+        "sonnet": 0.069,
+        "opus": 0.345
+      },
+      "cost_by_alt_provider": {
+        "deepseek": 0.002,
+        "groq_llama_70b": 0.007,
+        "together_llama_70b": 0.010,
+        "qwen_plus": 0.008,
+        "gpt4o_mini": 0.003,
+        "kimi_instant": 0.003
+      },
+      "compute_profile": "medium",
+      "latency_seconds": [15, 30]
+    },
+    {
+      "id": "dream_20_calls",
+      "name": "Dream Cycle (20 LLM calls)",
+      "category": "dream",
+      "api_calls": 20,
+      "input_tokens": 16000,
+      "output_tokens": 6000,
+      "cost_by_model": {
+        "haiku": 0.012,
+        "sonnet": 0.135,
+        "opus": 0.675
+      },
+      "cost_by_alt_provider": {
+        "deepseek": 0.004,
+        "groq_llama_70b": 0.014,
+        "together_llama_70b": 0.018,
+        "qwen_plus": 0.016,
+        "gpt4o_mini": 0.006,
+        "kimi_instant": 0.006
+      },
+      "compute_profile": "medium",
+      "latency_seconds": [30, 60]
+    },
+    {
+      "id": "dream_50_calls",
+      "name": "Dream Cycle (50 LLM calls)",
+      "category": "dream",
+      "api_calls": 50,
+      "input_tokens": 40000,
+      "output_tokens": 15000,
+      "cost_by_model": {
+        "haiku": 0.029,
+        "sonnet": 0.345,
+        "opus": 1.725
+      },
+      "cost_by_alt_provider": {
+        "deepseek": 0.010,
+        "groq_llama_70b": 0.035,
+        "together_llama_70b": 0.046,
+        "qwen_plus": 0.040,
+        "gpt4o_mini": 0.015,
+        "kimi_instant": 0.014
+      },
+      "compute_profile": "heavy",
+      "latency_seconds": [60, 180]
+    },
+    {
+      "id": "targeted_dream_20",
+      "name": "Targeted Dream (20 LLM calls)",
+      "category": "dream",
+      "api_calls": 20,
+      "input_tokens": 20000,
+      "output_tokens": 8000,
+      "notes": "Scoped to user-queued memories + 1-hop neighbors. Slightly more context per call than natural dreams.",
+      "cost_by_model": {
+        "haiku": 0.015,
+        "sonnet": 0.180,
+        "opus": 0.900
+      },
+      "compute_profile": "medium",
+      "latency_seconds": [30, 90]
+    },
+    {
+      "id": "music_generation",
+      "name": "Music Generation (Suno)",
+      "category": "music",
+      "api_calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "external_api": "suno",
+      "estimated_cost": 0.05,
+      "notes": "Suno credit-based, not token-priced. ~$0.05-0.10 per generation estimated.",
+      "compute_profile": "external",
+      "latency_seconds": [60, 120]
+    },
+    {
+      "id": "jam_session",
+      "name": "Jam Session (4 contributions)",
+      "category": "music",
+      "api_calls": 4,
+      "input_tokens": 2000,
+      "output_tokens": 800,
+      "notes": "LLM calls for composition/arrangement decisions + 4 Suno generations.",
+      "estimated_external_cost": 0.20,
+      "cost_by_model": {
+        "haiku": 0.002,
+        "sonnet": 0.018,
+        "opus": 0.090
+      },
+      "compute_profile": "medium",
+      "latency_seconds": [240, 480]
+    },
+    {
+      "id": "agent_spawn",
+      "name": "Agent Spawn (background task)",
+      "category": "chat",
+      "api_calls_range": [1, 5],
+      "input_tokens": 5000,
+      "output_tokens": 2000,
+      "cost_by_model": {
+        "haiku": 0.004,
+        "sonnet": 0.042,
+        "opus": 0.210
+      },
+      "compute_profile": "medium",
+      "latency_seconds": [5, 30]
+    },
+    {
+      "id": "tool_web_search",
+      "name": "Tool: WebSearch",
+      "category": "tools",
+      "api_calls": 1,
+      "input_tokens": 200,
+      "output_tokens": 500,
+      "external_api": "web_search_provider",
+      "cost_by_model": null,
+      "notes": "External API cost only. Token counts are for result injection into chat context.",
+      "compute_profile": "external",
+      "latency_seconds": [1, 3]
+    },
+    {
+      "id": "tool_web_fetch",
+      "name": "Tool: WebFetch",
+      "category": "tools",
+      "api_calls": 1,
+      "input_tokens": 200,
+      "output_tokens": 2000,
+      "external_api": "direct_http",
+      "cost_by_model": null,
+      "notes": "Direct HTTP fetch. Output varies widely by page size (200-10000+ tokens).",
+      "compute_profile": "external",
+      "latency_seconds": [2, 5]
+    },
+    {
+      "id": "tool_browser_scrape",
+      "name": "Tool: BrowserScrape (Steel)",
+      "category": "tools",
+      "api_calls": 1,
+      "input_tokens": 200,
+      "output_tokens": 5000,
+      "external_api": "steel_browser",
+      "cost_by_model": null,
+      "notes": "Steel Browser API. Headless browser session. Output highly variable.",
+      "compute_profile": "external",
+      "latency_seconds": [5, 30]
+    },
+    {
+      "id": "tool_code_run",
+      "name": "Tool: CodeRun",
+      "category": "tools",
+      "api_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost_by_model": { "haiku": 0, "sonnet": 0, "opus": 0 },
+      "notes": "Local sandboxed execution. CPU only, no API cost. Restricted builtins.",
+      "compute_profile": "cpu_local",
+      "latency_seconds": [1, 10]
+    },
+    {
+      "id": "embedding_per_chunk",
+      "name": "Embedding (per chunk)",
+      "category": "memory",
+      "api_calls": 0,
+      "input_tokens": 128,
+      "output_tokens": 0,
+      "cost_by_model": { "haiku": 0, "sonnet": 0, "opus": 0 },
+      "notes": "FastEmbed BAAI/bge-small-en-v1.5 runs locally. Zero API cost.",
+      "compute_profile": "cpu_local",
+      "latency_seconds": [0.03, 0.08]
+    },
+    {
+      "id": "vector_search",
+      "name": "Vector Search (pgvector)",
+      "category": "memory",
+      "api_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost_by_model": { "haiku": 0, "sonnet": 0, "opus": 0 },
+      "notes": "PostgreSQL cosine similarity query. DB compute only.",
+      "compute_profile": "db_query",
+      "latency_seconds": [0.01, 0.05]
+    },
+    {
+      "id": "memory_import_100_chunks",
+      "name": "Memory Import (100 chunks)",
+      "category": "memory",
+      "api_calls": 0,
+      "input_tokens": 12800,
+      "output_tokens": 0,
+      "cost_by_model": { "haiku": 0, "sonnet": 0, "opus": 0 },
+      "notes": "100 embeddings (local) + 100 DB inserts. No LLM cost.",
+      "compute_profile": "cpu_local",
+      "latency_seconds": [3, 8]
+    },
+    {
+      "id": "sensorhead_capture",
+      "name": "SensorHead: Camera Capture",
+      "category": "sensorhead",
+      "api_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost_by_model": { "haiku": 0, "sonnet": 0, "opus": 0 },
+      "notes": "Edge camera capture. No LLM unless followed by analysis.",
+      "compute_profile": "edge_ai",
+      "latency_seconds": [1, 3]
+    },
+    {
+      "id": "sensorhead_detect",
+      "name": "SensorHead: Object Detection",
+      "category": "sensorhead",
+      "api_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost_by_model": { "haiku": 0, "sonnet": 0, "opus": 0 },
+      "notes": "Edge AI inference (YOLO/MobileNet on device). No cloud cost.",
+      "compute_profile": "edge_ai",
+      "latency_seconds": [2, 5]
+    },
+    {
+      "id": "sensorhead_scene_report",
+      "name": "SensorHead: Scene Report",
+      "category": "sensorhead",
+      "api_calls": 1,
+      "input_tokens": 1500,
+      "output_tokens": 500,
+      "notes": "Edge capture + LLM analysis of scene. One cloud LLM call.",
+      "cost_by_model": {
+        "haiku": 0.001,
+        "sonnet": 0.012,
+        "opus": 0.060
+      },
+      "compute_profile": "edge_plus_llm",
+      "latency_seconds": [3, 8]
+    },
+    {
+      "id": "sentinel_event_check",
+      "name": "Sentinel: Motion Event Check",
+      "category": "sensorhead",
+      "api_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost_by_model": { "haiku": 0, "sonnet": 0, "opus": 0 },
+      "notes": "PIR sensor read. Pure hardware, zero compute/API cost.",
+      "compute_profile": "hardware_sensor",
+      "latency_seconds": [0.1, 0.5]
+    }
+  ],
+  "monthly_projections": {
+    "description": "Estimated platform LLM cost per tier assuming Haiku default for chat, council, dream",
+    "assumptions": {
+      "avg_chat_cost_haiku": 0.004,
+      "avg_council_cost_haiku_10_rounds": 0.110,
+      "avg_dream_cost_haiku_20_calls": 0.012,
+      "sonnet_chat_multiplier": 12.5,
+      "opus_chat_multiplier": 63
+    },
+    "tiers": {
+      "seeker": {
+        "messages": 200,
+        "council_sessions": 3,
+        "dream_cycles": 2,
+        "estimated_llm_cost_haiku": 1.15,
+        "estimated_llm_cost_sonnet_mix": 5.50,
+        "notes": "Seeker only gets Haiku+Sonnet. No Opus."
+      },
+      "adept": {
+        "messages": 1000,
+        "council_sessions": 10,
+        "dream_cycles": 10,
+        "opus_messages": 50,
+        "estimated_llm_cost_haiku": 5.22,
+        "estimated_llm_cost_mixed": 18.50,
+        "notes": "Mixed assumes 70% Haiku, 25% Sonnet, 5% Opus for chat."
+      },
+      "opus": {
+        "messages": 5000,
+        "council_sessions": 30,
+        "dream_cycles": 30,
+        "opus_messages": 500,
+        "estimated_llm_cost_haiku": 23.66,
+        "estimated_llm_cost_mixed": 85.00,
+        "notes": "Mixed assumes 50% Haiku, 35% Sonnet, 15% Opus for chat."
+      },
+      "azothic": {
+        "messages": 20000,
+        "council_sessions": 100,
+        "dream_cycles": 50,
+        "opus_messages": 2000,
+        "estimated_llm_cost_haiku": 91.75,
+        "estimated_llm_cost_mixed": 340.00,
+        "notes": "Mixed assumes 40% Haiku, 35% Sonnet, 25% Opus. Heavy Opus users can exceed tier price."
+      }
+    }
+  }
+}
