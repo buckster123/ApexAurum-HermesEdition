@@ -192,15 +192,11 @@ function handleSearch(e) {
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
       <div>
-        <h1 class="text-3xl font-bold flex items-center gap-3">
-          <span class="text-4xl">🎵</span>
-          <span>apexXuno</span>
-        </h1>
-        <p class="text-gray-400 mt-1">AI music generation via Suno - The Athanor's voice</p>
+        <h1 class="text-3xl font-bold text-gold">apexXuno</h1>
+        <p class="text-gray-400 mt-1">AI music generation — the Athanor's voice</p>
       </div>
       <button @click="openGenerateModal" class="btn-primary flex items-center gap-2">
-        <span class="text-lg">+</span>
-        Generate Music
+        + Generate
       </button>
     </div>
 
@@ -228,14 +224,14 @@ function handleSearch(e) {
     <Transition name="fade">
       <div
         v-if="music.isGenerating"
-        class="mb-6 p-4 bg-gradient-to-r from-gold/20 to-purple-500/20 rounded-xl border border-gold/30"
+        class="mb-6 card border-gold/30"
       >
         <div class="flex items-center gap-4">
-          <div class="w-12 h-12 bg-gold/20 rounded-full flex items-center justify-center animate-pulse">
-            <span class="text-2xl animate-spin">🎵</span>
+          <div class="w-10 h-10 border-2 border-gold rounded-lg flex items-center justify-center">
+            <svg class="w-5 h-5 text-gold animate-spin" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 2v4m0 12v4m10-10h-4M6 12H2m15.07-7.07l-2.83 2.83M9.76 14.24l-2.83 2.83m12.14 0l-2.83-2.83M9.76 9.76L6.93 6.93"/></svg>
           </div>
           <div class="flex-1">
-            <h3 class="font-medium text-gold">Generating Music...</h3>
+            <h3 class="font-medium text-gold">Generating...</h3>
             <p class="text-sm text-gray-400">{{ music.generationProgress }}</p>
           </div>
           <button
@@ -313,17 +309,15 @@ function handleSearch(e) {
 
     <!-- Loading State -->
     <div v-if="music.loading" class="text-center py-20 text-gray-400">
-      <div class="text-4xl mb-4 animate-pulse">🎵</div>
-      Loading library...
+      <div class="text-sm mb-2 animate-pulse">Loading library...</div>
     </div>
 
     <!-- Empty State -->
     <div v-else-if="music.library.length === 0" class="text-center py-20">
-      <div class="text-6xl mb-4">🎵</div>
-      <h2 class="text-xl font-bold mb-2">No music yet</h2>
-      <p class="text-gray-400 mb-6">Generate your first track to start your collection</p>
+      <h2 class="text-xl font-bold mb-2 text-gold">No music yet</h2>
+      <p class="text-gray-400 mb-6">Generate your first track to begin your collection</p>
       <button @click="openGenerateModal" class="btn-primary">
-        Generate Music
+        + Generate
       </button>
     </div>
 
@@ -336,20 +330,20 @@ function handleSearch(e) {
         @click="handlePlay(task)"
       >
         <!-- Album art placeholder -->
-        <div class="aspect-square bg-gradient-to-br from-apex-dark to-apex-card rounded-lg mb-4 flex items-center justify-center relative overflow-hidden">
-          <!-- Animated background for generating -->
+        <div class="aspect-square bg-apex-darker border border-apex-border rounded-lg mb-4 flex items-center justify-center relative overflow-hidden">
+          <!-- Animated border for generating -->
           <div
             v-if="task.status === 'generating' || task.status === 'downloading'"
-            class="absolute inset-0 bg-gradient-to-r from-purple-500/20 via-gold/20 to-purple-500/20 animate-gradient"
+            class="absolute inset-0 border-2 border-gold/30 rounded-lg animate-pulse"
           />
-          <span class="text-6xl relative z-10">🎵</span>
+          <svg class="w-12 h-12 text-gray-600 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
 
           <!-- Play overlay for completed tracks -->
           <div
             v-if="task.status === 'completed'"
             class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-20"
           >
-            <span class="w-16 h-16 bg-gold rounded-full flex items-center justify-center text-apex-dark text-2xl shadow-lg">
+            <span class="w-12 h-12 border-2 border-gold rounded-full flex items-center justify-center text-gold text-lg">
               ▶
             </span>
           </div>
@@ -392,7 +386,7 @@ function handleSearch(e) {
         <button
           v-if="task.status === 'completed'"
           @click.stop="music.downloadTrack(task.id)"
-          class="absolute top-2 left-2 p-2 rounded-lg bg-gold/20 text-gold opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gold/30"
+          class="absolute top-2 left-2 p-1.5 bg-apex-dark/80 border border-apex-border text-gold opacity-0 group-hover:opacity-100 transition-opacity hover:border-gold/30 rounded-lg"
           title="Download MP3"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3"/></svg>
@@ -402,7 +396,7 @@ function handleSearch(e) {
         <button
           v-if="task.status !== 'generating'"
           @click.stop="handleDelete(task)"
-          class="absolute top-2 right-2 p-2 rounded-lg bg-red-500/20 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/30"
+          class="absolute top-2 right-2 p-1.5 bg-apex-dark/80 border border-apex-border text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400 hover:border-red-500/30 rounded-lg"
           :title="deleteConfirm === task.id ? 'Click again to confirm' : 'Delete'"
         >
           {{ deleteConfirm === task.id ? '?' : '×' }}
@@ -419,13 +413,13 @@ function handleSearch(e) {
         @click="handlePlay(task)"
       >
         <!-- Mini album art -->
-        <div class="w-12 h-12 bg-gradient-to-br from-apex-dark to-apex-card rounded-lg flex items-center justify-center flex-shrink-0 relative">
-          <span class="text-2xl">🎵</span>
+        <div class="w-12 h-12 bg-apex-darker border border-apex-border rounded-lg flex items-center justify-center flex-shrink-0 relative">
+          <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
           <div
             v-if="task.status === 'completed'"
             class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg"
           >
-            <span class="text-gold">▶</span>
+            <span class="text-gold text-sm">▶</span>
           </div>
         </div>
 
@@ -489,10 +483,7 @@ function handleSearch(e) {
         >
           <div class="card w-full max-w-xl max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between mb-6">
-              <h2 class="text-xl font-bold flex items-center gap-2">
-                <span class="text-2xl">🎵</span>
-                Generate Music
-              </h2>
+              <h2 class="text-xl font-bold text-gold">Generate Music</h2>
               <button
                 @click="showGenerateModal = false"
                 class="text-gray-400 hover:text-white"
@@ -630,13 +621,4 @@ function handleSearch(e) {
   opacity: 0;
 }
 
-@keyframes gradient {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
-
-.animate-gradient {
-  background-size: 200% 200%;
-  animation: gradient 2s ease infinite;
-}
 </style>

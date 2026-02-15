@@ -110,15 +110,15 @@ function getStatusIcon(status) {
     <!-- Header -->
     <div class="flex items-center justify-between mb-8">
       <div>
-        <h1 class="text-3xl font-bold">Agents</h1>
+        <h1 class="text-3xl font-bold text-gold">Agents</h1>
         <p class="text-gray-400 mt-1">Spawn and manage background AI agents</p>
       </div>
       <div class="flex gap-3">
         <button @click="showCouncilModal = true" class="btn-secondary">
-          🏛️ Socratic Council
+          Socratic Council
         </button>
         <button @click="showSpawnModal = true" class="btn-primary">
-          + Spawn Agent
+          + Spawn
         </button>
       </div>
     </div>
@@ -129,11 +129,10 @@ function getStatusIcon(status) {
     </div>
 
     <div v-else-if="agents.length === 0" class="text-center py-20">
-      <div class="text-6xl mb-4">🤖</div>
-      <h2 class="text-xl font-bold mb-2">No agents yet</h2>
+      <h2 class="text-xl font-bold mb-2 text-gold">No agents yet</h2>
       <p class="text-gray-400 mb-6">Spawn your first agent to get started</p>
       <button @click="showSpawnModal = true" class="btn-primary">
-        Spawn Agent
+        + Spawn
       </button>
     </div>
 
@@ -226,7 +225,7 @@ function getStatusIcon(status) {
     <!-- Council Modal -->
     <div v-if="showCouncilModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div class="card w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-        <h2 class="text-xl font-bold mb-4">🏛️ Socratic Council</h2>
+        <h2 class="text-xl font-bold mb-4 text-gold">Socratic Council</h2>
         <p class="text-gray-400 text-sm mb-6">
           Multiple agents will independently consider your question and vote.
         </p>

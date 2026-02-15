@@ -640,7 +640,7 @@ function getAgentSymbol(agentId) {
   <div class="max-w-4xl mx-auto px-4 py-8">
     <!-- Header with Au logo (tap target) -->
     <div class="flex items-center justify-between mb-8">
-      <h1 class="text-3xl font-bold">Settings</h1>
+      <h1 class="text-3xl font-bold text-gold">Settings</h1>
 
       <div class="flex items-center gap-3">
         <!-- Layer Badges -->
