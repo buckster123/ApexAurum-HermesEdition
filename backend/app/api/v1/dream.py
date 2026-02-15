@@ -141,9 +141,12 @@ async def get_dream_models(
             can_multi = tier_config.get("multi_provider", False)
             if not can_byok and not can_multi:
                 continue
-            access = await resolve_provider_access(user, provider_id, tier, db)
-            if not access["allowed"]:
-                continue
+            try:
+                access = await resolve_provider_access(user, provider_id, tier, db)
+                if not access["allowed"]:
+                    continue
+            except Exception:
+                continue  # Skip provider on access resolution errors
 
         provider_config = PROVIDERS.get(provider_id, {})
         provider_models = PROVIDER_MODELS.get(provider_id, {})
