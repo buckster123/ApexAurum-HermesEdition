@@ -72,6 +72,12 @@ function formatType(type) {
             Enter the Village
           </button>
           <button
+            @click="router.push('/pocket')"
+            class="px-8 py-3 border border-gold/40 text-gold rounded-lg text-lg hover:bg-gold/10 transition-all"
+          >
+            Get the App
+          </button>
+          <button
             @click="router.push('/login')"
             class="px-8 py-3 border border-white/20 text-white rounded-lg text-lg hover:border-gold/50 hover:text-gold transition-all"
           >
@@ -212,10 +218,11 @@ function formatType(type) {
             <h3 class="font-bold text-lg mb-2">SensorHead</h3>
             <p class="text-sm text-gray-400">Your AI can see your room. Dual cameras, thermal imaging, environment sensors. A Raspberry Pi on your desk, connected through the cloud. Sub-second from anywhere.</p>
           </div>
-          <div class="text-center">
+          <div class="text-center cursor-pointer group" @click="router.push('/pocket')">
             <div class="text-4xl mb-4">&#128241;</div>
-            <h3 class="font-bold text-lg mb-2">ApexPocket</h3>
+            <h3 class="font-bold text-lg mb-2 group-hover:text-gold transition-colors">ApexPocket</h3>
             <p class="text-sm text-gray-400">Native Android companion with animated soul face, full chat, village pulse, councils, music library, and sensor dashboard. Not a web wrapper &mdash; a companion.</p>
+            <span class="text-xs text-gold mt-2 inline-block opacity-0 group-hover:opacity-100 transition-opacity">Download &rarr;</span>
           </div>
           <div class="text-center">
             <div class="text-4xl mb-4">&#128295;</div>

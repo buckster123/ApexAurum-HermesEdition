@@ -177,6 +177,12 @@ const router = createRouter({
       component: () => import('@/views/PrivacyView.vue'),
       meta: { requiresAuth: false }
     },
+    {
+      path: '/pocket',
+      name: 'pocket',
+      component: () => import('@/views/DownloadView.vue'),
+      meta: { requiresAuth: false }
+    },
   ]
 })
 
