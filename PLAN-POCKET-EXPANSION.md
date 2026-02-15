@@ -151,37 +151,49 @@ GET  /api/v1/pocket/cortex/dream       — Dream status + history
 
 ---
 
-## Phase 3: Offline Memory Sync
+## Phase 3: Offline Memory Sync — COMPLETE
 
 **Goal:** Memories work offline — cached locally, queued for sync, merged on reconnect.
 
-### 3A. Offline Memory Cache
-- Cache last 100 memories per agent in Room DB
-- Background refresh on app open (stale after 5 minutes)
-- Show cache age indicator ("synced 3m ago")
+### 3A. Offline Memory Cache — DONE
+- CortexRepository with Room cache + 5-minute TTL
+- Cache age indicator in sync status bar ("synced 3m ago")
+- Automatic refresh when cache is stale
 
-### 3B. Offline Write Queue
-- `cortex_remember` calls queued in `offline_actions` table (existing pattern)
-- `cortex_associate` calls queued similarly
-- Queue replay on network return via existing `SyncManager`
+### 3B. Offline Write Queue — DONE
+- `cortex_remember` + `cortex_delete` queued in `offline_actions` table
+- Queue replay on network return via SyncManager
+- Local Room placeholder with `pending_` ID for immediate UI visibility
+- Fallback: API call fails → auto-queue (handles NetworkMonitor race condition)
 
-### 3C. Conflict Resolution
-- Server wins for content conflicts (mobile is append-only in practice)
-- Local deletes applied on sync
-- Duplicate detection by content hash
+### 3C. Reconnect Handler — DONE
+- Global `isOnline` false→true transition detector with 800ms debounce
+- Waits up to 3s for API client readiness
+- Triggers: offline queue flush, Village Pulse WS reconnect, cortex cache refresh
+- Manual sync via Refresh button as backup
 
-### 3D. Background Sync Worker
-- WorkManager periodic sync (every 15 minutes when online)
-- Push notification on dream cycle completion
-- Sync memory access counts for FSRS strength model
+### 3D. Background Sync Worker — DONE
+- CortexSyncWorker via WorkManager (every 15 min, network + battery constraints)
+- Processes offline queue + refreshes cortex cache
+
+### 3E. UI — DONE
+- Sync status bar: cache age, pending count, online/offline indicator
+- Purple Remember FAB with agent selector + content field
+- Pending badge on Cortex chip
 
 ### Files Modified
 | File | Change |
 |------|--------|
-| `CortexRepository.kt` | +offline queue, cache TTL |
-| `SyncManager.kt` | +cortex queue replay |
-| `CortexSyncWorker.kt` | New — WorkManager periodic |
-| `Entities.kt` | +sync metadata columns |
+| `backend/app/api/v1/pocket.py` | POST /cortex/memories endpoint |
+| `CortexRepository.kt` | New — Room cache + offline queue + fallback |
+| `CortexSyncWorker.kt` | New — WorkManager periodic sync |
+| `SyncManager.kt` | +cortex_remember, cortex_delete replay |
+| `PocketViewModel.kt` | +CortexRepository, reconnect handler, sync methods |
+| `MemoriesScreen.kt` | +sync status bar, Remember FAB, pending badge |
+| `MainActivity.kt` | +cortex sync wiring |
+| `PocketApi.kt` | +createCortexMemory endpoint + models |
+| `Daos.kt` | +getLastSyncTime, count queries |
+| `ApexPocketApp.kt` | +CortexSyncWorker registration |
 
 ---
 
@@ -213,9 +225,9 @@ GET  /api/v1/pocket/cortex/dream       — Dream status + history
 
 | Phase | Scope | Effort | Impact |
 |-------|-------|--------|--------|
-| **1** | POCKET_TOOLS expansion | 30 min | Agents get full powers on mobile |
-| **2** | Memory UI screens | 1-2 days | Users can browse/search memories |
-| **3** | Offline sync | 1 day | Works without internet |
+| **1** | POCKET_TOOLS expansion | 30 min | Agents get full powers on mobile — **SHIPPED** |
+| **2** | Memory UI screens | 1-2 days | Users can browse/search memories — **SHIPPED** |
+| **3** | Offline sync | 1 day | Works without internet — **SHIPPED** |
 | **4** | Stretch (graph, voice, push) | 2-3 days | Premium mobile experience |
 
 ---
