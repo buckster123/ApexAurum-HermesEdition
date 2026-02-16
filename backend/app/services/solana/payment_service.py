@@ -273,7 +273,7 @@ class SolanaPaymentService:
         return {"status": "pending"}
 
     async def get_rates(self) -> dict:
-        """Get current conversion rates."""
+        """Get current conversion rates + wallet config for frontend."""
         sol_price = await self.client.get_sol_price_usd()
         aj_per_usd = AJ_PER_USD
 
@@ -286,6 +286,10 @@ class SolanaPaymentService:
                 k: {**v, "sol": float(Decimal(str(v["usd"])) / sol_price) if sol_price else None}
                 for k, v in AJ_PACKS.items()
             },
+            # Wallet config for frontend tx building
+            "recipient_address": self.settings.solana_recipient_address,
+            "rpc_url": self.settings.solana_rpc_url,
+            "usdc_mint": self.settings.solana_usdc_mint,
         }
 
     async def get_payment_history(self, user_id: UUID, limit: int = 20) -> list:

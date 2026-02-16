@@ -1,15 +1,18 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSolanaStore } from '@/stores/solana'
+import { useSolanaWallet } from '@/composables/useSolanaWallet'
 
 const emit = defineEmits(['close'])
 
 const solana = useSolanaStore()
+const wallet = useSolanaWallet()
 
 const selectedToken = ref('SOL')
 const selectedPack = ref('spark')
 const customAmount = ref(null)
 const showCustom = ref(false)
+const walletSending = ref(false)
 
 // AJ packs
 const packs = [
@@ -36,8 +39,8 @@ const tokenAmount = computed(() => {
 
 const statusLabel = computed(() => {
   const s = solana.currentPayment?.status
-  if (s === 'pending') return 'Waiting for payment...'
-  if (s === 'confirmed') return 'Confirming on-chain...'
+  if (s === 'pending' || s === 'wallet_sent') return 'Confirming on-chain...'
+  if (s === 'confirmed') return 'Crediting AJ...'
   if (s === 'credited') return 'Payment complete!'
   if (s === 'expired') return 'Payment expired'
   if (s === 'failed') return 'Payment failed'
@@ -59,12 +62,60 @@ onUnmounted(() => {
   solana.stopPolling()
 })
 
+/**
+ * Main payment flow:
+ * 1. Create payment on backend (gets reference, amounts, URI)
+ * 2. If Phantom available: connect + sign + send via wallet adapter
+ * 3. If no Phantom: show URI for manual wallet / mobile
+ */
 async function startPayment() {
-  await solana.createPayment(amountUsd.value, selectedToken.value)
+  // Step 1: Create payment record on backend
+  const payment = await solana.createPayment(amountUsd.value, selectedToken.value)
+  if (!payment) return
+
+  // Step 2: If Phantom is available, send via wallet adapter
+  if (wallet.phantomAvailable.value) {
+    await payWithPhantom(payment)
+  }
+  // Otherwise: modal shows the URI fallback (existing template)
+}
+
+async function payWithPhantom(payment) {
+  // Connect if not already
+  if (!wallet.connected.value) {
+    const ok = await wallet.connect()
+    if (!ok) {
+      solana.error = wallet.error.value
+      return
+    }
+  }
+
+  walletSending.value = true
+
+  try {
+    const result = await wallet.sendPayment({
+      recipient: solana.recipientAddress,
+      amount: payment.amount_token,
+      reference: payment.reference,
+      token: payment.token,
+      usdcMint: solana.usdcMint,
+      rpcUrl: solana.rpcUrl,
+    })
+
+    if (result?.signature) {
+      // Transaction sent! Backend polling will pick it up via reference
+      solana.markWalletSent(result.signature)
+    } else if (wallet.error.value) {
+      solana.error = wallet.error.value
+    }
+  } finally {
+    walletSending.value = false
+  }
 }
 
 function handleClose() {
   solana.dismiss()
+  wallet.disconnect()
   emit('close')
 }
 </script>
@@ -81,6 +132,18 @@ function handleClose() {
 
         <!-- Step 1: Select Pack & Token (before payment created) -->
         <template v-if="!solana.currentPayment">
+          <!-- Phantom status -->
+          <div v-if="wallet.phantomAvailable.value" class="mb-4 flex items-center gap-2 text-xs text-purple-400">
+            <div class="w-2 h-2 rounded-full bg-purple-400"></div>
+            Phantom detected
+            <span v-if="wallet.connected.value" class="text-gray-500">
+              ({{ wallet.walletAddress.value?.slice(0, 4) }}...{{ wallet.walletAddress.value?.slice(-4) }})
+            </span>
+          </div>
+          <div v-else class="mb-4 text-xs text-gray-500">
+            No wallet extension detected — payment URL will be shown
+          </div>
+
           <!-- Pack Selection -->
           <div class="mb-4">
             <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Select Pack</label>
@@ -145,23 +208,38 @@ function handleClose() {
               <span class="text-gold font-semibold">{{ ajPreview.toLocaleString() }} AJ</span>
             </div>
             <div v-if="solana.solPrice && selectedToken === 'SOL'" class="text-[10px] text-gray-600 mt-1">
-              SOL = ${{ solana.solPrice.toFixed(2) }} (cached 5 min)
+              SOL = ${{ solana.solPrice.toFixed(2) }}
             </div>
           </div>
 
           <!-- Pay Button -->
           <button
             @click="startPayment"
-            :disabled="solana.isLoading || amountUsd <= 0"
+            :disabled="solana.isLoading || walletSending || amountUsd <= 0"
             class="w-full py-3 rounded-lg font-semibold text-sm transition-all"
-            :class="solana.isLoading
+            :class="solana.isLoading || walletSending
               ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-              : 'bg-gold/20 border border-gold/40 text-gold hover:bg-gold/30'"
+              : wallet.phantomAvailable.value
+                ? 'bg-purple-900/30 border border-purple-500/40 text-purple-300 hover:bg-purple-900/50'
+                : 'bg-gold/20 border border-gold/40 text-gold hover:bg-gold/30'"
           >
-            {{ solana.isLoading ? 'Creating...' : `Pay ${tokenAmount} ${selectedToken}` }}
+            <template v-if="solana.isLoading || walletSending">
+              <span class="inline-flex items-center gap-2">
+                <span class="w-4 h-4 border-2 border-gray-500 border-t-white rounded-full animate-spin"></span>
+                {{ walletSending ? 'Confirm in Phantom...' : 'Creating...' }}
+              </span>
+            </template>
+            <template v-else-if="wallet.phantomAvailable.value">
+              Pay {{ tokenAmount }} {{ selectedToken }} with Phantom
+            </template>
+            <template v-else>
+              Pay {{ tokenAmount }} {{ selectedToken }}
+            </template>
           </button>
 
-          <p v-if="solana.error" class="mt-2 text-xs text-red-400">{{ solana.error }}</p>
+          <p v-if="solana.error || wallet.error.value" class="mt-2 text-xs text-red-400">
+            {{ solana.error || wallet.error.value }}
+          </p>
         </template>
 
         <!-- Step 2: Payment in progress -->
@@ -172,22 +250,35 @@ function handleClose() {
               {{ statusLabel }}
             </div>
 
-            <!-- Solana Pay URL (for Phantom deep link) -->
+            <!-- Waiting for on-chain confirmation -->
             <template v-if="solana.isPaymentPending">
-              <a
-                :href="solana.currentPayment.solana_url"
-                class="block w-full py-3 rounded-lg bg-purple-900/30 border border-purple-500/30 text-purple-300 text-sm font-medium hover:bg-purple-900/50 transition-all text-center"
-              >
-                Open in Phantom / Solflare
-              </a>
-
-              <!-- QR placeholder (URL for manual wallets) -->
-              <div class="bg-black/40 rounded-lg p-4 border border-gray-800">
-                <p class="text-xs text-gray-400 mb-2">Or scan / copy this payment URL:</p>
-                <div class="bg-black/50 rounded p-2 text-[10px] text-gray-500 break-all font-mono select-all">
-                  {{ solana.currentPayment.solana_url }}
+              <!-- Wallet signature (if sent via Phantom) -->
+              <div v-if="solana.currentPayment.wallet_signature" class="space-y-3">
+                <div class="text-xs text-gray-400">
+                  Transaction sent via Phantom
+                </div>
+                <div class="bg-black/40 rounded-lg p-3 border border-gray-800">
+                  <p class="text-[10px] text-gray-500">Signature:</p>
+                  <p class="text-[10px] text-purple-400 font-mono break-all">
+                    {{ solana.currentPayment.wallet_signature }}
+                  </p>
                 </div>
               </div>
+
+              <!-- No wallet — show URI fallback for mobile / manual wallets -->
+              <template v-else>
+                <div class="bg-black/40 rounded-lg p-4 border border-gray-800">
+                  <p class="text-xs text-gray-400 mb-2">Copy this payment URL into your wallet:</p>
+                  <div
+                    class="bg-black/50 rounded p-2 text-[10px] text-gray-500 break-all font-mono select-all cursor-pointer hover:text-gray-300 transition-colors"
+                    @click="navigator.clipboard?.writeText(solana.currentPayment.solana_url)"
+                    title="Click to copy"
+                  >
+                    {{ solana.currentPayment.solana_url }}
+                  </div>
+                  <p class="text-[10px] text-gray-600 mt-2">Click to copy</p>
+                </div>
+              </template>
 
               <!-- Amount summary -->
               <div class="text-sm text-gray-400">
@@ -208,7 +299,7 @@ function handleClose() {
                 +{{ solana.currentPayment.aj_credited?.toLocaleString() }} AJ
               </div>
               <div class="text-xs text-gray-500">
-                tx: {{ solana.currentPayment.tx_signature?.slice(0, 16) }}...
+                tx: {{ (solana.currentPayment.tx_signature || solana.currentPayment.wallet_signature)?.slice(0, 16) }}...
               </div>
               <button
                 @click="handleClose"

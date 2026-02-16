@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@monaco-editor/loader": "^1.7.0",
+    "@solana/web3.js": "^1.98.4",
     "@vueuse/core": "^10.7.0",
     "axios": "^1.6.0",
     "marked": "^11.0.0",

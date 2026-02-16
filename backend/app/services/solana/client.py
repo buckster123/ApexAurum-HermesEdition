@@ -21,7 +21,7 @@ COINGECKO_PRICE_URL = "https://api.coingecko.com/api/v3/simple/price"
 
 # Cache SOL price for 5 minutes
 _sol_price_cache: dict = {"price": None, "fetched_at": 0}
-SOL_PRICE_CACHE_TTL = 300  # seconds
+SOL_PRICE_CACHE_TTL = 600  # 10 min — CoinGecko free tier is rate-limited
 
 
 class SolanaClient:

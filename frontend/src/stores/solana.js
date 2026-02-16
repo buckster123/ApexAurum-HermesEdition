@@ -1,19 +1,24 @@
 /**
  * Solana Pay Store — Crypto payment state management
  *
- * Handles payment request creation, polling, and rate display.
+ * Handles payment request creation, Phantom wallet payments,
+ * polling for on-chain confirmation, and rate display.
  */
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
 
+// Client-side rate cache (avoid hammering CoinGecko via backend)
+const RATES_CACHE_MS = 5 * 60 * 1000 // 5 min
+let _ratesCachedAt = 0
+
 export const useSolanaStore = defineStore('solana', () => {
   // ═══════════════════════════════════════════════════════════════
   // STATE
   // ═══════════════════════════════════════════════════════════════
   const currentPayment = ref(null) // { reference, solana_url, aj_amount, status, ... }
-  const rates = ref(null) // { sol_usd, aj_per_sol, aj_per_usdc, packs }
+  const rates = ref(null) // { sol_usd, aj_per_sol, packs, recipient_address, rpc_url, usdc_mint }
   const paymentHistory = ref([])
   const isLoading = ref(false)
   const error = ref(null)
@@ -22,19 +27,29 @@ export const useSolanaStore = defineStore('solana', () => {
   // ═══════════════════════════════════════════════════════════════
   // COMPUTED
   // ═══════════════════════════════════════════════════════════════
-  const isPaymentPending = computed(() => currentPayment.value?.status === 'pending')
+  const isPaymentPending = computed(() => {
+    const s = currentPayment.value?.status
+    return s === 'pending' || s === 'wallet_sent'
+  })
   const isPaymentCredited = computed(() => currentPayment.value?.status === 'credited')
   const solPrice = computed(() => rates.value?.sol_usd ?? null)
   const packs = computed(() => rates.value?.packs ?? {})
+  const recipientAddress = computed(() => rates.value?.recipient_address ?? null)
+  const rpcUrl = computed(() => rates.value?.rpc_url ?? null)
+  const usdcMint = computed(() => rates.value?.usdc_mint ?? null)
 
   // ═══════════════════════════════════════════════════════════════
   // ACTIONS
   // ═══════════════════════════════════════════════════════════════
 
   async function fetchRates() {
+    // Client-side cache: don't refetch if recent
+    if (rates.value && (Date.now() - _ratesCachedAt) < RATES_CACHE_MS) return
+
     try {
       const res = await api.get('/api/v1/solana/rates')
       rates.value = res.data
+      _ratesCachedAt = Date.now()
     } catch (err) {
       console.warn('[Solana] Rates fetch failed:', err.message)
     }
@@ -59,6 +74,19 @@ export const useSolanaStore = defineStore('solana', () => {
       return null
     } finally {
       isLoading.value = false
+    }
+  }
+
+  /**
+   * After wallet signs+sends the tx, update local state and start polling.
+   */
+  function markWalletSent(signature) {
+    if (currentPayment.value) {
+      currentPayment.value = {
+        ...currentPayment.value,
+        status: 'wallet_sent',
+        wallet_signature: signature,
+      }
     }
   }
 
@@ -129,10 +157,14 @@ export const useSolanaStore = defineStore('solana', () => {
     isPaymentCredited,
     solPrice,
     packs,
+    recipientAddress,
+    rpcUrl,
+    usdcMint,
 
     // Actions
     fetchRates,
     createPayment,
+    markWalletSent,
     startPolling,
     stopPolling,
     fetchHistory,
