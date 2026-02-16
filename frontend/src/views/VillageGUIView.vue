@@ -566,6 +566,34 @@ function handleEvent(event) {
       console.warn('[Village] AJ level-up event failed:', e)
     }
   }
+  // Phase 5: Visitor events
+  else if (event.type === 'visitor_arrived') {
+    try {
+      const payload = JSON.parse(event.message)
+      if (viewMode.value === '3d' && village3dRef.value) {
+        village3dRef.value.addVisitor(
+          payload.visit_id,
+          payload.owner_name || 'Visitor',
+          payload.agent_id || event.agent_id,
+          payload.agent_color || '#a29bfe'
+        )
+      }
+      const { showToast } = useToast()
+      showToast(`${payload.owner_name || 'A visitor'}'s ${payload.agent_id || 'agent'} arrived!`, 'info', 4000)
+    } catch (e) {
+      console.warn('[Village] Visitor arrived event failed:', e)
+    }
+  }
+  else if (event.type === 'visitor_departed') {
+    try {
+      const payload = JSON.parse(event.message)
+      if (viewMode.value === '3d' && village3dRef.value) {
+        village3dRef.value.removeVisitor(payload.visit_id)
+      }
+    } catch (e) {
+      console.warn('[Village] Visitor departed event failed:', e)
+    }
+  }
 }
 
 function clearCompleted() {

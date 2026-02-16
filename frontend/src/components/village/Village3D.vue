@@ -169,6 +169,13 @@ defineExpose({
   evolvePedestal(stage) {
     evolvePedestal(stage)
   },
+  // Visitor System (Phase 5)
+  addVisitor(visitorId, ownerName, agentId, agentColor) {
+    addVisitor(visitorId, ownerName, agentId, agentColor)
+  },
+  removeVisitor(visitorId) {
+    removeVisitor(visitorId)
+  },
 })
 
 onMounted(() => {

@@ -430,6 +430,10 @@ export function useVillage3D(containerRef, options = {}) {
   // Agent map (agentId -> agent object)
   const agents = new Map()
 
+  // Visitor agents from other villages (Phase 5 — ghost shader)
+  const visitors = new Map()
+  const visitorWanderTimers = []
+
   // Zone groups, meshes for raycasting, glow rings
   const zoneGroups = new Map()
   const zonePlaceholders = new Map()
@@ -2069,6 +2073,18 @@ export function useVillage3D(containerRef, options = {}) {
       _updateAgent(agent, dt, elapsedTime)
     }
 
+    // --- Update visitors (same walking logic, ghost pulse) ---
+    for (const visitor of visitors.values()) {
+      _updateAgent(visitor, dt, elapsedTime)
+      // Ghost pulse effect
+      if (visitor.mesh.material) {
+        visitor.mesh.material.opacity = 0.35 + Math.sin(elapsedTime * 2 + visitor.color.r * 10) * 0.15
+      }
+      if (visitor.glowRing) {
+        visitor.glowRing.material.opacity = 0.2 + Math.sin(elapsedTime * 3) * 0.1
+      }
+    }
+
     // --- Update zone glow rings ---
     for (const [name, ring] of zoneGlowRings.entries()) {
       if (name === activeZone.value) {
@@ -2708,6 +2724,21 @@ export function useVillage3D(containerRef, options = {}) {
     }
     agents.clear()
 
+    // Dispose visitors
+    for (const visitor of visitors.values()) {
+      sceneRef.value?.remove(visitor.group)
+      visitor.group.traverse((child) => {
+        if (child.geometry) child.geometry.dispose()
+        if (child.material) {
+          if (Array.isArray(child.material)) child.material.forEach(m => m.dispose())
+          else child.material.dispose()
+        }
+      })
+    }
+    visitors.clear()
+    for (const tid of visitorWanderTimers) clearTimeout(tid)
+    visitorWanderTimers.length = 0
+
     // Dispose zone groups
     for (const group of zoneGroups.values()) {
       sceneRef.value?.remove(group)
@@ -2782,6 +2813,156 @@ export function useVillage3D(containerRef, options = {}) {
   }
 
   // =========================================================================
+  // VISITOR SYSTEM (Phase 5 — Ghost agents from other villages)
+  // =========================================================================
+
+  function addVisitor(visitorId, ownerName, agentId, agentColor) {
+    if (visitors.has(visitorId)) return
+    const scene = sceneRef.value
+    if (!scene) return
+
+    const color = new THREE.Color(agentColor || '#a29bfe')
+
+    const group = new THREE.Group()
+    group.userData = { type: 'visitor', id: visitorId, ownerName, agentId }
+
+    // Ghost sphere (semi-transparent, emissive tint)
+    const sphereGeo = new THREE.IcosahedronGeometry(0.6, 2)
+    const sphereMat = new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.8,
+      roughness: 0.2,
+      metalness: 0.3,
+      transparent: true,
+      opacity: 0.5,
+    })
+    const sphere = new THREE.Mesh(sphereGeo, sphereMat)
+    sphere.position.y = 0.8
+    group.add(sphere)
+
+    // Ghost glow ring (always visible)
+    const glowGeo = new THREE.TorusGeometry(0.9, 0.04, 8, 24)
+    const glowMat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.3,
+    })
+    const glowRing = new THREE.Mesh(glowGeo, glowMat)
+    glowRing.rotation.x = -Math.PI / 2
+    glowRing.position.y = 0.05
+    group.add(glowRing)
+
+    // Visitor badge sprite
+    const badge = _createVisitorBadge(ownerName, agentId, agentColor)
+    badge.position.y = 2.4
+    group.add(badge)
+
+    // Start at bridge_portal (where portals are)
+    const portalPos = VILLAGE_LAYOUT.bridge_portal.pos
+    group.position.set(portalPos[0], 0, portalPos[2])
+    scene.add(group)
+
+    const visitor = {
+      id: visitorId,
+      group,
+      mesh: sphere,
+      glowRing,
+      nameSprite: badge,
+      position: group.position,
+      targetPosition: null,
+      state: 'idle',
+      currentZone: 'bridge_portal',
+      targetZone: null,
+      currentTool: null,
+      walkSpeed: 4, // Gentler speed than local agents
+      workPulse: 0,
+      colorHex: agentColor || '#a29bfe',
+      color,
+      glbSwapped: false,
+      idleGlowBase: 0,
+    }
+
+    visitors.set(visitorId, visitor)
+
+    // Start auto-wander
+    _startVisitorWander(visitorId)
+
+    return visitor
+  }
+
+  function removeVisitor(visitorId) {
+    const visitor = visitors.get(visitorId)
+    if (!visitor) return
+
+    const scene = sceneRef.value
+    if (scene) scene.remove(visitor.group)
+
+    // Dispose geometry/materials
+    visitor.group.traverse((child) => {
+      if (child.geometry) child.geometry.dispose()
+      if (child.material) {
+        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose())
+        else child.material.dispose()
+      }
+    })
+
+    visitors.delete(visitorId)
+  }
+
+  function _createVisitorBadge(ownerName, agentId, colorHex) {
+    const canvas = document.createElement('canvas')
+    canvas.width = 256
+    canvas.height = 64
+    const ctx = canvas.getContext('2d')
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
+    ctx.roundRect(0, 0, 256, 64, 8)
+    ctx.fill()
+
+    ctx.fillStyle = colorHex || '#a29bfe'
+    ctx.font = 'bold 18px monospace'
+    ctx.textAlign = 'center'
+    ctx.fillText(`${agentId || 'Agent'}`, 128, 24)
+
+    ctx.fillStyle = '#aaaaaa'
+    ctx.font = '14px monospace'
+    ctx.fillText(`${ownerName || 'Visitor'}`, 128, 48)
+
+    const texture = new THREE.CanvasTexture(canvas)
+    const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.85 })
+    const sprite = new THREE.Sprite(mat)
+    sprite.scale.set(3, 0.75, 1)
+    return sprite
+  }
+
+  function _startVisitorWander(visitorId) {
+    const wander = () => {
+      const visitor = visitors.get(visitorId)
+      if (!visitor) return
+
+      // Pick a random zone
+      const zoneNames = Object.keys(VILLAGE_LAYOUT)
+      const targetZone = zoneNames[Math.floor(Math.random() * zoneNames.length)]
+      const zone = VILLAGE_LAYOUT[targetZone]
+
+      visitor.state = 'walking'
+      visitor.targetZone = targetZone
+      visitor.targetPosition = new THREE.Vector3(zone.pos[0], 0, zone.pos[2])
+
+      // Schedule next wander (15-30s)
+      const delay = 15000 + Math.random() * 15000
+      const tid = setTimeout(wander, delay)
+      visitorWanderTimers.push(tid)
+    }
+
+    // First wander after 3-8s
+    const initialDelay = 3000 + Math.random() * 5000
+    const tid = setTimeout(wander, initialDelay)
+    visitorWanderTimers.push(tid)
+  }
+
+  // =========================================================================
   // RETURN
   // =========================================================================
 
@@ -2839,6 +3020,11 @@ export function useVillage3D(containerRef, options = {}) {
 
     // Grand Prize Pedestal (H4)
     evolvePedestal,
+
+    // Visitor System (Phase 5)
+    addVisitor,
+    removeVisitor,
+    visitors,
 
     // Internal refs (for advanced use / debugging)
     scene: sceneRef,
