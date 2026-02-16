@@ -942,7 +942,7 @@ async def send_message(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "error": "tools_not_allowed",
-                    "message": "Tools are not available on the free tier. Upgrade to Pro or Opus to use tools.",
+                    "message": "Tools are not available on the free tier. Upgrade to Seeker, Adept, Opus, or Azothic to use tools.",
                     "action": "upgrade"
                 }
             )
