@@ -57,6 +57,13 @@ export const VILLAGE_LAYOUT = {
   bridge_portal: { pos: [13, 0, -12], label: 'Bridge Portal', color: '#a29bfe', modelId: 'temple' },
   library: { pos: [-14, 0, -11], label: 'Library', color: '#74b9ff', modelId: 'observatory' },
   watchtower: { pos: [-11, 0, 12], label: 'Watchtower', color: '#fd79a8', modelId: 'forge' },
+  // --- Outer Ring Zones (Phase 1A) ---
+  arena: { pos: [-24, 0, 0], label: 'Arena', color: '#d63031', modelId: 'arena' },
+  bazaar: { pos: [24, 0, 0], label: 'Grand Bazaar', color: '#e8a838', modelId: 'bazaar' },
+  apothecary: { pos: [0, 0, -24], label: 'Apothecary', color: '#00cec9', modelId: 'apothecary' },
+  nexus_tower: { pos: [0, 0, 24], label: 'Nexus Tower', color: '#6c5ce7', modelId: 'nexus_tower' },
+  mines: { pos: [-20, 0, -20], label: 'Crystal Mines', color: '#b2bec3', modelId: 'mines' },
+  sanctum: { pos: [20, 0, 20], label: 'Inner Sanctum', color: '#ffeaa7', modelId: 'sanctum' },
 }
 
 const AGENT_IDS = ['AZOTH', 'VAJRA', 'ELYSIAN', 'KETHER']
@@ -448,6 +455,9 @@ export function useVillage3D(containerRef, options = {}) {
   // Environment GLB objects (fountain, trees, bushes, etc.) for cleanup
   const environmentObjects = []
 
+  // InstancedMesh objects for batched vegetation (Phase 0A performance)
+  const instancedMeshes = []
+
   // External model loaders (singleton caches)
   const agentModels = useAgentModels()
   const villageModels = useVillageModels()
@@ -490,14 +500,14 @@ export function useVillage3D(containerRef, options = {}) {
 
     // --- Scene ---
     const scene = new THREE.Scene()
-    scene.fog = new THREE.FogExp2(0x0a0a14, 0.012)
+    scene.fog = new THREE.FogExp2(0x0a0a14, 0.008)
 
     // --- Sky dome (gradient background) ---
     _createSkyDome(scene)
     sceneRef.value = scene
 
     // --- Camera ---
-    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 500)
+    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 800)
     camera.position.copy(ORBIT_POSITION)
     camera.lookAt(ORBIT_TARGET)
     cameraRef.value = camera
@@ -530,7 +540,7 @@ export function useVillage3D(containerRef, options = {}) {
     controls.enableDamping = true
     controls.dampingFactor = 0.08
     controls.minDistance = 12
-    controls.maxDistance = 80
+    controls.maxDistance = 120
     controls.maxPolarAngle = Math.PI * 0.42
     controls.autoRotate = false
     controlsRef.value = controls
@@ -610,11 +620,11 @@ export function useVillage3D(containerRef, options = {}) {
       dirLight.shadow.mapSize.width = 1024
       dirLight.shadow.mapSize.height = 1024
       dirLight.shadow.camera.near = 0.5
-      dirLight.shadow.camera.far = 100
-      dirLight.shadow.camera.left = -35
-      dirLight.shadow.camera.right = 35
-      dirLight.shadow.camera.top = 35
-      dirLight.shadow.camera.bottom = -35
+      dirLight.shadow.camera.far = 150
+      dirLight.shadow.camera.left = -50
+      dirLight.shadow.camera.right = 50
+      dirLight.shadow.camera.top = 50
+      dirLight.shadow.camera.bottom = -50
     }
 
     scene.add(dirLight)
@@ -719,21 +729,34 @@ export function useVillage3D(containerRef, options = {}) {
   // =========================================================================
 
   function _createGround(scene) {
-    const geometry = new THREE.PlaneGeometry(80, 80, 16, 16)
-    geometry.rotateX(-Math.PI / 2)
-
-    const material = new THREE.MeshStandardMaterial({
+    // Inner ring (0-20): bright grass
+    const innerGeo = new THREE.PlaneGeometry(80, 80, 16, 16)
+    innerGeo.rotateX(-Math.PI / 2)
+    const innerMat = new THREE.MeshStandardMaterial({
       color: 0x1a2a15,
       roughness: 0.95,
       metalness: 0,
     })
+    const innerGround = new THREE.Mesh(innerGeo, innerMat)
+    innerGround.receiveShadow = true
+    innerGround.userData = { type: 'ground' }
+    scene.add(innerGround)
 
-    const ground = new THREE.Mesh(geometry, material)
-    ground.receiveShadow = true
-    ground.userData = { type: 'ground' }
-    scene.add(ground)
+    // Outer ring (40-80): darker wilderness extending to 160x160
+    const outerGeo = new THREE.PlaneGeometry(160, 160, 8, 8)
+    outerGeo.rotateX(-Math.PI / 2)
+    const outerMat = new THREE.MeshStandardMaterial({
+      color: 0x111e0e,
+      roughness: 1.0,
+      metalness: 0,
+    })
+    const outerGround = new THREE.Mesh(outerGeo, outerMat)
+    outerGround.position.y = -0.01 // Slightly below inner to avoid z-fighting
+    outerGround.receiveShadow = true
+    outerGround.userData = { type: 'ground' }
+    scene.add(outerGround)
 
-    // Subtle darker patches for variety
+    // Subtle darker patches across the full area
     const patchGeo = new THREE.PlaneGeometry(4, 4)
     patchGeo.rotateX(-Math.PI / 2)
     const patchMat = new THREE.MeshStandardMaterial({
@@ -744,15 +767,15 @@ export function useVillage3D(containerRef, options = {}) {
       opacity: 0.4,
     })
 
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 40; i++) {
       const patch = new THREE.Mesh(patchGeo, patchMat)
       patch.position.set(
-        (Math.random() - 0.5) * 70,
+        (Math.random() - 0.5) * 140,
         0.01,
-        (Math.random() - 0.5) * 70,
+        (Math.random() - 0.5) * 140,
       )
       patch.rotation.y = Math.random() * Math.PI
-      patch.scale.setScalar(0.5 + Math.random() * 1.5)
+      patch.scale.setScalar(0.5 + Math.random() * 2.0)
       patch.receiveShadow = true
       scene.add(patch)
     }
@@ -766,28 +789,55 @@ export function useVillage3D(containerRef, options = {}) {
     const centerPos = VILLAGE_LAYOUT.village_square.pos
     const pathMat = new THREE.MeshBasicMaterial({ color: 0x3d2b1f })
 
-    for (const [name, config] of Object.entries(VILLAGE_LAYOUT)) {
-      if (name === 'village_square') continue
-
-      const startX = centerPos[0]
-      const startZ = centerPos[2]
-      const endX = config.pos[0]
-      const endZ = config.pos[2]
-
-      const dx = endX - startX
-      const dz = endZ - startZ
+    // Helper: draw a single path segment between two points
+    function _drawPathSegment(x1, z1, x2, z2, width = 0.6) {
+      const dx = x2 - x1
+      const dz = z2 - z1
       const distance = Math.sqrt(dx * dx + dz * dz)
-      if (distance < 0.1) continue
-
-      const midX = (startX + endX) / 2
-      const midZ = (startZ + endZ) / 2
+      if (distance < 0.1) return
+      const midX = (x1 + x2) / 2
+      const midZ = (z1 + z2) / 2
       const angle = Math.atan2(dz, dx)
-
-      const pathGeo = new THREE.BoxGeometry(distance, 0.04, 0.6)
+      const pathGeo = new THREE.BoxGeometry(distance, 0.04, width)
       const path = new THREE.Mesh(pathGeo, pathMat)
       path.position.set(midX, 0.02, midZ)
       path.rotation.y = -angle
       scene.add(path)
+    }
+
+    // Inner ring zones: direct spoke paths from village_square
+    const outerZones = new Set(['arena', 'bazaar', 'apothecary', 'nexus_tower', 'mines', 'sanctum'])
+    for (const [name, config] of Object.entries(VILLAGE_LAYOUT)) {
+      if (name === 'village_square') continue
+      if (outerZones.has(name)) continue // Outer zones get branch paths below
+
+      _drawPathSegment(centerPos[0], centerPos[2], config.pos[0], config.pos[2])
+    }
+
+    // Outer ring zones: path from nearest inner zone (branch path)
+    const innerZoneNames = Object.keys(VILLAGE_LAYOUT).filter(n => !outerZones.has(n))
+    for (const outerName of outerZones) {
+      const outerPos = VILLAGE_LAYOUT[outerName].pos
+      // Find nearest inner zone
+      let nearestDist = Infinity
+      let nearestPos = centerPos
+      for (const innerName of innerZoneNames) {
+        const iPos = VILLAGE_LAYOUT[innerName].pos
+        const d = Math.hypot(outerPos[0] - iPos[0], outerPos[2] - iPos[2])
+        if (d < nearestDist) {
+          nearestDist = d
+          nearestPos = iPos
+        }
+      }
+      _drawPathSegment(nearestPos[0], nearestPos[2], outerPos[0], outerPos[2], 0.5)
+    }
+
+    // Ring road connecting outer zones (thin path)
+    const outerRing = ['arena', 'mines', 'apothecary', 'bazaar', 'sanctum', 'nexus_tower']
+    for (let i = 0; i < outerRing.length; i++) {
+      const a = VILLAGE_LAYOUT[outerRing[i]].pos
+      const b = VILLAGE_LAYOUT[outerRing[(i + 1) % outerRing.length]].pos
+      _drawPathSegment(a[0], a[2], b[0], b[2], 0.35)
     }
   }
 
@@ -836,6 +886,9 @@ export function useVillage3D(containerRef, options = {}) {
       ring.position.y = 0.05
       group.add(ring)
       zoneGlowRings.set(name, ring)
+
+      // Enable frustum culling on all children (Three.js skips Group by default)
+      group.traverse((c) => { c.frustumCulled = true })
 
       scene.add(group)
       zoneGroups.set(name, group)
@@ -1736,7 +1789,7 @@ export function useVillage3D(containerRef, options = {}) {
       portal_arch: '/models/village3d/portal_arch.glb',
     }
 
-    // --- Tree positions (outer ring, avoiding zone buildings) ---
+    // --- Tree positions: inner ring (avoiding zone buildings) ---
     const treePositionsBase = [
       [-8, 0, -14], [8, 0, -18], [-18, 0, -6], [18, 0, -8],
       [-18, 0, 5], [18, 0, 5], [-6, 0, 18], [8, 0, 18],
@@ -1745,35 +1798,63 @@ export function useVillage3D(containerRef, options = {}) {
     const treePositionsDesktop = [
       [0, 0, -20], [-20, 0, 0], [20, 0, 0], [0, 0, 20],
     ]
+    // Middle ring (20-40): denser forest
+    const treePositionsMiddle = [
+      [-30, 0, -10], [-28, 0, 12], [30, 0, -8], [28, 0, 14],
+      [-10, 0, -30], [12, 0, -28], [-10, 0, 30], [14, 0, 28],
+      [-26, 0, -22], [26, 0, -22], [-26, 0, 22], [26, 0, 22],
+      [-34, 0, 0], [34, 0, 0], [0, 0, -34], [0, 0, 34],
+      [-22, 0, -30], [22, 0, -30], [-22, 0, 30], [22, 0, 30],
+      [-32, 0, -18], [32, 0, 18], [-18, 0, 32], [18, 0, -32],
+    ]
+    // Outer ring (40-60): sparse wilderness
+    const treePositionsOuter = [
+      [-45, 0, -15], [45, 0, -15], [-45, 0, 15], [45, 0, 15],
+      [-15, 0, -45], [15, 0, -45], [-15, 0, 45], [15, 0, 45],
+    ]
     const treePositions = isMobile
       ? treePositionsBase.slice(0, 8)
-      : [...treePositionsBase, ...treePositionsDesktop]
+      : [...treePositionsBase, ...treePositionsDesktop, ...treePositionsMiddle, ...treePositionsOuter]
 
-    // --- Bush positions (near zone buildings, offset slightly) ---
+    // --- Bush positions: near zone buildings + middle ring ---
     const bushPositions = [
       [-10, 0, -7], [7, 0, -12], [16, 0, -5], [3, 0, 12],
       [-13, 0, -9], [11, 0, -14], [-9, 0, 10], [-13, 0, 14],
     ]
+    const bushPositionsMiddle = [
+      [-26, 0, -2], [26, 0, 2], [-2, 0, -26], [2, 0, 26],
+      [-22, 0, -18], [22, 0, -18], [-18, 0, 22], [18, 0, 22],
+      [-30, 0, 8], [30, 0, -8], [8, 0, 30], [-8, 0, -30],
+      [-24, 0, 6], [24, 0, -6], [6, 0, -24], [-6, 0, 24],
+    ]
     const bushPositionsFull = isMobile
       ? bushPositions.slice(0, 6)
-      : [...bushPositions, [15, 0, -10], [5, 0, 16], [-16, 0, 2], [-5, 0, -16]]
+      : [...bushPositions, [15, 0, -10], [5, 0, 16], [-16, 0, 2], [-5, 0, -16], ...bushPositionsMiddle]
 
-    // --- Fern positions (along paths and near Memory Garden) ---
+    // --- Fern positions: along paths + near Memory Garden + middle ring ---
     const fernPositions = [
       [3, 0, -10], [7, 0, -16], [-2, 0, -8], [9, 0, -11],
       [1, 0, -5], [-4, 0, -12],
     ]
+    const fernPositionsMiddle = [
+      [-22, 0, -12], [22, 0, 12], [-12, 0, 22], [12, 0, -22],
+      [-28, 0, 4], [28, 0, -4], [4, 0, 28], [-4, 0, -28],
+    ]
     const fernPositionsFull = isMobile
       ? fernPositions.slice(0, 4)
-      : [...fernPositions, [-7, 0, -10], [2, 0, -17], [6, 0, -8], [-1, 0, -14]]
+      : [...fernPositions, [-7, 0, -10], [2, 0, -17], [6, 0, -8], [-1, 0, -14], ...fernPositionsMiddle]
 
-    // --- Lantern positions (along main paths) ---
+    // --- Lantern positions (along main paths + outer ring road) ---
     const lanternPositions = [
       [-6, 0, -2], [7, 0, -7], [0, 0, 7], [6, 0, 3],
     ]
+    const lanternPositionsOuter = [
+      [-12, 0, 0], [12, 0, 0], [0, 0, -12], [0, 0, 12],
+      [-20, 0, -10], [20, 0, -10], [-10, 0, 20], [10, 0, 20],
+    ]
     const lanternPositionsFull = isMobile
       ? lanternPositions
-      : [...lanternPositions, [-7, 0, 6], [10, 0, -6]]
+      : [...lanternPositions, [-7, 0, 6], [10, 0, -6], ...lanternPositionsOuter]
 
     // Model cache for cloning (avoids loading each file multiple times)
     const modelCache = new Map()
@@ -1853,51 +1934,63 @@ export function useVillage3D(containerRef, options = {}) {
         _placeAsset(portalArch, bp[0], 0, bp[2], 3, Math.PI * 0.15)
       }
 
-      // 3. Trees - alternate between round and conifer
+      // --- Helper: create InstancedMesh from a GLB template ---
+      function _createInstancedVegetation(template, positions, baseScale, scaleRange, offsetRange) {
+        if (!template) return
+        // Find first mesh in the GLB scene graph
+        let srcGeo = null
+        let srcMat = null
+        template.traverse((child) => {
+          if (!srcGeo && child.isMesh) {
+            srcGeo = child.geometry
+            srcMat = child.material
+          }
+        })
+        if (!srcGeo || !srcMat) return
+
+        const count = positions.length
+        const mat = srcMat.clone()
+        const instanced = new THREE.InstancedMesh(srcGeo, mat, count)
+        instanced.castShadow = !isMobile
+        instanced.receiveShadow = true
+
+        const dummy = new THREE.Object3D()
+        for (let i = 0; i < count; i++) {
+          const [px, py, pz] = positions[i]
+          const ox = (Math.random() - 0.5) * offsetRange
+          const oz = (Math.random() - 0.5) * offsetRange
+          const s = baseScale + Math.random() * scaleRange
+          dummy.position.set(px + ox, py, pz + oz)
+          dummy.rotation.set(0, Math.random() * Math.PI * 2, 0)
+          dummy.scale.setScalar(s)
+          dummy.updateMatrix()
+          instanced.setMatrixAt(i, dummy.matrix)
+        }
+        instanced.instanceMatrix.needsUpdate = true
+
+        scene.add(instanced)
+        instancedMeshes.push(instanced)
+      }
+
+      // 3. Trees - two InstancedMesh (round + conifer), split positions evenly
       const treeRound = await _loadAsset('tree_round')
       const treeConifer = await _loadAsset('tree_conifer')
       if (!isInitialized.value) return
 
-      for (let i = 0; i < treePositions.length; i++) {
-        const [bx, by, bz] = treePositions[i]
-        // Small random offset for natural feel
-        const ox = (Math.random() - 0.5) * 2
-        const oz = (Math.random() - 0.5) * 2
-        const scaleVar = 0.8 + Math.random() * 0.4 // 0.8 - 1.2
-        const rotY = Math.random() * Math.PI * 2
+      const roundPositions = treePositions.filter((_, i) => i % 2 === 0)
+      const coniferPositions = treePositions.filter((_, i) => i % 2 !== 0)
+      _createInstancedVegetation(treeRound, roundPositions, 2.0, 1.0, 2)
+      _createInstancedVegetation(treeConifer, coniferPositions, 2.0, 1.0, 2)
 
-        const sourceModel = i % 2 === 0 ? treeRound : treeConifer
-        if (!sourceModel) continue
-        const clone = sourceModel.clone()
-        // Scale trees to ~4-6 units tall (base scale * variation)
-        _placeAsset(clone, bx + ox, by, bz + oz, scaleVar * 2.5, rotY)
-      }
-
-      // 4. Bushes
+      // 4. Bushes - single InstancedMesh
       const bushTemplate = await _loadAsset('bush')
       if (!isInitialized.value) return
+      _createInstancedVegetation(bushTemplate, bushPositionsFull, 1.0, 0.5, 1)
 
-      for (let i = 0; i < bushPositionsFull.length; i++) {
-        const [bx, by, bz] = bushPositionsFull[i]
-        if (!bushTemplate) break
-        const clone = bushTemplate.clone()
-        const scaleVar = 1.0 + Math.random() * 0.5 // 1.0 - 1.5
-        const rotY = Math.random() * Math.PI * 2
-        _placeAsset(clone, bx + (Math.random() - 0.5), by, bz + (Math.random() - 0.5), scaleVar, rotY)
-      }
-
-      // 5. Ferns
+      // 5. Ferns - single InstancedMesh
       const fernTemplate = await _loadAsset('fern')
       if (!isInitialized.value) return
-
-      for (let i = 0; i < fernPositionsFull.length; i++) {
-        const [fx, fy, fz] = fernPositionsFull[i]
-        if (!fernTemplate) break
-        const clone = fernTemplate.clone()
-        const scaleVar = 0.5 + Math.random() * 0.5 // 0.5 - 1.0
-        const rotY = Math.random() * Math.PI * 2
-        _placeAsset(clone, fx + (Math.random() - 0.5) * 0.5, fy, fz + (Math.random() - 0.5) * 0.5, scaleVar, rotY)
-      }
+      _createInstancedVegetation(fernTemplate, fernPositionsFull, 0.5, 0.5, 0.5)
 
       // 6. Lanterns
       const lanternTemplate = await _loadAsset('lantern')
@@ -2556,6 +2649,18 @@ export function useVillage3D(containerRef, options = {}) {
       })
     }
     environmentObjects.length = 0
+
+    // Dispose instanced vegetation meshes (Phase 0A)
+    for (const im of instancedMeshes) {
+      sceneRef.value?.remove(im)
+      im.geometry.dispose()
+      if (Array.isArray(im.material)) {
+        im.material.forEach((m) => m.dispose())
+      } else {
+        im.material.dispose()
+      }
+    }
+    instancedMeshes.length = 0
 
     // Dispose agents
     for (const agent of agents.values()) {

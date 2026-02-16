@@ -20,6 +20,13 @@ const ZONE_MODELS = {
   tavern: '/models/village/tavern.glb',
   market: '/models/village/market.glb',
   temple: '/models/village/temple.glb',
+  // Outer Ring Zones (Phase 1A)
+  arena: '/models/village/arena.glb',
+  bazaar: '/models/village/bazaar.glb',
+  apothecary: '/models/village/apothecary.glb',
+  nexus_tower: '/models/village/nexus_tower.glb',
+  mines: '/models/village/mines.glb',
+  sanctum: '/models/village/sanctum.glb',
 }
 
 // Singleton cache — shared across all component instances

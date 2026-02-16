@@ -144,6 +144,25 @@ TOOL_ZONE_MAP = {
     "sensorhead_classify": "sensor_tower",
     "sensorhead_pose": "sensor_tower",
     "sensorhead_status": "sensor_tower",
+
+    # ═══════════════════════════════════════════════════════════════
+    # OUTER RING ZONES (Phase 1A - Multiverse Expansion)
+    # ═══════════════════════════════════════════════════════════════
+    # Arena - Challenge/battle tools (future)
+    # Grand Bazaar - Trading/marketplace
+    "marketplace_list": "bazaar",
+    "marketplace_post": "bazaar",
+    "marketplace_buy": "bazaar",
+    "marketplace_search": "bazaar",
+    # Apothecary - Healing/synthesis tools (future)
+    # Nexus Tower - Portal/communication hub (future)
+    # Crystal Mines - AJ mining/earning
+    "aj_balance": "mines",
+    "aj_mine": "mines",
+    "aj_transfer": "mines",
+    # Inner Sanctum - Dream/meditation
+    "dream_enter": "sanctum",
+    "dream_interpret": "sanctum",
 }
 
 
