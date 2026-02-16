@@ -23,7 +23,7 @@ from app.models.multiverse import (
 )
 from app.models.apexjoule import ApexJouleBalance
 from app.models.user import User
-from app.services.village_events import VillageEventBroadcaster, VillageEventType
+from app.services.village_events import VillageEventBroadcaster, EventType
 
 logger = logging.getLogger("multiverse")
 
@@ -385,7 +385,7 @@ class MultiverseService:
 
         # Broadcast visitor_arrived to host's Village WS
         await VillageEventBroadcaster.broadcast_to_user(host_id, {
-            "type": VillageEventType.VISITOR_ARRIVED,
+            "type": EventType.VISITOR_ARRIVED,
             "visitor_id": str(visitor_id),
             "agent_id": agent_id,
             "portal_id": str(portal_id),
@@ -419,7 +419,7 @@ class MultiverseService:
 
         # Broadcast visitor_departed to host's Village WS
         await VillageEventBroadcaster.broadcast_to_user(visit.host_id, {
-            "type": VillageEventType.VISITOR_DEPARTED,
+            "type": EventType.VISITOR_DEPARTED,
             "visitor_id": str(visit.visitor_id),
             "visit_id": str(visit.id),
         })

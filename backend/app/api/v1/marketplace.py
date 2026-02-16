@@ -55,7 +55,7 @@ class RateRequest(BaseModel):
 async def browse_listings(
     search: Optional[str] = Query(default=None),
     tag: Optional[str] = Query(default=None),
-    sort: str = Query(default="newest", regex="^(newest|popular|cheapest|top_rated)$"),
+    sort: str = Query(default="newest", pattern="^(newest|popular|cheapest|top_rated)$"),
     limit: int = Query(default=20, le=50),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
