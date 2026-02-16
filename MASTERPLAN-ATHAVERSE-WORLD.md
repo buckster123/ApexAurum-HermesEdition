@@ -47,6 +47,7 @@
 | 9 | FPV Agent Mode — per-agent vision profiles, WASD, post-processing | b3a591c | +886 |
 | 10 | FPV Agent Interaction — proximity prompt, E-key chat, streaming bubbles | 7dd6d27 | +500 |
 | 12 | Day/Night Cycle — dynamic lighting, sky gradient, firefly/star modulation | 166deec | +265 |
+| 11 | Spatial Audio — zone ambients, TTS voices, FPV footsteps, volume | — | +320 |
 | 15 | Agent Autonomy — wandering, zone preferences, musings, agent dialogue | — | +235 |
 | E | Village as Interface — task dialog, tool execution from 3D | — | — |
 | F | Quest Engine — 25 milestones, feature gating, 6 API endpoints | — | — |
@@ -80,6 +81,7 @@
 | `frontend/src/composables/useFPVInteraction.js` | FPV agent chat — proximity, E-key, streaming bubbles, conversation continuity |
 | `frontend/src/composables/useVillageDayNight.js` | Day/night cycle — 4 phase presets, sky/lighting/fog interpolation |
 | `frontend/src/composables/useAgentAutonomy.js` | Agent autonomy — wandering, zone preferences, musings, interactions |
+| `frontend/src/composables/useVillageSoundscape.js` | Spatial audio — zone ambients, TTS agent voices, FPV footsteps |
 | `frontend/src/composables/useThreeScene.js` | Base Three.js scene lifecycle (used by Neural/other scenes) |
 | `frontend/src/composables/useAgentModels.js` | GLB loader singleton cache for agent avatars |
 | `frontend/src/composables/useVillageModels.js` | GLB loader singleton cache for zone buildings |
@@ -131,6 +133,7 @@
 | `frontend/public/models/village/` | 14 | Zone building GLBs (market, tavern, garden, etc.) |
 | `frontend/public/models/village3d/` | 8 | Props (fountain, portal_arch, trees, bushes, lantern, fire_pit) |
 | `frontend/public/models/neural/` | 4 | Neural space GLBs (crucible, helix, crystal, scythe) |
+| `frontend/public/audio/agents/` | 56 | Pre-generated TTS voice OGGs (musings + dialogue, Piper) |
 
 ### Stores (Pinia)
 

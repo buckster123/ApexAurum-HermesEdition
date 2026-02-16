@@ -1,7 +1,7 @@
 # Athaverse — Current Plan
 
 > Updated: 2026-02-16
-> **Phase 15 SHIPPED** (+235 lines)
+> **Phase 11 SHIPPED** (+320 lines, 56 TTS voice files)
 
 ---
 
@@ -23,6 +23,7 @@
 | 10 | FPV Agent Interaction — proximity prompt, E-key chat, streaming bubbles | Shipped (7dd6d27) |
 | 12 | Day/Night Cycle — dynamic lighting, sky gradient, firefly/star modulation | Shipped (166deec) |
 | 15 | Agent Autonomy — wandering, zone preferences, musings, agent-to-agent dialogue | Shipped |
+| 11 | Spatial Audio — zone ambients, TTS agent voices, FPV footsteps, volume control | Shipped |
 
 ---
 

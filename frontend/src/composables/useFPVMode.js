@@ -45,6 +45,8 @@ export function useFPVMode() {
   const velocity = new THREE.Vector3()
   const direction = new THREE.Vector3()
   let headBobPhase = 0
+  const isMoving = ref(false)
+  const isSprinting = ref(false)
 
   // Saved orbit state for return
   let savedCameraPos = null
@@ -165,6 +167,8 @@ export function useFPVMode() {
   function _cleanup() {
     keys.clear()
     headBobPhase = 0
+    isMoving.value = false
+    isSprinting.value = false
     interactionUnlock = false
     document.removeEventListener('keydown', _onKeyDown)
     document.removeEventListener('keyup', _onKeyUp)
@@ -219,7 +223,8 @@ export function useFPVMode() {
     if (!pointerControls.isLocked) return
 
     direction.set(0, 0, 0)
-    const isMoving = keys.has('KeyW') || keys.has('KeyA') || keys.has('KeyS') || keys.has('KeyD')
+    isMoving.value = keys.has('KeyW') || keys.has('KeyA') || keys.has('KeyS') || keys.has('KeyD')
+    isSprinting.value = keys.has('ShiftLeft') || keys.has('ShiftRight')
 
     if (keys.has('KeyW')) direction.z -= 1
     if (keys.has('KeyS')) direction.z += 1
@@ -231,7 +236,7 @@ export function useFPVMode() {
     }
 
     // Sprint with Shift
-    const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT_SPEED : MOVE_SPEED
+    const speed = isSprinting.value ? SPRINT_SPEED : MOVE_SPEED
 
     // Move relative to camera direction (horizontal plane only)
     const forward = new THREE.Vector3()
@@ -253,7 +258,7 @@ export function useFPVMode() {
     _camera.position.z = Math.max(-VILLAGE_BOUND, Math.min(VILLAGE_BOUND, _camera.position.z))
 
     // Head bob
-    if (isMoving) {
+    if (isMoving.value) {
       headBobPhase += dt * HEAD_BOB_SPEED * (speed / MOVE_SPEED)
       _camera.position.y = EYE_HEIGHT + Math.sin(headBobPhase) * HEAD_BOB_AMOUNT
     } else {
@@ -313,6 +318,8 @@ export function useFPVMode() {
     isFPV,
     isTransitioning,
     currentAgent,
+    isMoving,     // Phase 11: exposed for spatial audio footsteps
+    isSprinting,  // Phase 11: exposed for spatial audio footsteps
     init,
     enterFPV,
     exitFPV,

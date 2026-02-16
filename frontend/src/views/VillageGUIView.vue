@@ -385,6 +385,13 @@ function handleExitFPV() {
   village3dRef.value?.exitFPV()
 }
 
+// --- Spatial Audio (Phase 11) ---
+const villageSoundscape = computed(() => village3dRef.value?.soundscape)
+const villageVolume = computed({
+  get: () => villageSoundscape.value?.masterVolume?.value ?? 0.6,
+  set: (v) => villageSoundscape.value?.setVolume(v),
+})
+
 // --- FPV Interaction (Phase 10) ---
 const fpvInteraction = computed(() => village3dRef.value?.fpvInteraction)
 const fpvNearestAgent = computed(() => fpvInteraction.value?.nearestAgent?.value)

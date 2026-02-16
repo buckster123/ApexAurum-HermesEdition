@@ -26,6 +26,7 @@ import { useFPVMode } from '@/composables/useFPVMode'
 import { useFPVInteraction } from '@/composables/useFPVInteraction'
 import { useVillageDayNight } from '@/composables/useVillageDayNight'
 import { useAgentAutonomy } from '@/composables/useAgentAutonomy'
+import { useVillageSoundscape } from '@/composables/useVillageSoundscape'
 
 // Polyfill for roundRect (not available in all browsers)
 if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
@@ -485,6 +486,7 @@ export function useVillage3D(containerRef, options = {}) {
   const fpvInteraction = useFPVInteraction()
   const dayNight = useVillageDayNight()
   const agentAutonomy = useAgentAutonomy()
+  const soundscape = useVillageSoundscape()
 
   // Layout persistence
   const { loadLayout, saveLayout, resetLayout: resetDraggableLayout, hasCustomLayout } =
@@ -605,6 +607,19 @@ export function useVillage3D(containerRef, options = {}) {
 
     // --- Agent Autonomy (Phase 15) ---
     agentAutonomy.init(agents, showBubble, VILLAGE_LAYOUT)
+
+    // --- Spatial Audio (Phase 11) ---
+    soundscape.init(camera, scene, agents, VILLAGE_LAYOUT)
+    agentAutonomy.setAudioCallbacks(
+      (agentId, lineText, lineIndex) => {
+        const key = `musing_${agentId.toLowerCase()}_${lineIndex}`
+        soundscape.playAgentVoice(agentId, lineText, key)
+      },
+      (agentId, lineText, dialogueKey, lineIndex) => {
+        const key = `interaction_${dialogueKey.toLowerCase()}_${lineIndex}`
+        soundscape.playAgentVoice(agentId, lineText, key)
+      },
+    )
 
     // --- Apply saved layout if present ---
     const savedLayout = loadLayout()
@@ -2242,6 +2257,15 @@ export function useVillage3D(containerRef, options = {}) {
       fireflySystem.setOpacityMultiplier(dayNightResult.fireflyMultiplier)
     }
 
+    // --- Update spatial audio (Phase 11) ---
+    if (soundscape.audioReady.value) {
+      soundscape.update(dt, camera.position, {
+        isFPV: fpvMode.isFPV.value,
+        isMoving: fpvMode.isMoving.value,
+        isSprinting: fpvMode.isSprinting.value,
+      })
+    }
+
     // --- Update pedestal (H4) ---
     _updatePedestal(dt, elapsedTime)
 
@@ -2755,6 +2779,7 @@ export function useVillage3D(containerRef, options = {}) {
 
     // Dispose FPV + post-processing (Phase 9) + interaction (Phase 10)
     fpvInteraction.dispose()
+    soundscape.dispose()
     fpvMode.dispose()
     postProcessing.dispose()
     agentAutonomy.dispose()
@@ -3223,6 +3248,9 @@ export function useVillage3D(containerRef, options = {}) {
 
     // Agent Autonomy (Phase 15)
     agentAutonomy,
+
+    // Spatial Audio (Phase 11)
+    soundscape,
 
     // Internal refs (for advanced use / debugging)
     scene: sceneRef,

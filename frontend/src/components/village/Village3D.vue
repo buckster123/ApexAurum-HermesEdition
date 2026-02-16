@@ -114,6 +114,7 @@ const {
   fpvInteraction,
   dayNight,
   agentAutonomy,
+  soundscape,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -201,6 +202,8 @@ defineExpose({
   dayNight,
   // Agent Autonomy (Phase 15)
   agentAutonomy,
+  // Spatial Audio (Phase 11)
+  soundscape,
 })
 
 onMounted(() => {
@@ -344,6 +347,28 @@ watch(() => props.events, (newEvents) => {
       <span class="text-xs text-gray-300 font-mono">{{ Math.floor(dayNight.villageHour.value) }}:{{ String(Math.floor((dayNight.villageHour.value % 1) * 60)).padStart(2, '0') }}</span>
       <span class="text-xs text-gray-500">{{ dayNight.phaseName.value }}</span>
       <span v-if="dayNight.isPaused.value" class="text-xs text-yellow-400">||</span>
+    </div>
+
+    <!-- Volume control (Phase 11) -->
+    <div
+      v-if="isInitialized && soundscape"
+      class="absolute top-3 left-[21rem] flex items-center gap-1.5 bg-black/50 backdrop-blur rounded px-2.5 py-1.5 select-none"
+    >
+      <button
+        class="text-xs text-gray-400 hover:text-white transition-colors"
+        :title="soundscape.masterVolume.value > 0 ? 'Mute' : 'Unmute'"
+        @click="soundscape.setVolume(soundscape.masterVolume.value > 0 ? 0 : 0.6)"
+      >{{ soundscape.masterVolume.value > 0 ? '\u{1F50A}' : '\u{1F507}' }}</button>
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        :value="soundscape.masterVolume.value"
+        class="w-14 h-1 accent-amber-400 cursor-pointer"
+        title="Village Audio"
+        @input="soundscape.setVolume(parseFloat($event.target.value))"
+      />
     </div>
 
     <!-- Active zone indicator -->

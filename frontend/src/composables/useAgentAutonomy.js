@@ -120,6 +120,8 @@ export function useAgentAutonomy() {
   const _lastInteraction = new Map()
   let _isActive = false
   let _interactionCheckTimer = null
+  let _onMusing = null       // (agentId, lineText, lineIndex) => void
+  let _onInteraction = null  // (agentId, lineText, dialogueKey, lineIndex) => void
 
   // =========================================================================
   // INIT
@@ -191,8 +193,10 @@ export function useAgentAutonomy() {
         if (!_busyAgents.has(agentId) && _isActive) {
           const musings = AGENT_MUSINGS[agentId]
           if (musings) {
-            const line = musings[Math.floor(Math.random() * musings.length)]
+            const lineIndex = Math.floor(Math.random() * musings.length)
+            const line = musings[lineIndex]
             _showBubble(agentId, line, 'info', MUSING_DURATION)
+            _onMusing?.(agentId, line, lineIndex)
           }
         }
       }, estimatedWalkMs + 1000)
@@ -252,18 +256,22 @@ export function useAgentAutonomy() {
 
     _lastInteraction.set(pairKey, now)
 
-    const exchange = dialogues[Math.floor(Math.random() * dialogues.length)]
+    const exchIdx = Math.floor(Math.random() * dialogues.length)
+    const exchange = dialogues[exchIdx]
     const isReversed = !AGENT_INTERACTIONS[key1]
     const initiator = isReversed ? agentB : agentA
     const responder = isReversed ? agentA : agentB
+    const dialogueKey = isReversed ? key2 : key1
 
     // Initiator speaks first
     _showBubble(initiator, exchange[0], 'info', INTERACTION_DURATION)
+    _onInteraction?.(initiator, exchange[0], dialogueKey, exchIdx * 2)
 
     // Responder speaks after delay
     const tid = setTimeout(() => {
       if (_isActive && !_busyAgents.has(responder)) {
         _showBubble(responder, exchange[1], 'info', INTERACTION_DURATION)
+        _onInteraction?.(responder, exchange[1], dialogueKey, exchIdx * 2 + 1)
       }
     }, RESPONSE_DELAY)
     _wanderTimers.push(tid)
@@ -285,6 +293,15 @@ export function useAgentAutonomy() {
   }
 
   // =========================================================================
+  // AUDIO CALLBACKS (Phase 11)
+  // =========================================================================
+
+  function setAudioCallbacks(onMusing, onInteraction) {
+    _onMusing = onMusing
+    _onInteraction = onInteraction
+  }
+
+  // =========================================================================
   // DISPOSE
   // =========================================================================
 
@@ -300,6 +317,8 @@ export function useAgentAutonomy() {
 
     _busyAgents.clear()
     _lastInteraction.clear()
+    _onMusing = null
+    _onInteraction = null
     _agents = null
     _showBubble = null
   }
@@ -309,5 +328,6 @@ export function useAgentAutonomy() {
     dispose,
     pauseAgent,
     resumeAgent,
+    setAudioCallbacks,
   }
 }
