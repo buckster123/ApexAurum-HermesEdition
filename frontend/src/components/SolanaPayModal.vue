@@ -132,6 +132,11 @@ function handleClose() {
   wallet.disconnect()
   emit('close')
 }
+
+function tryAgain() {
+  // Reset payment state but keep wallet connected for retry
+  solana.dismiss()
+}
 </script>
 
 <template>
@@ -356,7 +361,7 @@ function handleClose() {
             <!-- Expired / Failed -->
             <template v-if="solana.currentPayment?.status === 'expired' || solana.currentPayment?.status === 'failed'">
               <button
-                @click="solana.dismiss()"
+                @click="tryAgain"
                 class="w-full py-2 rounded-lg border border-gray-700 text-gray-300 text-sm hover:border-gray-500 transition-all"
               >
                 Try Again

@@ -92,7 +92,22 @@ export const useSolanaStore = defineStore('solana', () => {
 
   function startPolling(reference) {
     stopPolling()
+    let pollCount = 0
+    const MAX_POLLS = 600 // 30 min at 3s intervals
+
     pollInterval.value = setInterval(async () => {
+      pollCount++
+
+      // Client-side expiry failsafe
+      if (pollCount > MAX_POLLS) {
+        console.warn('[Solana] Poll timeout — stopping after 30 min')
+        if (currentPayment.value) {
+          currentPayment.value = { ...currentPayment.value, status: 'expired' }
+        }
+        stopPolling()
+        return
+      }
+
       try {
         const res = await api.get(`/api/v1/solana/check-payment/${reference}`)
         const data = res.data

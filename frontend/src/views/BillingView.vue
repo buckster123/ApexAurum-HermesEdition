@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useBillingStore } from '@/stores/billing'
 import { useAuthStore } from '@/stores/auth'
+import SolanaPayModal from '@/components/SolanaPayModal.vue'
 import api from '@/services/api'
 
 const route = useRoute()
@@ -16,6 +17,7 @@ const checkoutError = ref(null)
 const couponCode = ref('')
 const couponMessage = ref(null)
 const selectedResource = ref('opus_messages')
+const showBuyAJ = ref(false)
 
 // Split tiers by type
 const classicTiers = computed(() =>
@@ -83,17 +85,31 @@ async function selectPlan(tierId) {
 
 const AJ_TIER_PRICES = { seeker: 8000, adept: 24000, opus: 80000, azothic: 240000 }
 
+const ajSubError = ref(null) // { message, needsAJ, tierPrice }
+
 async function subscribeWithAJ(tierId) {
   if (!AJ_TIER_PRICES[tierId]) return
   loadingAction.value = `aj-${tierId}`
+  ajSubError.value = null
   try {
     const { data } = await api.post('/api/v1/billing/subscribe-with-aj', { tier: tierId })
     checkoutError.value = null
     alert(data.message || `Subscribed to ${tierId} with AJ!`)
     await billing.fetchStatus()
   } catch (e) {
-    checkoutError.value = e.response?.data?.detail || 'AJ subscription failed.'
-    setTimeout(() => checkoutError.value = null, 5000)
+    const status = e.response?.status
+    const detail = e.response?.data?.detail || 'AJ subscription failed.'
+    if (status === 402) {
+      // Insufficient balance — show helpful message with buy link
+      ajSubError.value = {
+        message: detail,
+        needsAJ: true,
+        tierPrice: AJ_TIER_PRICES[tierId],
+      }
+    } else {
+      checkoutError.value = detail
+      setTimeout(() => checkoutError.value = null, 5000)
+    }
   } finally {
     loadingAction.value = null
   }
@@ -339,6 +355,28 @@ function formatDate(dateStr) {
     <div v-if="checkoutError" class="mb-4 p-3 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm">
       {{ checkoutError }}
     </div>
+
+    <!-- Insufficient AJ Banner (with Buy AJ action) -->
+    <div v-if="ajSubError" class="mb-4 p-4 rounded-lg bg-gold/10 border border-gold/30">
+      <p class="text-sm text-gold mb-2">{{ ajSubError.message }}</p>
+      <div class="flex items-center gap-3">
+        <button
+          @click="showBuyAJ = true; ajSubError = null"
+          class="px-4 py-2 rounded-lg bg-gold/20 border border-gold/40 text-gold text-sm font-medium hover:bg-gold/30 transition-all"
+        >
+          Buy AJ with Crypto
+        </button>
+        <button
+          @click="ajSubError = null"
+          class="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
+
+    <!-- Solana Pay Modal -->
+    <SolanaPayModal v-if="showBuyAJ" @close="showBuyAJ = false" />
 
     <!-- Plans Tab -->
     <div v-if="activeTab === 'plans'">

@@ -45,6 +45,8 @@ class CreatePaymentResponse(BaseModel):
     usd_equivalent: float
     status: str
     expires_at: str
+    recipient_address: Optional[str] = None
+    blockhash: Optional[str] = None
 
 
 class CheckPaymentResponse(BaseModel):
