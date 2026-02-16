@@ -3047,6 +3047,65 @@ async def pocket_aj_activate_citizen(
     }
 
 
+@router.post("/aj/subscribe")
+async def pocket_aj_subscribe(
+    request: Request,
+    device_and_user: tuple = Depends(get_device_and_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Subscribe to a tier by paying with AJ credits (mobile)."""
+    device, user = device_and_user
+
+    from app.models.billing import Subscription
+    from app.services.apexjoule.constants import AJ_TIER_PRICES
+    from datetime import datetime, timedelta
+
+    body = await request.json()
+    tier = body.get("tier")
+
+    if tier not in AJ_TIER_PRICES:
+        raise HTTPException(status_code=400, detail=f"Invalid tier. Choose from: {list(AJ_TIER_PRICES.keys())}")
+
+    price = AJ_TIER_PRICES[tier]
+    tier_config = TIER_LIMITS.get(tier)
+    if not tier_config:
+        raise HTTPException(status_code=400, detail="Tier not found")
+
+    result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
+    subscription = result.scalar_one_or_none()
+    if not subscription:
+        raise HTTPException(status_code=404, detail="No subscription found")
+
+    ledger = AJLedger(db)
+    success = await ledger.debit(
+        user_id=user.id, entity_id=None, amount=float(price),
+        tx_type="subscription", reason=f"AJ subscription: {tier}",
+    )
+    if not success:
+        raise HTTPException(status_code=402, detail=f"Insufficient AJ balance. Need {price:,} AJ.")
+
+    now = datetime.utcnow()
+    subscription.tier = tier
+    subscription.status = "active"
+    subscription.payment_method = "aj"
+    subscription.messages_limit = tier_config.get("messages_per_month", 200)
+    subscription.messages_used = 0
+    subscription.current_period_start = now
+    subscription.current_period_end = now + timedelta(days=30)
+
+    await db.commit()
+    logger.info(f"Pocket: User {user.id} subscribed to {tier} via AJ ({price} AJ)")
+
+    return {
+        "success": True,
+        "tier": tier,
+        "aj_spent": price,
+        "messages_limit": subscription.messages_limit,
+        "period_end": subscription.current_period_end.isoformat(),
+        "message": f"Subscribed to {tier.title()} with {price:,} AJ!",
+    }
+
+
 @router.get("/aj/marketplace")
 async def pocket_aj_marketplace(
     search: Optional[str] = Query(default=None),

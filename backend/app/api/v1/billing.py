@@ -390,6 +390,80 @@ async def activate_citizen(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# AJ TIER SUBSCRIPTION (Pay for tiers with AJ)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/subscribe-with-aj")
+async def subscribe_with_aj(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Subscribe to a tier by paying with AJ credits instead of Stripe."""
+    from app.models.billing import Subscription
+    from app.services.apexjoule.ledger import AJLedger
+    from app.services.apexjoule.constants import AJ_TIER_PRICES
+
+    body = await request.json()
+    tier = body.get("tier")
+
+    if tier not in AJ_TIER_PRICES:
+        raise HTTPException(status_code=400, detail=f"Invalid tier. Choose from: {list(AJ_TIER_PRICES.keys())}")
+
+    price = AJ_TIER_PRICES[tier]
+    tier_config = TIER_LIMITS.get(tier)
+    if not tier_config:
+        raise HTTPException(status_code=400, detail="Tier configuration not found")
+
+    # Get subscription
+    result = await db.execute(
+        select(Subscription).where(Subscription.user_id == user.id)
+    )
+    subscription = result.scalar_one_or_none()
+    if not subscription:
+        raise HTTPException(status_code=404, detail="No subscription found")
+
+    # Debit AJ from user wallet
+    ledger = AJLedger(db)
+    success = await ledger.debit(
+        user_id=user.id,
+        entity_id=None,  # User wallet
+        amount=float(price),
+        tx_type="subscription",
+        reason=f"AJ subscription: {tier} tier",
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Insufficient AJ balance. You need {price:,} AJ for {tier.title()} tier.",
+        )
+
+    # Activate the subscription
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    subscription.tier = tier
+    subscription.status = "active"
+    subscription.payment_method = "aj"
+    subscription.messages_limit = tier_config.get("messages_per_month", 200)
+    subscription.messages_used = 0
+    subscription.current_period_start = now
+    subscription.current_period_end = now + timedelta(days=30)
+
+    await db.commit()
+    logger.info(f"User {user.id} subscribed to {tier} via AJ ({price} AJ)")
+
+    return {
+        "success": True,
+        "tier": tier,
+        "aj_spent": price,
+        "messages_limit": subscription.messages_limit,
+        "period_end": subscription.current_period_end.isoformat() if subscription.current_period_end else None,
+        "message": f"Subscribed to {tier.title()} tier with {price:,} AJ! Valid for 30 days.",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # CREDIT TRANSACTIONS (Audit Log)
 # ═══════════════════════════════════════════════════════════════════════════════
 

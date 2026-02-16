@@ -58,6 +58,9 @@ class Subscription(Base):
     cancel_at_period_end: Mapped[bool] = mapped_column(Boolean, default=False)
     trial_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Payment method: "stripe" (default), "aj" (paid with AJ), "coupon"
+    payment_method: Mapped[str] = mapped_column(String(20), default="stripe")
+
     # Usage tracking (reset each billing period)
     messages_used: Mapped[int] = mapped_column(Integer, default=0)
     messages_limit: Mapped[int] = mapped_column(Integer, default=50)  # Based on tier

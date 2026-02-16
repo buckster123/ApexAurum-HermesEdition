@@ -620,6 +620,8 @@ async def init_db():
             "UPDATE subscriptions SET tier = 'adept' WHERE tier = 'opus';",
             # Add trial_end column
             "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS trial_end TIMESTAMP WITH TIME ZONE;",
+            # Add payment_method column (stripe/aj/coupon)
+            "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20) DEFAULT 'stripe';",
             # ═══════════════════════════════════════════════════════════════════════
             # v106: Feature Credit Packs table
             # ═══════════════════════════════════════════════════════════════════════

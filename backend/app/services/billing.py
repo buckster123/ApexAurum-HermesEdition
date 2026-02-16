@@ -312,6 +312,43 @@ class BillingService:
         3. Return (allowed, reason)
         """
         subscription = await self.get_or_create_subscription(user_id)
+
+        # AJ subscription lazy renewal check
+        if (
+            getattr(subscription, "payment_method", "stripe") == "aj"
+            and subscription.current_period_end
+            and datetime.now(tz.utc) > subscription.current_period_end
+        ):
+            try:
+                from app.services.apexjoule.ledger import AJLedger
+                from app.services.apexjoule.constants import AJ_TIER_PRICES, AJ_SUBSCRIPTION_GRACE_DAYS
+
+                grace_end = subscription.current_period_end + timedelta(days=AJ_SUBSCRIPTION_GRACE_DAYS)
+                if datetime.now(tz.utc) < grace_end:
+                    # Within grace period — attempt auto-renewal
+                    price = AJ_TIER_PRICES.get(subscription.tier, 0)
+                    if price:
+                        ledger = AJLedger(self.db)
+                        renewed = await ledger.debit(
+                            user_id=user_id, entity_id=None, amount=float(price),
+                            tx_type="subscription_renewal",
+                            reason=f"Auto-renewal: {subscription.tier} tier",
+                        )
+                        if renewed:
+                            subscription.current_period_end = subscription.current_period_end + timedelta(days=30)
+                            subscription.messages_used = 0
+                            await self.db.commit()
+                            logger.info(f"AJ subscription auto-renewed for user {user_id} ({subscription.tier})")
+                else:
+                    # Past grace period — downgrade to aj_citizen
+                    subscription.tier = "aj_citizen"
+                    subscription.messages_limit = 0
+                    subscription.payment_method = "aj"
+                    await self.db.commit()
+                    logger.info(f"AJ subscription expired for user {user_id}, downgraded to aj_citizen")
+            except Exception as e:
+                logger.warning(f"AJ renewal check failed: {e}")
+
         tier_config = TIER_LIMITS.get(subscription.tier, TIER_LIMITS["free_trial"])
 
         # Check subscription status

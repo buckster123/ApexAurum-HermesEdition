@@ -180,3 +180,17 @@ AJ_SHOP_PRICES = {
     "agent_spawn": 20,
     "pac_mode_day": 100,
 }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AJ Tier Subscription Prices (20% discount vs Stripe at AJ_PER_USD=1000)
+# Users can subscribe to any tier by paying with AJ instead of Stripe
+# ═══════════════════════════════════════════════════════════════════════════════
+
+AJ_TIER_PRICES = {
+    "seeker": 8_000,      # $10/mo → 10k AJ → 8k discounted
+    "adept": 24_000,      # $30/mo → 30k AJ → 24k discounted
+    "opus": 80_000,       # $100/mo → 100k AJ → 80k discounted
+    "azothic": 240_000,   # $300/mo → 300k AJ → 240k discounted
+}
+
+AJ_SUBSCRIPTION_GRACE_DAYS = 3  # Days past expiry before downgrade

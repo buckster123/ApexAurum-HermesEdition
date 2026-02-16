@@ -81,6 +81,24 @@ async function selectPlan(tierId) {
 }
 
 
+const AJ_TIER_PRICES = { seeker: 8000, adept: 24000, opus: 80000, azothic: 240000 }
+
+async function subscribeWithAJ(tierId) {
+  if (!AJ_TIER_PRICES[tierId]) return
+  loadingAction.value = `aj-${tierId}`
+  try {
+    const { data } = await api.post('/billing/subscribe-with-aj', { tier: tierId })
+    checkoutError.value = null
+    alert(data.message || `Subscribed to ${tierId} with AJ!`)
+    await billing.fetchStatus()
+  } catch (e) {
+    checkoutError.value = e.response?.data?.detail || 'AJ subscription failed.'
+    setTimeout(() => checkoutError.value = null, 5000)
+  } finally {
+    loadingAction.value = null
+  }
+}
+
 async function manageSubscription() {
   loadingAction.value = 'portal'
   try {
@@ -466,6 +484,16 @@ function formatDate(dateStr) {
                   ? 'Free Trial'
                   : `Upgrade to ${tier.name}`
           }}
+        </button>
+
+        <!-- Pay with AJ button -->
+        <button
+          v-if="AJ_TIER_PRICES[tier.id] && effectiveTierId !== tier.id"
+          @click="subscribeWithAJ(tier.id)"
+          :disabled="loadingAction === `aj-${tier.id}`"
+          class="w-full mt-2 py-2 rounded-lg text-sm font-medium transition-all bg-transparent border border-gold/30 text-gold hover:bg-gold/10"
+        >
+          {{ loadingAction === `aj-${tier.id}` ? 'Processing...' : `Pay with ${AJ_TIER_PRICES[tier.id].toLocaleString()} AJ` }}
         </button>
       </div>
       </div>
