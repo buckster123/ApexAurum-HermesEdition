@@ -22,15 +22,15 @@ function closeMobileMenu() {
 
 <template>
   <nav class="fixed top-0 left-0 right-0 h-16 bg-apex-dark/80 backdrop-blur-lg border-b border-apex-border z-50">
-    <div class="px-4 sm:px-6 h-full flex items-center justify-between">
-      <!-- Logo -->
-      <router-link to="/chat" class="flex items-center gap-2 mr-4 shrink-0">
+    <div class="px-4 sm:px-6 h-full flex items-center">
+      <!-- Logo (fixed-width left bookend) -->
+      <router-link to="/chat" class="flex items-center gap-2 shrink-0 w-32 lg:w-40">
         <span class="text-2xl font-serif font-bold text-gold">Au</span>
         <span class="hidden lg:inline text-base font-medium">ApexAurum</span>
       </router-link>
 
-      <!-- Desktop Navigation -->
-      <div class="hidden md:flex items-center gap-3 lg:gap-4 text-sm">
+      <!-- Desktop Navigation (centered) -->
+      <div class="hidden md:flex flex-1 items-center justify-center gap-3 lg:gap-4 text-sm">
         <router-link
           to="/chat"
           class="text-gray-400 hover:text-white transition-colors"
@@ -145,8 +145,8 @@ function closeMobileMenu() {
         </router-link>
       </div>
 
-      <!-- AJ Wallet Badge -->
-      <AJWalletBadge v-if="auth.isAuthenticated" class="hidden md:flex ml-auto mr-3 shrink-0" />
+      <!-- AJ Wallet Badge (right bookend) -->
+      <AJWalletBadge v-if="auth.isAuthenticated" class="hidden md:flex mr-3 shrink-0" />
 
       <!-- Desktop User Menu -->
       <div class="hidden md:flex items-center gap-4">

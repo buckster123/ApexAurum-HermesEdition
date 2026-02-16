@@ -1,7 +1,7 @@
 # Athaverse — Current Plan
 
 > Updated: 2026-02-16
-> **Active: Phase 9 — FPV Agent Mode**
+> **Phase 9 SHIPPED** (b3a591c, +886 lines)
 
 ---
 
@@ -19,6 +19,7 @@
 | F | Quest Engine — 25 milestones, feature gating, 6 API endpoints | Shipped |
 | G | Guided Path — locked visuals, QuestHUD, unlock ceremonies, tutorial | Shipped |
 | H | Grand Prizes — achievement gallery, Agora badges, 3D pedestal, share cards | Shipped |
+| 9 | FPV Agent Mode — per-agent vision, PointerLock WASD, post-processing profiles | Shipped (b3a591c) |
 
 ---
 

@@ -23,6 +23,7 @@ from app.models.multiverse import (
 )
 from app.models.apexjoule import ApexJouleBalance
 from app.models.user import User
+from app.services.village_events import VillageEventBroadcaster, VillageEventType
 
 logger = logging.getLogger("multiverse")
 
@@ -382,6 +383,14 @@ class MultiverseService:
             host_profile.total_visits += 1
             host_profile.total_aj_earned += toll - (toll * TOLL_PLATFORM_FEE) if toll > 0 else Decimal("0")
 
+        # Broadcast visitor_arrived to host's Village WS
+        await VillageEventBroadcaster.broadcast_to_user(host_id, {
+            "type": VillageEventType.VISITOR_ARRIVED,
+            "visitor_id": str(visitor_id),
+            "agent_id": agent_id,
+            "portal_id": str(portal_id),
+        })
+
         return {
             "visit_id": str(visit.id),
             "host_id": str(host_id),
@@ -407,6 +416,13 @@ class MultiverseService:
         visit.status = "ended"
         visit.ended_at = datetime.utcnow()
         await self.db.flush()
+
+        # Broadcast visitor_departed to host's Village WS
+        await VillageEventBroadcaster.broadcast_to_user(visit.host_id, {
+            "type": VillageEventType.VISITOR_DEPARTED,
+            "visitor_id": str(visit.visitor_id),
+            "visit_id": str(visit.id),
+        })
 
         return {"visit_id": str(visit.id), "status": "ended"}
 
@@ -570,6 +586,28 @@ class MultiverseService:
             )
         )
         return result.scalar_one_or_none() is not None
+
+    # ──────────────────────────────────────────────
+    # Visit Timeout Cleanup
+    # ──────────────────────────────────────────────
+
+    async def cleanup_stale_visits(self) -> int:
+        """End visits that exceed VISIT_TIMEOUT_HOURS. Returns count of cleaned visits."""
+        cutoff = datetime.utcnow() - timedelta(hours=VISIT_TIMEOUT_HOURS)
+        result = await self.db.execute(
+            select(PortalVisit).where(
+                PortalVisit.status == "active",
+                PortalVisit.started_at < cutoff,
+            )
+        )
+        stale = result.scalars().all()
+        for visit in stale:
+            visit.status = "ended"
+            visit.ended_at = datetime.utcnow()
+        if stale:
+            await self.db.flush()
+            logging.info(f"[Multiverse] Cleaned up {len(stale)} stale visits (>{VISIT_TIMEOUT_HOURS}h)")
+        return len(stale)
 
     # ──────────────────────────────────────────────
     # Multiverse Economy (Phase 6)

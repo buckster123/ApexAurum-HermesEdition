@@ -641,7 +641,9 @@ function clearCompleted() {
 
 function handleTaskClick(task) {
   playTone(550, 0.03, 'sine', 0.05)
-  // Could focus on agent in view
+  if (viewMode.value === '3d' && village3dRef.value && task.agents?.[0]) {
+    village3dRef.value.triggerBubble(task.agents[0], task.prompt?.slice(0, 80) || 'Working...', 'info', 4)
+  }
 }
 
 function handleWebGLError(error) {
