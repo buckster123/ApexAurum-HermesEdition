@@ -152,6 +152,9 @@ class SolanaPaymentService:
 
         expires_at = payment.created_at + timedelta(minutes=PAYMENT_EXPIRY_MINUTES)
 
+        # Fetch blockhash for frontend wallet tx building (avoids frontend RPC calls)
+        blockhash = await self.client.get_latest_blockhash()
+
         return {
             "reference": reference,
             "solana_url": solana_url,
@@ -161,6 +164,8 @@ class SolanaPaymentService:
             "usd_equivalent": float(amount_usd),
             "status": "pending",
             "expires_at": expires_at.isoformat(),
+            "recipient_address": recipient,
+            "blockhash": blockhash,
         }
 
     async def check_payment(self, reference: str) -> dict:

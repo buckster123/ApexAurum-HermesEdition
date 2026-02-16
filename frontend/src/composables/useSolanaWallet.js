@@ -78,10 +78,10 @@ export function useSolanaWallet() {
    * @param {string} opts.reference - Base58 reference pubkey for Solana Pay discovery
    * @param {string} opts.token - "SOL" or "USDC"
    * @param {string} opts.usdcMint - USDC mint address (base58)
-   * @param {string} opts.rpcUrl - Solana RPC URL
+   * @param {string} opts.blockhash - Recent blockhash from backend (avoids frontend RPC calls)
    * @returns {{ signature: string } | null}
    */
-  async function sendPayment({ recipient, amount, reference, token, usdcMint, rpcUrl }) {
+  async function sendPayment({ recipient, amount, reference, token, usdcMint, blockhash }) {
     const provider = getProvider()
     if (!provider || !connected.value) {
       error.value = 'Wallet not connected'
@@ -92,9 +92,8 @@ export function useSolanaWallet() {
 
     try {
       const web3 = await getWeb3()
-      const { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } = web3
+      const { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } = web3
 
-      const connection = new Connection(rpcUrl, 'confirmed')
       const fromPubkey = new PublicKey(walletAddress.value)
       const toPubkey = new PublicKey(recipient)
       const referencePubkey = new PublicKey(reference)
@@ -154,8 +153,7 @@ export function useSolanaWallet() {
         isWritable: false,
       })
 
-      // Get recent blockhash and sign
-      const { blockhash } = await connection.getLatestBlockhash('confirmed')
+      // Use backend-provided blockhash (no frontend RPC call needed)
       transaction.recentBlockhash = blockhash
       transaction.feePayer = fromPubkey
 

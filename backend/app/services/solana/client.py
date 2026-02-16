@@ -80,6 +80,17 @@ class SolanaClient:
             logger.debug(f"No signatures found for reference {reference_pubkey}: {e}")
             return []
 
+    async def get_latest_blockhash(self) -> Optional[str]:
+        """Get a recent blockhash for transaction building."""
+        try:
+            result = await self._rpc_call("getLatestBlockhash", [
+                {"commitment": "confirmed"},
+            ])
+            return result.get("value", {}).get("blockhash")
+        except SolanaRPCError as e:
+            logger.warning(f"getLatestBlockhash failed: {e}")
+            return None
+
     async def get_sol_price_usd(self) -> Optional[Decimal]:
         """Get current SOL/USD price from CoinGecko. Cached 5 min."""
         now = time.time()
