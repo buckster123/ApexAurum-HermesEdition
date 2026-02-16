@@ -36,6 +36,10 @@ export function useFPVMode() {
   let _camera = null
   let _renderer = null
 
+  // Interaction — prevents unlock from triggering FPV exit during chat
+  let interactionUnlock = false
+  let _onInteractionCallback = null
+
   // Movement
   const keys = new Set()
   const velocity = new THREE.Vector3()
@@ -56,6 +60,11 @@ export function useFPVMode() {
 
   function _onKeyDown(e) {
     if (!isFPV.value) return
+    // E key triggers interaction callback instead of movement
+    if (e.code === 'KeyE' && _onInteractionCallback) {
+      _onInteractionCallback()
+      return
+    }
     keys.add(e.code)
   }
 
@@ -74,6 +83,7 @@ export function useFPVMode() {
     pointerControls = new PointerLockControls(camera, renderer.domElement)
 
     pointerControls.addEventListener('unlock', () => {
+      if (interactionUnlock) return // Unlocked for chat interaction, don't exit
       // Browser ESC or focus loss — gracefully exit FPV
       if (isFPV.value && !isTransitioning.value) {
         _beginExit()
@@ -155,6 +165,7 @@ export function useFPVMode() {
   function _cleanup() {
     keys.clear()
     headBobPhase = 0
+    interactionUnlock = false
     document.removeEventListener('keydown', _onKeyDown)
     document.removeEventListener('keyup', _onKeyUp)
 
@@ -253,6 +264,31 @@ export function useFPVMode() {
   }
 
   // -------------------------------------------------------------------------
+  // INTERACTION SUPPORT (Phase 10)
+  // -------------------------------------------------------------------------
+
+  function setInteractionCallback(cb) {
+    _onInteractionCallback = cb
+  }
+
+  function unlockForInteraction() {
+    if (!pointerControls?.isLocked) return
+    interactionUnlock = true
+    pointerControls.unlock()
+  }
+
+  function relockAfterInteraction() {
+    interactionUnlock = false
+    if (isFPV.value && pointerControls && !pointerControls.isLocked) {
+      try {
+        pointerControls.lock()
+      } catch {
+        // Browser may reject lock outside user gesture — handled by UI
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // DISPOSE
   // -------------------------------------------------------------------------
 
@@ -282,5 +318,9 @@ export function useFPVMode() {
     exitFPV,
     update,
     dispose,
+    // Interaction support (Phase 10)
+    setInteractionCallback,
+    unlockForInteraction,
+    relockAfterInteraction,
   }
 }

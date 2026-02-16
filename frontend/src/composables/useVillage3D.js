@@ -23,6 +23,7 @@ import { useDraggableZones } from '@/composables/useDraggableZones'
 import { useDistrictManager } from '@/composables/useDistrictManager'
 import { useVillagePostProcessing } from '@/composables/useVillagePostProcessing'
 import { useFPVMode } from '@/composables/useFPVMode'
+import { useFPVInteraction } from '@/composables/useFPVInteraction'
 
 // Polyfill for roundRect (not available in all browsers)
 if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
@@ -475,6 +476,7 @@ export function useVillage3D(containerRef, options = {}) {
   // FPV mode + post-processing (Phase 9)
   const postProcessing = useVillagePostProcessing()
   const fpvMode = useFPVMode()
+  const fpvInteraction = useFPVInteraction()
 
   // Layout persistence
   const { loadLayout, saveLayout, resetLayout: resetDraggableLayout, hasCustomLayout } =
@@ -615,6 +617,10 @@ export function useVillage3D(containerRef, options = {}) {
     // --- FPV + Post-Processing (Phase 9) ---
     postProcessing.init(renderer, scene, camera)
     fpvMode.init(renderer, camera)
+
+    // --- FPV Interaction (Phase 10) ---
+    fpvInteraction.init(camera, renderer, agents, fpvMode)
+    fpvMode.setInteractionCallback(() => fpvInteraction.beginInteraction())
 
     isInitialized.value = true
 
@@ -2216,6 +2222,10 @@ export function useVillage3D(containerRef, options = {}) {
     if (fpvMode.isFPV.value) {
       // FPV mode: PointerLockControls handles camera rotation, we handle movement
       fpvMode.update(dt)
+      // Phase 10: Proximity detection + streaming bubble + soft-lock
+      fpvInteraction.updateProximity()
+      fpvInteraction.updateBubbleScreenPos()
+      fpvInteraction.applySoftLock(dt)
     } else {
       // Orbit mode: standard OrbitControls
       controls.update()
@@ -2713,7 +2723,8 @@ export function useVillage3D(containerRef, options = {}) {
   function dispose() {
     isInitialized.value = false
 
-    // Dispose FPV + post-processing (Phase 9)
+    // Dispose FPV + post-processing (Phase 9) + interaction (Phase 10)
+    fpvInteraction.dispose()
     fpvMode.dispose()
     postProcessing.dispose()
 
@@ -3092,6 +3103,7 @@ export function useVillage3D(containerRef, options = {}) {
   }
 
   function exitFPV() {
+    fpvInteraction.cancelChat()
     fpvMode.exitFPV()
     postProcessing.deactivateProfile()
     cameraMode.value = 'orbit'
@@ -3170,6 +3182,9 @@ export function useVillage3D(containerRef, options = {}) {
     isFPV: fpvMode.isFPV,
     fpvAgent: fpvMode.currentAgent,
     postProcessing,
+
+    // FPV Interaction (Phase 10)
+    fpvInteraction,
 
     // Internal refs (for advanced use / debugging)
     scene: sceneRef,

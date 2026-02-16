@@ -385,6 +385,58 @@ function handleExitFPV() {
   village3dRef.value?.exitFPV()
 }
 
+// --- FPV Interaction (Phase 10) ---
+const fpvInteraction = computed(() => village3dRef.value?.fpvInteraction)
+const fpvNearestAgent = computed(() => fpvInteraction.value?.nearestAgent?.value)
+const fpvChatOpen = computed(() => fpvInteraction.value?.isChatOpen?.value === true)
+const fpvChatStreaming = computed(() => fpvInteraction.value?.isChatStreaming?.value === true)
+const fpvChatInput = computed({
+  get: () => fpvInteraction.value?.chatInput?.value || '',
+  set: (v) => { if (fpvInteraction.value) fpvInteraction.value.chatInput.value = v },
+})
+const fpvStreamingText = computed(() => fpvInteraction.value?.streamingText?.value || '')
+const fpvBubblePos = computed(() => fpvInteraction.value?.bubbleScreenPos?.value)
+const fpvStreamingAgentId = computed(() => fpvInteraction.value?.streamingAgentId?.value)
+
+const fpvChatInputRef = ref(null)
+
+// Auto-focus chat input when it opens
+watch(fpvChatOpen, (open) => {
+  if (open) nextTick(() => fpvChatInputRef.value?.focus())
+})
+
+// Bridge streaming content from useVillageTasking into fpvInteraction
+watch(streamingContent, (text) => {
+  if (fpvActive.value && fpvInteraction.value) {
+    fpvInteraction.value.updateStreamingText(text)
+  }
+})
+
+async function handleFPVChatSubmit() {
+  if (!fpvInteraction.value) return
+  const task = fpvInteraction.value.submitChat()
+  if (!task) return
+
+  const result = await executeTask(task)
+  const agentId = task.agents[0]
+  fpvInteraction.value.onStreamComplete(agentId, result?.conversationId || null)
+
+  // Trigger completion effects in 3D scene
+  if (village3dRef.value && result) {
+    village3dRef.value.triggerTaskComplete(agentId, task.zone, true)
+  }
+}
+
+function handleFPVChatKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    handleFPVChatSubmit()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    fpvInteraction.value?.cancelChat()
+  }
+}
+
 // WebSocket connection
 const ws = ref(null)
 const status = reactive({
@@ -821,6 +873,8 @@ onUnmounted(() => {
                 <span class="text-gray-600 mx-2">|</span>
                 <span class="text-white/80">Shift</span> sprint
                 <span class="text-gray-600 mx-2">|</span>
+                <span class="text-white/80">E</span> interact
+                <span class="text-gray-600 mx-2">|</span>
                 <span class="text-white/80">ESC</span> exit
               </div>
             </div>
@@ -832,6 +886,96 @@ onUnmounted(() => {
             >
               &#10005; Exit Vision
             </button>
+
+            <!-- Phase 10: Proximity Prompt -->
+            <transition name="fade">
+              <div
+                v-if="fpvNearestAgent && !fpvChatOpen && !fpvChatStreaming"
+                class="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none"
+              >
+                <div
+                  class="px-5 py-2.5 rounded-xl border backdrop-blur-md text-center"
+                  :style="{
+                    borderColor: (fpvNearestAgent.color || '#888') + '60',
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                  }"
+                >
+                  <span class="text-white/90 text-sm font-medium">
+                    Press
+                    <kbd
+                      class="mx-1 px-2 py-0.5 rounded border text-xs font-bold"
+                      :style="{ borderColor: fpvNearestAgent.color, color: fpvNearestAgent.color }"
+                    >E</kbd>
+                    to talk to
+                    <span :style="{ color: fpvNearestAgent.color }" class="font-bold">{{ fpvNearestAgent.id }}</span>
+                  </span>
+                </div>
+              </div>
+            </transition>
+
+            <!-- Phase 10: Chat Input -->
+            <transition name="fade">
+              <div
+                v-if="fpvChatOpen"
+                class="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-lg pointer-events-auto px-4"
+              >
+                <div class="bg-black/80 backdrop-blur-lg rounded-xl border border-white/20 p-3">
+                  <div class="text-xs text-gray-400 mb-1.5">
+                    Talking to
+                    <span :style="{ color: fpvAgentColor }" class="font-bold">{{ fpvNearestAgent?.id || fpvAgentId }}</span>
+                    <span class="text-gray-600 ml-2">Enter to send / Esc to cancel</span>
+                  </div>
+                  <input
+                    ref="fpvChatInputRef"
+                    :value="fpvChatInput"
+                    @input="fpvChatInput = $event.target.value"
+                    @keydown="handleFPVChatKeydown"
+                    type="text"
+                    placeholder="Say something..."
+                    class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-gold/50 placeholder-gray-500"
+                    autocomplete="off"
+                  />
+                </div>
+              </div>
+            </transition>
+
+            <!-- Phase 10: Streaming Response Bubble (HTML overlay projected from 3D) -->
+            <transition name="fade">
+              <div
+                v-if="fpvStreamingText && fpvBubblePos?.visible !== false"
+                class="absolute pointer-events-none z-30"
+                :style="{
+                  left: (fpvBubblePos?.x || 0) + 'px',
+                  top: (fpvBubblePos?.y || 0) + 'px',
+                  transform: 'translate(-50%, -100%)',
+                  maxWidth: '400px',
+                }"
+              >
+                <div
+                  class="px-4 py-3 rounded-xl border backdrop-blur-md text-sm text-white/90 leading-relaxed overflow-y-auto max-h-48"
+                  :style="{
+                    borderColor: fpvAgentColor + '40',
+                    backgroundColor: 'rgba(15, 15, 30, 0.85)',
+                    boxShadow: '0 0 20px ' + fpvAgentColor + '20',
+                  }"
+                >
+                  <div class="text-xs font-bold mb-1" :style="{ color: fpvAgentColor }">
+                    {{ fpvStreamingAgentId || fpvAgentId }}
+                  </div>
+                  <div class="whitespace-pre-wrap">{{ fpvStreamingText }}</div>
+                  <span
+                    v-if="fpvChatStreaming"
+                    class="inline-block w-1.5 h-4 ml-0.5 animate-pulse"
+                    :style="{ backgroundColor: fpvAgentColor }"
+                  ></span>
+                </div>
+                <!-- Pointer triangle -->
+                <div
+                  class="w-3 h-3 rotate-45 mx-auto -mt-1.5"
+                  :style="{ backgroundColor: 'rgba(15, 15, 30, 0.85)' }"
+                ></div>
+              </div>
+            </transition>
           </div>
         </transition>
 

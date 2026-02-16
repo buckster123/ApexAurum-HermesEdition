@@ -111,6 +111,7 @@ const {
   isFPV,
   fpvAgent,
   postProcessing,
+  fpvInteraction,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -192,6 +193,8 @@ defineExpose({
   exitFPV() { exitFPV() },
   isFPV,
   fpvAgent,
+  // FPV Interaction (Phase 10)
+  fpvInteraction,
 })
 
 onMounted(() => {
