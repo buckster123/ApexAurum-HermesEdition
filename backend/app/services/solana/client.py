@@ -16,9 +16,8 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Jupiter price API (free, no auth)
-JUPITER_PRICE_URL = "https://api.jup.ag/price/v2"
-SOL_MINT = "So11111111111111111111111111111111111111112"
+# CoinGecko free price API (no auth required)
+COINGECKO_PRICE_URL = "https://api.coingecko.com/api/v3/simple/price"
 
 # Cache SOL price for 5 minutes
 _sol_price_cache: dict = {"price": None, "fetched_at": 0}
@@ -82,25 +81,28 @@ class SolanaClient:
             return []
 
     async def get_sol_price_usd(self) -> Optional[Decimal]:
-        """Get current SOL/USD price from Jupiter aggregator. Cached 5 min."""
+        """Get current SOL/USD price from CoinGecko. Cached 5 min."""
         now = time.time()
         if _sol_price_cache["price"] and (now - _sol_price_cache["fetched_at"]) < SOL_PRICE_CACHE_TTL:
             return _sol_price_cache["price"]
 
         try:
             client = await self._get_client()
-            resp = await client.get(JUPITER_PRICE_URL, params={"ids": SOL_MINT})
+            resp = await client.get(
+                COINGECKO_PRICE_URL,
+                params={"ids": "solana", "vs_currencies": "usd"},
+            )
             resp.raise_for_status()
             data = resp.json()
-            price_str = data.get("data", {}).get(SOL_MINT, {}).get("price")
-            if price_str:
-                price = Decimal(str(price_str))
+            price_val = data.get("solana", {}).get("usd")
+            if price_val:
+                price = Decimal(str(price_val))
                 _sol_price_cache["price"] = price
                 _sol_price_cache["fetched_at"] = now
                 logger.debug(f"SOL price: ${price}")
                 return price
         except Exception as e:
-            logger.warning(f"Jupiter price fetch failed: {e}")
+            logger.warning(f"CoinGecko price fetch failed: {e}")
 
         return _sol_price_cache.get("price")  # Return stale if available
 

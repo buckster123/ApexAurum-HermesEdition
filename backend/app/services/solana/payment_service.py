@@ -11,7 +11,6 @@ Flow:
 
 import logging
 import os
-import base64
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
@@ -38,12 +37,34 @@ AJ_PACKS = {
     "blaze": {"aj": 30_000, "usd": 25.00, "label": "Blaze"},
 }
 
+# Solana/Bitcoin base58 alphabet
+_B58_ALPHABET = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+
+def _b58encode(data: bytes) -> str:
+    """Pure-Python base58 encoder (Solana/Bitcoin alphabet)."""
+    n = int.from_bytes(data, "big")
+    result = []
+    while n > 0:
+        n, remainder = divmod(n, 58)
+        result.append(_B58_ALPHABET[remainder:remainder + 1])
+    # Preserve leading zero bytes as '1' characters
+    for byte in data:
+        if byte == 0:
+            result.append(b"1")
+        else:
+            break
+    return b"".join(reversed(result)).decode("ascii")
+
 
 def _generate_reference() -> str:
-    """Generate a unique reference key (base58-like, URL-safe)."""
-    # 32 random bytes -> base64url (no padding) -> 43 chars
+    """Generate a Solana Pay reference as a base58-encoded 32-byte public key.
+
+    Solana Pay spec requires references to be valid base58 pubkeys so wallets
+    can include them as non-signer accounts and getSignaturesForAddress can find them.
+    """
     raw = os.urandom(32)
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+    return _b58encode(raw)
 
 
 class SolanaPaymentService:
@@ -222,10 +243,11 @@ class SolanaPaymentService:
                 ledger = AJLedger(self.db)
                 await ledger.credit(
                     user_id=payment.user_id,
-                    entity_type="user",
-                    amount=float(aj_amount),
+                    agent_id="SYSTEM",
+                    agent_share=0,
+                    user_share=float(aj_amount),
                     tx_type="crypto_purchase",
-                    description=f"Solana Pay: {payment.token_symbol} -> {aj_amount:.0f} AJ",
+                    reason=f"Solana Pay: {payment.token_symbol} -> {aj_amount:.0f} AJ",
                 )
                 payment.aj_credited = aj_amount
                 payment.status = "credited"
