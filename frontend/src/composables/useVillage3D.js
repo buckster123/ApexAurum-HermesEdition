@@ -21,6 +21,8 @@ import { useAgentModels } from '@/composables/useAgentModels'
 import { useVillageModels } from '@/composables/useVillageModels'
 import { useDraggableZones } from '@/composables/useDraggableZones'
 import { useDistrictManager } from '@/composables/useDistrictManager'
+import { useVillagePostProcessing } from '@/composables/useVillagePostProcessing'
+import { useFPVMode } from '@/composables/useFPVMode'
 
 // Polyfill for roundRect (not available in all browsers)
 if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
@@ -470,6 +472,10 @@ export function useVillage3D(containerRef, options = {}) {
   // District manager (4x4 grid, camera tracking)
   const districtManager = useDistrictManager()
 
+  // FPV mode + post-processing (Phase 9)
+  const postProcessing = useVillagePostProcessing()
+  const fpvMode = useFPVMode()
+
   // Layout persistence
   const { loadLayout, saveLayout, resetLayout: resetDraggableLayout, hasCustomLayout } =
     useDraggableZones('village-layout-perspective', VILLAGE_LAYOUT)
@@ -605,6 +611,10 @@ export function useVillage3D(containerRef, options = {}) {
 
     // --- Clock ---
     clock = new THREE.Clock()
+
+    // --- FPV + Post-Processing (Phase 9) ---
+    postProcessing.init(renderer, scene, camera)
+    fpvMode.init(renderer, camera)
 
     isInitialized.value = true
 
@@ -2116,8 +2126,8 @@ export function useVillage3D(containerRef, options = {}) {
 
     if (!scene || !camera || !renderer || !controls) return
 
-    // --- Update camera transition ---
-    if (cameraTransition) {
+    // --- Update camera transition (orbit mode only) ---
+    if (cameraTransition && !fpvMode.isFPV.value) {
       const elapsed = performance.now() - cameraTransition.startTime
       const t = Math.min(1, elapsed / cameraTransition.duration)
       const eased = 1 - Math.pow(1 - t, 3) // easeOutCubic
@@ -2203,20 +2213,31 @@ export function useVillage3D(containerRef, options = {}) {
     _updatePedestal(dt, elapsedTime)
 
     // --- Render ---
-    controls.update()
-    // Clamp pan target to map bounds (160x160 → +-70 with margin)
-    const t = controls.target
-    const panLimit = 65
-    t.x = Math.max(-panLimit, Math.min(panLimit, t.x))
-    t.z = Math.max(-panLimit, Math.min(panLimit, t.z))
+    if (fpvMode.isFPV.value) {
+      // FPV mode: PointerLockControls handles camera rotation, we handle movement
+      fpvMode.update(dt)
+    } else {
+      // Orbit mode: standard OrbitControls
+      controls.update()
+      // Clamp pan target to map bounds (160x160 → +-70 with margin)
+      const t = controls.target
+      const panLimit = 65
+      t.x = Math.max(-panLimit, Math.min(panLimit, t.x))
+      t.z = Math.max(-panLimit, Math.min(panLimit, t.z))
 
-    // --- Update district tracking (Phase 2) ---
-    const districtResult = districtManager.update(t.x, t.z)
-    if (districtResult.changed) {
-      onDistrictChange?.(districtResult.district, districtResult.name, districtResult.theme)
+      // --- Update district tracking (Phase 2) ---
+      const districtResult = districtManager.update(t.x, t.z)
+      if (districtResult.changed) {
+        onDistrictChange?.(districtResult.district, districtResult.name, districtResult.theme)
+      }
     }
 
-    renderer.render(scene, camera)
+    // Render with post-processing when active (FPV agent vision), else direct
+    if (postProcessing.isActive.value) {
+      postProcessing.render(dt)
+    } else {
+      renderer.render(scene, camera)
+    }
   }
 
   // =========================================================================
@@ -2667,6 +2688,7 @@ export function useVillage3D(containerRef, options = {}) {
     camera.aspect = width / height
     camera.updateProjectionMatrix()
     renderer.setSize(width, height)
+    postProcessing.resize(width, height)
   }
 
   // =========================================================================
@@ -2690,6 +2712,10 @@ export function useVillage3D(containerRef, options = {}) {
 
   function dispose() {
     isInitialized.value = false
+
+    // Dispose FPV + post-processing (Phase 9)
+    fpvMode.dispose()
+    postProcessing.dispose()
 
     // Cancel animation
     if (animationFrameId) {
@@ -3048,6 +3074,30 @@ export function useVillage3D(containerRef, options = {}) {
   }
 
   // =========================================================================
+  // FPV MODE (Phase 9)
+  // =========================================================================
+
+  function enterFPV(agentId) {
+    const agent = agents.get(agentId)
+    if (!agent) return
+
+    const position = agent.group.position.clone()
+    fpvMode.enterFPV(position, agentId, controlsRef.value)
+    postProcessing.activateProfile(agentId)
+
+    // Clear orbit-mode UI state
+    cameraMode.value = 'fpv'
+    focusTarget.value = null
+    cameraTransition = null
+  }
+
+  function exitFPV() {
+    fpvMode.exitFPV()
+    postProcessing.deactivateProfile()
+    cameraMode.value = 'orbit'
+  }
+
+  // =========================================================================
   // RETURN
   // =========================================================================
 
@@ -3113,6 +3163,13 @@ export function useVillage3D(containerRef, options = {}) {
 
     // District System (Phase 2)
     districtManager,
+
+    // FPV Mode (Phase 9)
+    enterFPV,
+    exitFPV,
+    isFPV: fpvMode.isFPV,
+    fpvAgent: fpvMode.currentAgent,
+    postProcessing,
 
     // Internal refs (for advanced use / debugging)
     scene: sceneRef,

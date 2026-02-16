@@ -106,6 +106,11 @@ const {
   isAgentLocked,
   evolvePedestal,
   districtManager,
+  enterFPV,
+  exitFPV,
+  isFPV,
+  fpvAgent,
+  postProcessing,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -182,6 +187,11 @@ defineExpose({
   },
   // District System (Phase 2)
   districtManager,
+  // FPV Mode (Phase 9)
+  enterFPV(agentId) { enterFPV(agentId) },
+  exitFPV() { exitFPV() },
+  isFPV,
+  fpvAgent,
 })
 
 onMounted(() => {
@@ -231,6 +241,13 @@ function assignAgentTask() {
       agentId: selectedAgentData.value.id,
       zone: selectedAgentData.value.zone,
     })
+  }
+  closeAgentPopup()
+}
+
+function startFPV() {
+  if (selectedAgentData.value) {
+    enterFPV(selectedAgentData.value.id)
   }
   closeAgentPopup()
 }
@@ -514,18 +531,28 @@ watch(() => props.events, (newEvents) => {
           </div>
 
           <!-- Actions -->
-          <div class="mt-4 pt-3 border-t border-apex-border flex gap-2">
+          <div class="mt-4 pt-3 border-t border-apex-border space-y-2">
+            <div class="flex gap-2">
+              <button
+                class="flex-1 text-xs px-3 py-2 bg-gold/10 hover:bg-gold/20 text-gold rounded transition-colors"
+                @click="assignAgentTask"
+              >
+                Assign Task
+              </button>
+              <button
+                class="flex-1 text-xs px-3 py-2 bg-white/5 hover:bg-white/10 rounded transition-colors text-gray-300"
+                @click="closeAgentPopup"
+              >
+                Close
+              </button>
+            </div>
             <button
-              class="flex-1 text-xs px-3 py-2 bg-gold/10 hover:bg-gold/20 text-gold rounded transition-colors"
-              @click="assignAgentTask"
+              class="w-full text-xs px-3 py-2 rounded transition-all border"
+              :class="`border-[${selectedAgentData.color}]/30 bg-[${selectedAgentData.color}]/5 hover:bg-[${selectedAgentData.color}]/15 text-[${selectedAgentData.color}]`"
+              :style="{ borderColor: selectedAgentData.color + '4d', backgroundColor: selectedAgentData.color + '0d', color: selectedAgentData.color }"
+              @click="startFPV"
             >
-              Assign Task
-            </button>
-            <button
-              class="flex-1 text-xs px-3 py-2 bg-white/5 hover:bg-white/10 rounded transition-colors text-gray-300"
-              @click="closeAgentPopup"
-            >
-              Close
+              &#128065; Enter Agent Vision
             </button>
           </div>
         </template>

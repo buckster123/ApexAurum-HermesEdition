@@ -362,6 +362,29 @@ function handleResetLayout() {
   layoutResetKey.value++
 }
 
+// --- FPV Mode (Phase 9) ---
+const fpvActive = computed(() =>
+  viewMode.value === '3d' && village3dRef.value?.isFPV?.value === true
+)
+const fpvAgentId = computed(() => village3dRef.value?.fpvAgent?.value || null)
+const fpvAgentColor = computed(() => {
+  const colors = { AZOTH: '#FFD700', VAJRA: '#4FC3F7', ELYSIAN: '#ff69b4', KETHER: '#9370db' }
+  return colors[fpvAgentId.value] || '#888888'
+})
+const fpvVisionLabel = computed(() => {
+  const labels = {
+    AZOTH: 'Alchemical Vision',
+    VAJRA: 'Technical Vision',
+    ELYSIAN: 'Ethereal Vision',
+    KETHER: 'Mystical Vision',
+  }
+  return labels[fpvAgentId.value] || 'Agent Vision'
+})
+
+function handleExitFPV() {
+  village3dRef.value?.exitFPV()
+}
+
 // WebSocket connection
 const ws = ref(null)
 const status = reactive({
@@ -749,16 +772,69 @@ onUnmounted(() => {
           />
         </div>
 
-        <!-- District Name Badge (Phase 2) — top-left overlay, 3D mode only -->
+        <!-- District Name Badge (Phase 2) — top-left overlay, 3D mode only, hidden in FPV -->
         <div
-          v-if="viewMode === '3d'"
+          v-if="viewMode === '3d' && !fpvActive"
           class="absolute top-3 left-3 z-10 px-3 py-1.5 rounded-lg bg-black/40 backdrop-blur-sm border border-white/10 text-xs font-mono text-amber-200/80 tracking-wider select-none transition-all duration-500"
         >
           {{ currentDistrictName }}
         </div>
 
-        <!-- Quest HUD (G2) — bottom-left overlay, 3D mode only -->
-        <QuestHUD v-if="viewMode === '3d' && !showTutorial" class="absolute bottom-4 left-4 z-10" />
+        <!-- FPV Mode Overlay (Phase 9) -->
+        <transition name="fade">
+          <div v-if="fpvActive" class="absolute inset-0 z-20 pointer-events-none">
+            <!-- Agent identity badge (top-left) -->
+            <div class="absolute top-4 left-4 pointer-events-auto">
+              <div
+                class="flex items-center gap-3 px-4 py-2.5 rounded-xl border backdrop-blur-md"
+                :style="{ borderColor: fpvAgentColor + '4d', backgroundColor: fpvAgentColor + '15' }"
+              >
+                <div
+                  class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-black"
+                  :style="{ backgroundColor: fpvAgentColor }"
+                >
+                  {{ fpvAgentId?.charAt(0) || '?' }}
+                </div>
+                <div>
+                  <div class="text-white font-medium text-sm">{{ fpvAgentId }}</div>
+                  <div class="text-xs" :style="{ color: fpvAgentColor }">{{ fpvVisionLabel }}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Crosshair (center) -->
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+              <div class="w-6 h-6 relative opacity-30">
+                <div class="absolute top-0 left-1/2 -translate-x-1/2 w-px h-2" :style="{ backgroundColor: fpvAgentColor }"></div>
+                <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-px h-2" :style="{ backgroundColor: fpvAgentColor }"></div>
+                <div class="absolute left-0 top-1/2 -translate-y-1/2 h-px w-2" :style="{ backgroundColor: fpvAgentColor }"></div>
+                <div class="absolute right-0 top-1/2 -translate-y-1/2 h-px w-2" :style="{ backgroundColor: fpvAgentColor }"></div>
+              </div>
+            </div>
+
+            <!-- Controls hint (bottom-center, fades out) -->
+            <div class="absolute bottom-6 left-1/2 -translate-x-1/2 pointer-events-auto">
+              <div class="fpv-hint text-xs text-gray-400 bg-black/50 backdrop-blur rounded-lg px-4 py-2 text-center">
+                <span class="text-white/80">WASD</span> move
+                <span class="text-gray-600 mx-2">|</span>
+                <span class="text-white/80">Shift</span> sprint
+                <span class="text-gray-600 mx-2">|</span>
+                <span class="text-white/80">ESC</span> exit
+              </div>
+            </div>
+
+            <!-- Exit button (top-right) -->
+            <button
+              class="absolute top-4 right-4 pointer-events-auto px-4 py-2 rounded-lg bg-black/60 backdrop-blur border border-white/10 hover:border-white/30 text-sm text-gray-300 hover:text-white transition-all"
+              @click="handleExitFPV"
+            >
+              &#10005; Exit Vision
+            </button>
+          </div>
+        </transition>
+
+        <!-- Quest HUD (G2) — bottom-left overlay, 3D mode only, hidden in FPV -->
+        <QuestHUD v-if="viewMode === '3d' && !showTutorial && !fpvActive" class="absolute bottom-4 left-4 z-10" />
 
         <!-- Tutorial Overlay (G4) — The Awakening -->
         <VillageTutorial
@@ -875,5 +951,26 @@ onUnmounted(() => {
 .slide-up-enter-from,
 .slide-up-leave-to {
   transform: translateY(100%);
+}
+
+/* FPV controls hint — fades out after 5 seconds */
+.fpv-hint {
+  animation: fpvHintFade 5s ease forwards;
+}
+
+@keyframes fpvHintFade {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; pointer-events: none; }
+}
+
+/* Fade transition for FPV overlay */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.4s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
