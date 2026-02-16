@@ -53,6 +53,7 @@
 | F | Quest Engine — 25 milestones, feature gating, 6 API endpoints | — | — |
 | G | Guided Path — locked visuals, QuestHUD, unlock ceremonies, tutorial | — | — |
 | H | Grand Prizes — achievement gallery, Agora badges, 3D pedestal, share cards | — | — |
+| 17 | WebXR VR Mode — Quest 3 immersive VR, thumbstick locomotion, camera rig | — | +350 |
 
 ### Current Capabilities
 
@@ -82,6 +83,7 @@
 | `frontend/src/composables/useVillageDayNight.js` | Day/night cycle — 4 phase presets, sky/lighting/fog interpolation |
 | `frontend/src/composables/useAgentAutonomy.js` | Agent autonomy — wandering, zone preferences, musings, interactions |
 | `frontend/src/composables/useVillageSoundscape.js` | Spatial audio — zone ambients, TTS agent voices, FPV footsteps |
+| `frontend/src/composables/useVRMode.js` | WebXR VR mode — Quest 3 immersive session, camera rig, thumbstick locomotion |
 | `frontend/src/composables/useThreeScene.js` | Base Three.js scene lifecycle (used by Neural/other scenes) |
 | `frontend/src/composables/useAgentModels.js` | GLB loader singleton cache for agent avatars |
 | `frontend/src/composables/useVillageModels.js` | GLB loader singleton cache for zone buildings |
@@ -375,33 +377,28 @@ Key stores for world features: `auth.js`, `chat.js`, `billing.js`, `apexjoule.js
 
 ---
 
-### Phase 17: WebXR / VR
+### Phase 17: WebXR / VR ✅ SHIPPED
 
-**Goal:** FPV mode extends to VR headsets. Put on a Quest, see through AZOTH's eyes in stereoscopic 3D. The natural end-state of FPV.
+**Goal:** Walk into the Athaverse with a Meta Quest 3. Stereoscopic 3D, head-tracked spatial audio, thumbstick locomotion through the village.
 
-**What exists:**
-- FPV mode with PointerLockControls (useFPVMode.js)
-- Per-agent post-processing (useVillagePostProcessing.js)
-- Three.js v0.170 with built-in `WebXRManager`
-- Three.js `XRControllerModelFactory` for hand models
+**What was built:**
+- New `useVRMode.js` composable (~350 lines) with full WebXR lifecycle
+- VRButton + camera rig + XRControllerModelFactory for auto-detected controller models
+- Thumbstick locomotion: left stick = walk/strafe, right stick = 45° snap turn, grip = sprint
+- VR performance tier: disables shadows, PointLights, post-processing on session start; restores on exit
+- Comfort vignette (ShaderMaterial peripheral darkening during locomotion)
+- Animation loop migrated from `requestAnimationFrame` to `renderer.setAnimationLoop` (required for WebXR)
+- AudioContext resume on session start (browser autoplay policy)
+- VR Mirror overlay on desktop screen during VR session
+- Clean enter/exit: saves + restores shadows, lights, controls, camera position
 
-**Key tasks:**
-1. **WebXR session** — `renderer.xr.enabled = true`, add "Enter VR" button via `VRButton` from three/addons
-2. **XR camera** — WebXR automatically uses stereoscopic camera. Disable PointerLockControls, use XR controller input for movement
-3. **Controller input** — Thumbstick for locomotion, grip for teleport, trigger for interaction
-4. **Post-processing in XR** — Needs multi-view rendering support (pmndrs/postprocessing may need adaptation)
-5. **Performance budget** — VR requires 72fps minimum. May need LOD system, reduced particle counts, simpler post-processing
-6. **Comfort** — Vignette during movement (reduces VR sickness), snap turn option, teleport locomotion alternative
+**Files:**
+- `useVRMode.js` (new)
+- `useVillage3D.js` (animation loop migration + VR integration)
+- `Village3D.vue` (expose VR state)
+- `VillageGUIView.vue` (VR-aware UI + mirror overlay)
 
-**Files to touch:**
-- `useFPVMode.js` — XR controller input path alongside WASD
-- `useVillagePostProcessing.js` — XR-compatible render path
-- `useVillage3D.js` — XR session lifecycle
-- `VillageGUIView.vue` — "Enter VR" button
-
-**Dependencies:** Phase 9 (FPV), Phase 14 (physics for proper grounding)
-**Size:** L (~400 lines)
-**Hardware:** Meta Quest 3, Apple Vision Pro, or any WebXR browser
+**Future extensions:** Hand tracking, teleportation, passthrough MR, 3D spatial UI, controller haptics
 
 ---
 

@@ -385,6 +385,11 @@ function handleExitFPV() {
   village3dRef.value?.exitFPV()
 }
 
+// --- WebXR VR Mode (Phase 17) ---
+const vrActive = computed(() =>
+  viewMode.value === '3d' && village3dRef.value?.isVR?.value === true
+)
+
 // --- Spatial Audio (Phase 11) ---
 const villageSoundscape = computed(() => village3dRef.value?.soundscape)
 const villageVolume = computed({
@@ -835,15 +840,29 @@ onUnmounted(() => {
 
         <!-- District Name Badge (Phase 2) — top-left overlay, 3D mode only, hidden in FPV -->
         <div
-          v-if="viewMode === '3d' && !fpvActive"
+          v-if="viewMode === '3d' && !fpvActive && !vrActive"
           class="absolute top-3 left-3 z-10 px-3 py-1.5 rounded-lg bg-black/40 backdrop-blur-sm border border-white/10 text-xs font-mono text-amber-200/80 tracking-wider select-none transition-all duration-500"
         >
           {{ currentDistrictName }}
         </div>
 
+        <!-- VR Mirror Mode Indicator (Phase 17) -->
+        <transition name="fade">
+          <div
+            v-if="vrActive"
+            class="absolute inset-0 z-20 pointer-events-none flex items-center justify-center"
+          >
+            <div class="bg-black/60 backdrop-blur-lg rounded-2xl px-8 py-6 text-center border border-gold/30">
+              <div class="text-3xl mb-3">&#129520;</div>
+              <p class="text-gold font-medium text-lg">VR Mode Active</p>
+              <p class="text-gray-400 text-sm mt-1">Look through the headset to explore the Athaverse</p>
+            </div>
+          </div>
+        </transition>
+
         <!-- FPV Mode Overlay (Phase 9) -->
         <transition name="fade">
-          <div v-if="fpvActive" class="absolute inset-0 z-20 pointer-events-none">
+          <div v-if="fpvActive && !vrActive" class="absolute inset-0 z-20 pointer-events-none">
             <!-- Agent identity badge (top-left) -->
             <div class="absolute top-4 left-4 pointer-events-auto">
               <div
@@ -987,7 +1006,7 @@ onUnmounted(() => {
         </transition>
 
         <!-- Quest HUD (G2) — bottom-left overlay, 3D mode only, hidden in FPV -->
-        <QuestHUD v-if="viewMode === '3d' && !showTutorial && !fpvActive" class="absolute bottom-4 left-4 z-10" />
+        <QuestHUD v-if="viewMode === '3d' && !showTutorial && !fpvActive && !vrActive" class="absolute bottom-4 left-4 z-10" />
 
         <!-- Tutorial Overlay (G4) — The Awakening -->
         <VillageTutorial

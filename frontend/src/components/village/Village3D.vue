@@ -115,6 +115,9 @@ const {
   dayNight,
   agentAutonomy,
   soundscape,
+  vrMode,
+  isVR,
+  isVRSupported,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -204,6 +207,10 @@ defineExpose({
   agentAutonomy,
   // Spatial Audio (Phase 11)
   soundscape,
+  // WebXR VR Mode (Phase 17)
+  vrMode,
+  isVR,
+  isVRSupported,
 })
 
 onMounted(() => {

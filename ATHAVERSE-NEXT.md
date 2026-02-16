@@ -1,7 +1,7 @@
 # Athaverse — Current Plan
 
 > Updated: 2026-02-16
-> **Phase 11 SHIPPED** (+320 lines, 56 TTS voice files)
+> **Phase 17 SHIPPED** — WebXR VR Mode for Meta Quest 3
 
 ---
 
@@ -24,6 +24,7 @@
 | 12 | Day/Night Cycle — dynamic lighting, sky gradient, firefly/star modulation | Shipped (166deec) |
 | 15 | Agent Autonomy — wandering, zone preferences, musings, agent-to-agent dialogue | Shipped |
 | 11 | Spatial Audio — zone ambients, TTS agent voices, FPV footsteps, volume control | Shipped |
+| 17 | WebXR VR Mode — Quest 3 immersive VR, thumbstick locomotion, comfort vignette | Shipped |
 
 ---
 

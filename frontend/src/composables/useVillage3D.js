@@ -27,6 +27,7 @@ import { useFPVInteraction } from '@/composables/useFPVInteraction'
 import { useVillageDayNight } from '@/composables/useVillageDayNight'
 import { useAgentAutonomy } from '@/composables/useAgentAutonomy'
 import { useVillageSoundscape } from '@/composables/useVillageSoundscape'
+import { useVRMode } from '@/composables/useVRMode'
 
 // Polyfill for roundRect (not available in all browsers)
 if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
@@ -433,7 +434,7 @@ export function useVillage3D(containerRef, options = {}) {
 
   // --- Internal state ---
   let clock = null
-  let animationFrameId = null
+  // animationFrameId removed — using renderer.setAnimationLoop (Phase 17 WebXR)
   const isInitialized = ref(false)
   const webglError = ref(null)
   let elapsedTime = 0
@@ -487,6 +488,7 @@ export function useVillage3D(containerRef, options = {}) {
   const dayNight = useVillageDayNight()
   const agentAutonomy = useAgentAutonomy()
   const soundscape = useVillageSoundscape()
+  const vrMode = useVRMode()
 
   // Layout persistence
   const { loadLayout, saveLayout, resetLayout: resetDraggableLayout, hasCustomLayout } =
@@ -651,10 +653,16 @@ export function useVillage3D(containerRef, options = {}) {
     fpvInteraction.init(camera, renderer, agents, fpvMode)
     fpvMode.setInteractionCallback(() => fpvInteraction.beginInteraction())
 
+    // --- WebXR VR Mode (Phase 17) ---
+    vrMode.init(renderer, camera, scene, controls, fpvMode, postProcessing)
+    if (vrMode.vrButtonEl.value) {
+      containerRef.value.appendChild(vrMode.vrButtonEl.value)
+    }
+
     isInitialized.value = true
 
-    // --- Start render loop ---
-    _animate()
+    // --- Start render loop (setAnimationLoop supports both XR and non-XR) ---
+    renderer.setAnimationLoop(_animate)
 
     // --- Progressive enhancement: load GLBs ---
     _loadGLBModels()
@@ -2156,8 +2164,6 @@ export function useVillage3D(containerRef, options = {}) {
   function _animate() {
     if (!isInitialized.value) return
 
-    animationFrameId = requestAnimationFrame(_animate)
-
     const dt = Math.min(clock.getDelta(), 0.1)
     elapsedTime += dt
 
@@ -2269,14 +2275,24 @@ export function useVillage3D(containerRef, options = {}) {
     // --- Update pedestal (H4) ---
     _updatePedestal(dt, elapsedTime)
 
-    // --- Render ---
-    if (fpvMode.isFPV.value) {
+    // --- Render (3 branches: VR → FPV → Orbit) ---
+    if (vrMode.isVR.value) {
+      // VR mode: headset controls camera, thumbstick locomotion via rig
+      vrMode.update(dt)
+      renderer.render(scene, camera)
+    } else if (fpvMode.isFPV.value) {
       // FPV mode: PointerLockControls handles camera rotation, we handle movement
       fpvMode.update(dt)
       // Phase 10: Proximity detection + streaming bubble + soft-lock
       fpvInteraction.updateProximity()
       fpvInteraction.updateBubbleScreenPos()
       fpvInteraction.applySoftLock(dt)
+      // Render with post-processing when active (FPV agent vision), else direct
+      if (postProcessing.isActive.value) {
+        postProcessing.render(dt)
+      } else {
+        renderer.render(scene, camera)
+      }
     } else {
       // Orbit mode: standard OrbitControls
       controls.update()
@@ -2291,12 +2307,6 @@ export function useVillage3D(containerRef, options = {}) {
       if (districtResult.changed) {
         onDistrictChange?.(districtResult.district, districtResult.name, districtResult.theme)
       }
-    }
-
-    // Render with post-processing when active (FPV agent vision), else direct
-    if (postProcessing.isActive.value) {
-      postProcessing.render(dt)
-    } else {
       renderer.render(scene, camera)
     }
   }
@@ -2740,6 +2750,7 @@ export function useVillage3D(containerRef, options = {}) {
   // =========================================================================
 
   function _handleResize() {
+    if (vrMode.isVR.value) return // XR manages its own viewport
     if (!containerRef.value) return
     const camera = cameraRef.value
     const renderer = rendererRef.value
@@ -2777,7 +2788,8 @@ export function useVillage3D(containerRef, options = {}) {
   function dispose() {
     isInitialized.value = false
 
-    // Dispose FPV + post-processing (Phase 9) + interaction (Phase 10)
+    // Dispose composables
+    vrMode.dispose()
     fpvInteraction.dispose()
     soundscape.dispose()
     fpvMode.dispose()
@@ -2785,10 +2797,9 @@ export function useVillage3D(containerRef, options = {}) {
     agentAutonomy.dispose()
     dayNight.dispose()
 
-    // Cancel animation
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId)
-      animationFrameId = null
+    // Stop animation loop (works for both XR and non-XR)
+    if (rendererRef.value) {
+      rendererRef.value.setAnimationLoop(null)
     }
 
     // Cancel pending timeouts
@@ -3146,6 +3157,7 @@ export function useVillage3D(containerRef, options = {}) {
   // =========================================================================
 
   function enterFPV(agentId) {
+    if (vrMode.isVR.value) return // Cannot enter FPV while in VR
     const agent = agents.get(agentId)
     if (!agent) return
 
@@ -3252,6 +3264,11 @@ export function useVillage3D(containerRef, options = {}) {
     // Spatial Audio (Phase 11)
     soundscape,
 
+    // WebXR VR Mode (Phase 17)
+    vrMode,
+    isVR: vrMode.isVR,
+    isVRSupported: vrMode.isVRSupported,
+
     // Internal refs (for advanced use / debugging)
     scene: sceneRef,
     camera: cameraRef,
@@ -3260,8 +3277,8 @@ export function useVillage3D(containerRef, options = {}) {
 
     // Start animation (call after init)
     startAnimation() {
-      if (isInitialized.value && !animationFrameId) {
-        _animate()
+      if (isInitialized.value) {
+        rendererRef.value?.setAnimationLoop(_animate)
       }
     },
   }
