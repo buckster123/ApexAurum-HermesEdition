@@ -97,10 +97,12 @@ function handleAgentTask({ agentId, zone }) {
   showTaskDialog.value = true
 }
 
-// Execute task from dialog — drives 3D scene animations
+// Execute task from dialog — drives 3D scene animations (Phase 8: keep dialog open)
+const taskDialogRef = ref(null)
+
 async function handleTaskExecute(task) {
-  showTaskDialog.value = false
-  showResultPanel.value = true // Show immediately to display streaming
+  // Phase 8: keep dialog open for interactive session, hide result panel
+  showResultPanel.value = false
   playTone(770, 0.05, 'sine', 0.1)
   const taskStartTime = Date.now()
 
@@ -129,6 +131,10 @@ async function handleTaskExecute(task) {
 
   if (result) {
     sounds.toolCompleteJingle()
+    // Phase 8: pass conversationId back to dialog for follow-ups
+    if (result.conversationId && taskDialogRef.value) {
+      taskDialogRef.value.setConversationId(result.conversationId)
+    }
   } else {
     sounds.toolErrorJingle()
   }
@@ -809,15 +815,18 @@ onUnmounted(() => {
       </div>
     </transition>
 
-    <!-- Village Task Dialog (Phase E) -->
+    <!-- Village Task Dialog (Phase E + Phase 8: Interactive Session) -->
     <VillageTaskDialog
+      ref="taskDialogRef"
       :show="showTaskDialog"
       :zone="taskDialogZone"
       :executing="isExecuting"
+      :streaming-content="streamingContent"
+      :streaming-agent="streamingAgent"
       :zone-history="currentZoneHistory"
       :zone-stats="currentZoneStats"
       @execute="handleTaskExecute"
-      @close="showTaskDialog = false"
+      @close="showTaskDialog = false; clearResult()"
     />
 
     <!-- Village Result Panel (Phase E) -->

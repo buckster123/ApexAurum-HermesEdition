@@ -44,7 +44,7 @@ export function useVillageTasking() {
 
   /**
    * Main entry point — dispatches to single-agent or council flow.
-   * @param {Object} task - { prompt, agents[], mode, zone, files[], useTools }
+   * @param {Object} task - { prompt, agents[], mode, zone, files[], useTools, conversationId? }
    * @returns {Promise<Object>} result or null on error
    */
   async function executeTask(task) {
@@ -159,6 +159,7 @@ export function useVillageTasking() {
         max_tokens: 4096,
         ...(toolCategories && { tool_categories: toolCategories }),
         ...(fileIds.length > 0 && { file_ids: fileIds }),
+        ...(task.conversationId && { conversation_id: task.conversationId }),
       }),
       signal: abortController.signal,
     })
