@@ -87,7 +87,7 @@ async function subscribeWithAJ(tierId) {
   if (!AJ_TIER_PRICES[tierId]) return
   loadingAction.value = `aj-${tierId}`
   try {
-    const { data } = await api.post('/billing/subscribe-with-aj', { tier: tierId })
+    const { data } = await api.post('/api/v1/billing/subscribe-with-aj', { tier: tierId })
     checkoutError.value = null
     alert(data.message || `Subscribed to ${tierId} with AJ!`)
     await billing.fetchStatus()
