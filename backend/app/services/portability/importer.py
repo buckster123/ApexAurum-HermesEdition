@@ -147,9 +147,7 @@ class AgentImporter:
         existing = result.scalar_one_or_none()
 
         if existing:
-            # Merge: add capped balance, keep higher level
-            import_balance = min(float(economy.get("balance", 0)), MAX_IMPORT_BALANCE)
-            existing.balance = existing.balance + Decimal(str(import_balance))
+            # Merge: keep higher level/love_depth, skip monetary fields (prevents AJ duplication)
             existing.level = max(existing.level, economy.get("level", 1))
             existing.love_depth = max(
                 float(existing.love_depth),
@@ -157,17 +155,16 @@ class AgentImporter:
             )
             return True
 
-        # Create new balance
-        import_balance = min(float(economy.get("balance", 0)), MAX_IMPORT_BALANCE)
+        # Create new balance — personality only, no monetary transfer
         import_love = min(float(economy.get("love_depth", 1)), MAX_IMPORT_LOVE_DEPTH)
 
         balance = ApexJouleBalance(
             id=uuid4(),
             user_id=user_id,
             entity_id=entity_id,
-            balance=Decimal(str(import_balance)),
-            total_earned=Decimal(str(min(float(economy.get("total_earned", 0)), MAX_IMPORT_BALANCE * 10))),
-            total_spent=Decimal(str(min(float(economy.get("total_spent", 0)), MAX_IMPORT_BALANCE * 10))),
+            balance=Decimal("0"),  # No monetary transfer
+            total_earned=Decimal("0"),
+            total_spent=Decimal("0"),
             love_depth=Decimal(str(import_love)),
             level=min(economy.get("level", 1), 4),  # Cap at Artisan
             vitality=Decimal("100"),  # Fresh start

@@ -59,6 +59,9 @@ const sensorData = ref(null)
 const sensorLoading = ref(false)
 const sensorDevice = ref(null)
 
+// WebGL fallback
+const webglFailed = ref(false)
+
 // Backrooms state
 const isInBackrooms = ref(false)
 const backroomsDepth = ref(0)
@@ -132,8 +135,8 @@ function initScene() {
   // WebGL check
   try {
     const testCanvas = document.createElement('canvas')
-    if (!testCanvas.getContext('webgl') && !testCanvas.getContext('experimental-webgl')) return false
-  } catch { return false }
+    if (!testCanvas.getContext('webgl') && !testCanvas.getContext('experimental-webgl')) { webglFailed.value = true; return false }
+  } catch { webglFailed.value = true; return false }
 
   const el = canvasContainer.value
   const w = el.clientWidth
@@ -1019,9 +1022,32 @@ onUnmounted(() => {
       </div>
     </Transition>
 
+    <!-- WebGL fallback -->
+    <div
+      v-if="webglFailed && !isMobile"
+      class="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-[#0a0612] to-[#080810]"
+    >
+      <div class="flex gap-6 mb-8">
+        <div class="w-8 h-8 rounded-full athanor-pulse" style="background-color: #FFD700; animation-delay: 0s"></div>
+        <div class="w-8 h-8 rounded-full athanor-pulse" style="background-color: #E8B4FF; animation-delay: 0.5s"></div>
+        <div class="w-8 h-8 rounded-full athanor-pulse" style="background-color: #4FC3F7; animation-delay: 1s"></div>
+        <div class="w-8 h-8 rounded-full athanor-pulse" style="background-color: #FF6B6B; animation-delay: 1.5s"></div>
+      </div>
+      <h1 class="text-2xl font-bold mb-3" style="color: #d4af37; text-shadow: 0 0 20px rgba(212,175,55,0.4)">The Athanor</h1>
+      <p class="text-gray-400 text-sm mb-2 max-w-xs text-center">The immersive forge requires WebGL to render.</p>
+      <p class="text-gray-600 text-xs mb-6 max-w-xs text-center">Try Chrome or Firefox with hardware acceleration enabled.</p>
+      <router-link
+        to="/chat"
+        class="px-6 py-2.5 rounded-lg text-sm font-semibold transition-all"
+        style="background: rgba(212,175,55,0.15); border: 1px solid rgba(212,175,55,0.3); color: #d4af37"
+      >
+        Enter the Chat instead
+      </router-link>
+    </div>
+
     <!-- Loading state -->
     <div
-      v-if="!isReady"
+      v-if="!isReady && !webglFailed && !isMobile"
       class="absolute inset-0 flex items-center justify-center"
     >
       <div class="text-center">
@@ -1042,6 +1068,13 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+@keyframes athanor-glow {
+  0%, 100% { opacity: 0.3; box-shadow: none; transform: scale(1); }
+  50% { opacity: 1; box-shadow: 0 0 20px currentColor; transform: scale(1.15); }
+}
+.athanor-pulse {
+  animation: athanor-glow 3s ease-in-out infinite;
+}
 .crosshair {
   position: absolute;
   top: 50%;

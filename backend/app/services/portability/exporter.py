@@ -125,9 +125,9 @@ class AgentExporter:
             return {"balance": 0, "total_earned": 0, "total_spent": 0, "level": 1, "love_depth": 1, "vitality": 100}
 
         return {
-            "balance": float(balance.balance),
-            "total_earned": float(balance.total_earned),
-            "total_spent": float(balance.total_spent),
+            "balance": 0,  # Monetary fields stripped — prevents AJ duplication
+            "total_earned": 0,
+            "total_spent": 0,
             "level": balance.level,
             "love_depth": float(balance.love_depth),
             "vitality": float(balance.vitality),
