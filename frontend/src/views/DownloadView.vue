@@ -82,11 +82,13 @@ const features = [
 ]
 
 const screenshots = [
-  { label: 'Chat with AZOTH', color: '#FFD700' },
-  { label: 'Soul Face', color: '#E8B4FF' },
-  { label: 'Sensor Dashboard', color: '#4FC3F7' },
-  { label: 'Council View', color: '#FFFFFF' },
-  { label: 'Memory Graph', color: '#FFD700' },
+  { label: 'Chat with AZOTH', color: '#FFD700', src: '/screenshots/chat.png' },
+  { label: 'Soul Face', color: '#E8B4FF', src: '/screenshots/face.png' },
+  { label: 'Agora Feed', color: '#FFD700', src: '/screenshots/agora.png' },
+  { label: 'AJ Economy', color: '#FFD700', src: '/screenshots/economy.png' },
+  { label: 'CerebroCortex', color: '#E8B4FF', src: '/screenshots/memories.png' },
+  { label: 'SensorHead', color: '#4FC3F7', src: '/screenshots/sensors.png' },
+  { label: 'Settings', color: '#FFFFFF', src: '/screenshots/settings.png' },
 ]
 </script>
 
@@ -260,43 +262,18 @@ const screenshots = [
               :key="i"
               class="flex-shrink-0 w-48 sm:w-56"
             >
-              <!-- Phone mockup frame -->
+              <!-- Phone frame with real screenshot -->
               <div
-                class="rounded-[2rem] border-2 overflow-hidden"
+                class="rounded-[2rem] border-2 overflow-hidden bg-apex-card"
                 :style="{ borderColor: shot.color + '40' }"
                 style="aspect-ratio: 9 / 19.5;"
               >
-                <div class="w-full h-full bg-apex-card flex flex-col items-center justify-center px-4 relative">
-                  <!-- Notch -->
-                  <div class="absolute top-3 left-1/2 -translate-x-1/2 w-16 h-2 rounded-full bg-black/60"></div>
-
-                  <!-- Simulated content -->
-                  <div class="w-8 h-8 rounded-full mb-3 opacity-20" :style="{ backgroundColor: shot.color }"></div>
-                  <div class="w-3/4 h-1.5 rounded-full bg-white/10 mb-2"></div>
-                  <div class="w-1/2 h-1.5 rounded-full bg-white/5 mb-6"></div>
-
-                  <!-- Center icon -->
-                  <div
-                    class="w-16 h-16 rounded-xl flex items-center justify-center text-2xl mb-4"
-                    :style="{ backgroundColor: shot.color + '15' }"
-                  >
-                    <span :style="{ color: shot.color }">Au</span>
-                  </div>
-
-                  <!-- Fake lines -->
-                  <div class="w-full space-y-2 px-2">
-                    <div class="w-full h-1 rounded-full bg-white/5"></div>
-                    <div class="w-4/5 h-1 rounded-full bg-white/5"></div>
-                    <div class="w-3/5 h-1 rounded-full bg-white/5"></div>
-                  </div>
-
-                  <!-- Bottom nav dots -->
-                  <div class="absolute bottom-4 flex gap-2">
-                    <div class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: shot.color + '60' }"></div>
-                    <div class="w-1.5 h-1.5 rounded-full bg-white/10"></div>
-                    <div class="w-1.5 h-1.5 rounded-full bg-white/10"></div>
-                  </div>
-                </div>
+                <img
+                  :src="shot.src"
+                  :alt="shot.label"
+                  class="w-full h-full object-cover object-top"
+                  loading="lazy"
+                />
               </div>
               <!-- Label -->
               <p class="text-center text-sm text-gray-400 mt-3">{{ shot.label }}</p>
