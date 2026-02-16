@@ -365,7 +365,7 @@ async def activate_citizen(
     # Activate citizen tier
     subscription.tier = "aj_citizen"
     subscription.status = "active"
-    subscription.messages_limit = None  # Unlimited, AJ-gated
+    subscription.messages_limit = 0  # AJ-gated, no fixed limit
 
     # Credit welcome bonus
     ledger = AJLedger(db)

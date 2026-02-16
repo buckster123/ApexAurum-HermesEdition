@@ -3016,7 +3016,7 @@ async def pocket_aj_activate_citizen(
 
     subscription.tier = "aj_citizen"
     subscription.status = "active"
-    subscription.messages_limit = None
+    subscription.messages_limit = 0  # AJ-gated, no fixed limit
 
     ledger = AJLedger(db)
     await ledger.credit(
