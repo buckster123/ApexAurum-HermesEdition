@@ -543,6 +543,9 @@ export function useVillage3D(containerRef, options = {}) {
     controls.maxDistance = 120
     controls.maxPolarAngle = Math.PI * 0.42
     controls.autoRotate = false
+    controls.enablePan = true
+    controls.screenSpacePanning = false // Pan along ground plane, not screen
+    controls.panSpeed = 1.2
     controlsRef.value = controls
 
     // --- Lighting ---
@@ -1937,24 +1940,27 @@ export function useVillage3D(containerRef, options = {}) {
       // --- Helper: create InstancedMesh from a GLB template ---
       function _createInstancedVegetation(template, positions, baseScale, scaleRange, offsetRange) {
         if (!template) return
-        // Find first mesh in the GLB scene graph
-        let srcGeo = null
-        let srcMat = null
+        // Find first mesh in the GLB scene graph, preserving its local transform
+        let srcMesh = null
+        template.updateMatrixWorld(true)
         template.traverse((child) => {
-          if (!srcGeo && child.isMesh) {
-            srcGeo = child.geometry
-            srcMat = child.material
+          if (!srcMesh && child.isMesh) {
+            srcMesh = child
           }
         })
-        if (!srcGeo || !srcMat) return
+        if (!srcMesh || !srcMesh.geometry) return
 
         const count = positions.length
-        const mat = srcMat.clone()
-        const instanced = new THREE.InstancedMesh(srcGeo, mat, count)
+        const mat = srcMesh.material.clone()
+        const instanced = new THREE.InstancedMesh(srcMesh.geometry, mat, count)
         instanced.castShadow = !isMobile
         instanced.receiveShadow = true
 
+        // Capture the mesh's local transform from the GLB hierarchy
+        const meshLocalMatrix = srcMesh.matrixWorld.clone()
+
         const dummy = new THREE.Object3D()
+        const combined = new THREE.Matrix4()
         for (let i = 0; i < count; i++) {
           const [px, py, pz] = positions[i]
           const ox = (Math.random() - 0.5) * offsetRange
@@ -1964,7 +1970,9 @@ export function useVillage3D(containerRef, options = {}) {
           dummy.rotation.set(0, Math.random() * Math.PI * 2, 0)
           dummy.scale.setScalar(s)
           dummy.updateMatrix()
-          instanced.setMatrixAt(i, dummy.matrix)
+          // Combine instance placement with mesh's GLB-internal transform
+          combined.multiplyMatrices(dummy.matrix, meshLocalMatrix)
+          instanced.setMatrixAt(i, combined)
         }
         instanced.instanceMatrix.needsUpdate = true
 
@@ -2104,6 +2112,11 @@ export function useVillage3D(containerRef, options = {}) {
 
     // --- Render ---
     controls.update()
+    // Clamp pan target to map bounds (160x160 → +-70 with margin)
+    const t = controls.target
+    const panLimit = 65
+    t.x = Math.max(-panLimit, Math.min(panLimit, t.x))
+    t.z = Math.max(-panLimit, Math.min(panLimit, t.z))
     renderer.render(scene, camera)
   }
 
