@@ -45,6 +45,7 @@
 | 7 | Space transitions — CSS overlay + sigil flash between 3D views | f99b867 | +185 |
 | 8 | Interactive task dialog — streaming mini-chat with follow-ups | 57db365 | +416 |
 | 9 | FPV Agent Mode — per-agent vision profiles, WASD, post-processing | b3a591c | +886 |
+| 10 | FPV Agent Interaction — proximity prompt, E-key chat, streaming bubbles | 7dd6d27 | +500 |
 | E | Village as Interface — task dialog, tool execution from 3D | — | — |
 | F | Quest Engine — 25 milestones, feature gating, 6 API endpoints | — | — |
 | G | Guided Path — locked visuals, QuestHUD, unlock ceremonies, tutorial | — | — |
@@ -74,6 +75,7 @@
 | `frontend/src/composables/useVillage3D.js` | Main 3D scene — buildings, agents, particles, camera, FPV entry |
 | `frontend/src/composables/useFPVMode.js` | FPV camera — PointerLock, WASD, head bob, transitions |
 | `frontend/src/composables/useVillagePostProcessing.js` | Per-agent vision — EffectComposer, 4 agent profiles |
+| `frontend/src/composables/useFPVInteraction.js` | FPV agent chat — proximity, E-key, streaming bubbles, conversation continuity |
 | `frontend/src/composables/useThreeScene.js` | Base Three.js scene lifecycle (used by Neural/other scenes) |
 | `frontend/src/composables/useAgentModels.js` | GLB loader singleton cache for agent avatars |
 | `frontend/src/composables/useVillageModels.js` | GLB loader singleton cache for zone buildings |
