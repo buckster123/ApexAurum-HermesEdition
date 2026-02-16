@@ -212,13 +212,13 @@ function formatDate(dateStr) {
             >Quest Path</span>
           </div>
           <div class="text-sm text-gray-500 mt-1">
-            {{ billing.isFreeTrial ? 'Free Trial' : currentPlanPrice !== null ? `$${currentPlanPrice}/month` : '' }}
+            {{ billing.isFreeTrial ? 'Free Trial' : billing.status.tier === 'aj_citizen' ? 'Pay with AJ credits' : currentPlanPrice !== null ? `$${currentPlanPrice}/month` : '' }}
           </div>
         </div>
 
         <div class="flex items-center gap-6">
           <!-- Usage -->
-          <div v-if="billing.status.messages_limit" class="text-center">
+          <div v-if="billing.status.messages_limit > 0" class="text-center">
             <div class="text-sm text-gray-400 mb-1">Messages Used</div>
             <div class="text-xl font-semibold">
               {{ billing.status.messages_used }} / {{ billing.status.messages_limit }}
@@ -234,6 +234,10 @@ function formatDate(dateStr) {
                 :style="{ width: `${billing.usagePercent}%` }"
               ></div>
             </div>
+          </div>
+          <div v-else-if="billing.status.tier === 'aj_citizen'" class="text-center">
+            <div class="text-sm text-gray-400 mb-1">Messages</div>
+            <div class="text-xl font-semibold text-gold">Pay per message</div>
           </div>
           <div v-else class="text-center">
             <div class="text-sm text-gray-400 mb-1">Messages</div>

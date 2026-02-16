@@ -1289,13 +1289,21 @@ async def pocket_status(
     else:
         motd = "The Village rests under starlight."
 
+    # Get subscription tier
+    from app.models.billing import Subscription
+    result = await db.execute(
+        select(Subscription).where(Subscription.user_id == user.id)
+    )
+    subscription = result.scalar_one_or_none()
+    tier = subscription.tier if subscription else "free_trial"
+
     return {
         "village_online": True,
         "agents_active": 5,
         "tools_available": 68,
         "last_village_activity": None,
         "message_of_the_day": motd,
-        "tier": user.subscription_tier or "free_trial",
+        "tier": tier,
     }
 
 

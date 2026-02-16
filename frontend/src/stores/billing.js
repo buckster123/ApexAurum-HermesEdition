@@ -47,7 +47,7 @@ export const useBillingStore = defineStore('billing', () => {
 
   // Tier level for >= comparisons (0=trial, 1=seeker, 2=adept, 3=opus, 4=azothic)
   const tierLevel = computed(() => {
-    const levels = { free_trial: 0, seeker: 1, adept: 2, opus: 3, azothic: 4 }
+    const levels = { free_trial: 0, aj_citizen: 0, seeker: 1, adept: 2, opus: 3, azothic: 4 }
     return levels[status.value.tier] || 0
   })
 
@@ -60,6 +60,7 @@ export const useBillingStore = defineStore('billing', () => {
   const tierName = computed(() => {
     const names = {
       free_trial: 'Free Trial',
+      aj_citizen: 'AJ Citizen',
       seeker: 'Seeker',
       adept: 'Adept',
       opus: 'Opus',
