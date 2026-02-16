@@ -20,6 +20,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { useAgentModels } from '@/composables/useAgentModels'
 import { useVillageModels } from '@/composables/useVillageModels'
 import { useDraggableZones } from '@/composables/useDraggableZones'
+import { useDistrictManager } from '@/composables/useDistrictManager'
 
 // Polyfill for roundRect (not available in all browsers)
 if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
@@ -404,7 +405,7 @@ class FireflySystem {
 // =============================================================================
 
 export function useVillage3D(containerRef, options = {}) {
-  const { onAgentClick, onZoneClick, onPedestalClick, onPortalClick, onWebGLError } = options
+  const { onAgentClick, onZoneClick, onPedestalClick, onPortalClick, onDistrictChange, onWebGLError } = options
 
   // --- Reactive state (exposed) ---
   const selectedAgent = shallowRef(null)
@@ -465,6 +466,9 @@ export function useVillage3D(containerRef, options = {}) {
   // External model loaders (singleton caches)
   const agentModels = useAgentModels()
   const villageModels = useVillageModels()
+
+  // District manager (4x4 grid, camera tracking)
+  const districtManager = useDistrictManager()
 
   // Layout persistence
   const { loadLayout, saveLayout, resetLayout: resetDraggableLayout, hasCustomLayout } =
@@ -560,6 +564,9 @@ export function useVillage3D(containerRef, options = {}) {
 
     // --- Dirt paths ---
     _createPaths(scene)
+
+    // --- District boundaries (Phase 2) ---
+    _createDistrictBoundaries(scene)
 
     // --- Zone buildings ---
     _createZones(scene)
@@ -845,6 +852,69 @@ export function useVillage3D(containerRef, options = {}) {
       const a = VILLAGE_LAYOUT[outerRing[i]].pos
       const b = VILLAGE_LAYOUT[outerRing[(i + 1) % outerRing.length]].pos
       _drawPathSegment(a[0], a[2], b[0], b[2], 0.35)
+    }
+  }
+
+  // =========================================================================
+  // DISTRICT BOUNDARIES (Phase 2 — subtle ground markers)
+  // =========================================================================
+
+  const districtBoundaryObjects = []
+
+  function _createDistrictBoundaries(scene) {
+    const gridLines = districtManager.getGridLines()
+    const dashLen = 1.2
+    const gapLen = 2.4
+    const lineWidth = 0.15
+    const lineHeight = 0.03
+
+    const lineMat = new THREE.MeshBasicMaterial({
+      color: 0x4a4a3a,
+      transparent: true,
+      opacity: 0.25,
+    })
+
+    for (const { x1, z1, x2, z2 } of gridLines) {
+      const dx = x2 - x1
+      const dz = z2 - z1
+      const totalLen = Math.sqrt(dx * dx + dz * dz)
+      const angle = Math.atan2(dz, dx)
+      const step = dashLen + gapLen
+
+      for (let d = 0; d < totalLen; d += step) {
+        const segLen = Math.min(dashLen, totalLen - d)
+        if (segLen < 0.2) break
+
+        const cx = x1 + (d + segLen / 2) / totalLen * dx
+        const cz = z1 + (d + segLen / 2) / totalLen * dz
+
+        const dashGeo = new THREE.BoxGeometry(segLen, lineHeight, lineWidth)
+        const dash = new THREE.Mesh(dashGeo, lineMat)
+        dash.position.set(cx, 0.02, cz)
+        dash.rotation.y = -angle
+        scene.add(dash)
+        districtBoundaryObjects.push(dash)
+      }
+    }
+
+    // Corner markers at grid intersections (glowing dots)
+    const markerGeo = new THREE.CircleGeometry(0.4, 8)
+    markerGeo.rotateX(-Math.PI / 2)
+    const markerMat = new THREE.MeshBasicMaterial({
+      color: 0x8a8a6a,
+      transparent: true,
+      opacity: 0.3,
+    })
+
+    for (let col = 1; col < districtManager.GRID_COLS; col++) {
+      for (let row = 1; row < districtManager.GRID_ROWS; row++) {
+        const x = col * districtManager.DISTRICT_SIZE - districtManager.WORLD_HALF
+        const z = row * districtManager.DISTRICT_SIZE - districtManager.WORLD_HALF
+        const marker = new THREE.Mesh(markerGeo, markerMat)
+        marker.position.set(x, 0.03, z)
+        scene.add(marker)
+        districtBoundaryObjects.push(marker)
+      }
     }
   }
 
@@ -2139,6 +2209,13 @@ export function useVillage3D(containerRef, options = {}) {
     const panLimit = 65
     t.x = Math.max(-panLimit, Math.min(panLimit, t.x))
     t.z = Math.max(-panLimit, Math.min(panLimit, t.z))
+
+    // --- Update district tracking (Phase 2) ---
+    const districtResult = districtManager.update(t.x, t.z)
+    if (districtResult.changed) {
+      onDistrictChange?.(districtResult.district, districtResult.name, districtResult.theme)
+    }
+
     renderer.render(scene, camera)
   }
 
@@ -2670,6 +2747,14 @@ export function useVillage3D(containerRef, options = {}) {
       pedestalStage = null
     }
 
+    // Dispose district boundary objects (Phase 2)
+    for (const obj of districtBoundaryObjects) {
+      sceneRef.value?.remove(obj)
+      if (obj.geometry) obj.geometry.dispose()
+      if (obj.material) obj.material.dispose()
+    }
+    districtBoundaryObjects.length = 0
+
     // Dispose environment assets (fountain, trees, bushes, etc.)
     for (const obj of environmentObjects) {
       sceneRef.value?.remove(obj)
@@ -3025,6 +3110,9 @@ export function useVillage3D(containerRef, options = {}) {
     addVisitor,
     removeVisitor,
     visitors,
+
+    // District System (Phase 2)
+    districtManager,
 
     // Internal refs (for advanced use / debugging)
     scene: sceneRef,

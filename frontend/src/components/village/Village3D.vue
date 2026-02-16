@@ -35,7 +35,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['zone-click', 'agent-click', 'agent-task', 'pedestal-click', 'portal-click', 'webgl-error'])
+const emit = defineEmits(['zone-click', 'agent-click', 'agent-task', 'pedestal-click', 'portal-click', 'district-change', 'webgl-error'])
 
 const containerRef = ref(null)
 const showAgentPopup = ref(false)
@@ -66,6 +66,9 @@ const villageOptions = {
   },
   onPortalClick: () => {
     emit('portal-click')
+  },
+  onDistrictChange: (districtId, name, theme) => {
+    emit('district-change', { districtId, name, theme })
   },
   onWebGLError: (error) => {
     emit('webgl-error', error)
@@ -102,6 +105,7 @@ const {
   setAgentLocked,
   isAgentLocked,
   evolvePedestal,
+  districtManager,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -176,6 +180,8 @@ defineExpose({
   removeVisitor(visitorId) {
     removeVisitor(visitorId)
   },
+  // District System (Phase 2)
+  districtManager,
 })
 
 onMounted(() => {

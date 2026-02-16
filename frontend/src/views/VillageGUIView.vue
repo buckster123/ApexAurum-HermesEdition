@@ -177,6 +177,16 @@ function handleCloseResult() {
   clearResult()
 }
 
+// District System (Phase 2)
+const currentDistrictName = ref('Village Core')
+
+function handleDistrictChange({ districtId, name, theme }) {
+  currentDistrictName.value = name
+  const { showToast } = useToast()
+  showToast(`Entering ${name}`, 'info', 2500)
+  playTone(330, 0.06, 'sine', 0.08)
+}
+
 // Portal System (Phase 3)
 function handlePortalClick() {
   playTone(440, 0.08, 'sine', 0.15)
@@ -728,8 +738,17 @@ onUnmounted(() => {
             @agent-task="handleAgentTask"
             @pedestal-click="router.push('/achievements')"
             @portal-click="handlePortalClick"
+            @district-change="handleDistrictChange"
             @webgl-error="handleWebGLError"
           />
+        </div>
+
+        <!-- District Name Badge (Phase 2) — top-left overlay, 3D mode only -->
+        <div
+          v-if="viewMode === '3d'"
+          class="absolute top-3 left-3 z-10 px-3 py-1.5 rounded-lg bg-black/40 backdrop-blur-sm border border-white/10 text-xs font-mono text-amber-200/80 tracking-wider select-none transition-all duration-500"
+        >
+          {{ currentDistrictName }}
         </div>
 
         <!-- Quest HUD (G2) — bottom-left overlay, 3D mode only -->
