@@ -1,9 +1,10 @@
 <script setup>
-import { watch, computed } from 'vue'
-import { RouterView } from 'vue-router'
+import { watch, computed, onMounted } from 'vue'
+import { RouterView, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useDevMode } from '@/composables/useDevMode'
 import { useMusicStore } from '@/stores/music'
+import { useSpaceTransition } from '@/composables/useSpaceTransition'
 import Navbar from '@/components/Navbar.vue'
 import AlchemicalParticles from '@/components/AlchemicalParticles.vue'
 import MusicPlayer from '@/components/music/MusicPlayer.vue'
@@ -12,6 +13,13 @@ import ToastContainer from '@/components/ToastContainer.vue'
 const auth = useAuthStore()
 const music = useMusicStore()
 const { pacMode, justActivatedPac } = useDevMode()
+const router = useRouter()
+const { install: installSpaceTransition } = useSpaceTransition()
+
+// Install space transition overlay for 3D view navigation
+onMounted(() => {
+  installSpaceTransition(router)
+})
 
 // Add bottom padding when music player is visible
 const hasActivePlayer = computed(() => !!music.currentTrack)
