@@ -25,6 +25,7 @@ import { useVillagePostProcessing } from '@/composables/useVillagePostProcessing
 import { useFPVMode } from '@/composables/useFPVMode'
 import { useFPVInteraction } from '@/composables/useFPVInteraction'
 import { useVillageDayNight } from '@/composables/useVillageDayNight'
+import { useAgentAutonomy } from '@/composables/useAgentAutonomy'
 
 // Polyfill for roundRect (not available in all browsers)
 if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
@@ -483,6 +484,7 @@ export function useVillage3D(containerRef, options = {}) {
   const fpvMode = useFPVMode()
   const fpvInteraction = useFPVInteraction()
   const dayNight = useVillageDayNight()
+  const agentAutonomy = useAgentAutonomy()
 
   // Layout persistence
   const { loadLayout, saveLayout, resetLayout: resetDraggableLayout, hasCustomLayout } =
@@ -600,6 +602,9 @@ export function useVillage3D(containerRef, options = {}) {
 
     // --- Day/Night Cycle (Phase 12) ---
     dayNight.init({ dirLight, ambient, hemi, zoneLights, skyDome, stars, fog: scene.fog, renderer })
+
+    // --- Agent Autonomy (Phase 15) ---
+    agentAutonomy.init(agents, showBubble, VILLAGE_LAYOUT)
 
     // --- Apply saved layout if present ---
     const savedLayout = loadLayout()
@@ -2354,6 +2359,7 @@ export function useVillage3D(containerRef, options = {}) {
   // =========================================================================
 
   function handleToolStart(agentId, toolName, zoneName) {
+    agentAutonomy.pauseAgent(agentId)
     const agent = _ensureAgent(agentId)
     if (!agent) return
 
@@ -2401,6 +2407,8 @@ export function useVillage3D(containerRef, options = {}) {
       activeZone.value = null
     }, 500)
     pendingTimeouts.push(tid)
+
+    agentAutonomy.resumeAgent(agentId)
   }
 
   function handleToolError(agentId, toolName, zoneName) {
@@ -2749,6 +2757,7 @@ export function useVillage3D(containerRef, options = {}) {
     fpvInteraction.dispose()
     fpvMode.dispose()
     postProcessing.dispose()
+    agentAutonomy.dispose()
     dayNight.dispose()
 
     // Cancel animation
@@ -3211,6 +3220,9 @@ export function useVillage3D(containerRef, options = {}) {
 
     // Day/Night Cycle (Phase 12)
     dayNight,
+
+    // Agent Autonomy (Phase 15)
+    agentAutonomy,
 
     // Internal refs (for advanced use / debugging)
     scene: sceneRef,

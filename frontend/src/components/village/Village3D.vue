@@ -113,6 +113,7 @@ const {
   postProcessing,
   fpvInteraction,
   dayNight,
+  agentAutonomy,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -198,6 +199,8 @@ defineExpose({
   fpvInteraction,
   // Day/Night Cycle (Phase 12)
   dayNight,
+  // Agent Autonomy (Phase 15)
+  agentAutonomy,
 })
 
 onMounted(() => {
