@@ -32,6 +32,13 @@ class EventType(str, Enum):
     MUSIC_COMPLETE = "music_complete"
     AJ_EARNED = "aj_earned"
     AJ_LEVEL_UP = "aj_level_up"
+    # Multiverse events (Phase 4D)
+    VISITOR_ARRIVED = "visitor_arrived"
+    VISITOR_DEPARTED = "visitor_departed"
+    VISITOR_MOVED = "visitor_moved"
+    VISITOR_TIP = "visitor_tip"
+    PORTAL_REQUEST = "portal_request"
+    PORTAL_ACTIVATED = "portal_activated"
 
 
 # Zone mapping - which tools belong to which village zone
@@ -204,7 +211,7 @@ class VillageEventBroadcaster:
     _instance: Optional['VillageEventBroadcaster'] = None
 
     def __init__(self):
-        self.connections: Set = set()
+        self.connections: Dict = {}  # websocket -> user_id (or None)
         self._current_agent: str = "CLAUDE"
         self._tool_start_times: Dict[str, float] = {}
 
@@ -229,10 +236,10 @@ class VillageEventBroadcaster:
         """Number of connected Village GUI clients."""
         return len(self.connections)
 
-    async def connect(self, websocket):
-        """Register a new WebSocket connection."""
-        self.connections.add(websocket)
-        logger.info(f"Village GUI connected. Total: {len(self.connections)}")
+    async def connect(self, websocket, user_id=None):
+        """Register a new WebSocket connection, optionally tagged with user_id."""
+        self.connections[websocket] = user_id
+        logger.info(f"Village GUI connected (user={user_id}). Total: {len(self.connections)}")
 
         # Send welcome event
         event = VillageEvent(
@@ -248,7 +255,7 @@ class VillageEventBroadcaster:
 
     def disconnect(self, websocket):
         """Remove a WebSocket connection."""
-        self.connections.discard(websocket)
+        self.connections.pop(websocket, None)
         logger.info(f"Village GUI disconnected. Total: {len(self.connections)}")
 
     async def broadcast(self, event: VillageEvent):
@@ -257,17 +264,36 @@ class VillageEventBroadcaster:
             return
 
         message = event.to_json()
-        disconnected = set()
+        disconnected = []
 
         for connection in self.connections:
             try:
                 await connection.send_text(message)
             except Exception as e:
                 logger.warning(f"Failed to send to connection: {e}")
-                disconnected.add(connection)
+                disconnected.append(connection)
 
         # Clean up disconnected
-        self.connections -= disconnected
+        for ws in disconnected:
+            self.connections.pop(ws, None)
+
+    async def broadcast_to_user(self, user_id, event: VillageEvent):
+        """Broadcast event to a specific user's connections only."""
+        if not self.connections:
+            return
+
+        message = event.to_json()
+        disconnected = []
+
+        for connection, uid in self.connections.items():
+            if uid == user_id:
+                try:
+                    await connection.send_text(message)
+                except Exception:
+                    disconnected.append(connection)
+
+        for ws in disconnected:
+            self.connections.pop(ws, None)
 
     async def broadcast_tool_start(
         self,

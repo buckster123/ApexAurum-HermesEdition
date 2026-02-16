@@ -404,7 +404,7 @@ class FireflySystem {
 // =============================================================================
 
 export function useVillage3D(containerRef, options = {}) {
-  const { onAgentClick, onZoneClick, onPedestalClick, onWebGLError } = options
+  const { onAgentClick, onZoneClick, onPedestalClick, onPortalClick, onWebGLError } = options
 
   // --- Reactive state (exposed) ---
   const selectedAgent = shallowRef(null)
@@ -2515,7 +2515,12 @@ export function useVillage3D(containerRef, options = {}) {
     } else if (userData.type === 'pedestal') {
       onPedestalClick?.()
     } else if (userData.type === 'zone') {
-      onZoneClick?.(userData.name, VILLAGE_LAYOUT[userData.name]?.label)
+      // Portal arch intercept — bridge_portal opens portal panel
+      if (userData.name === 'bridge_portal' && onPortalClick) {
+        onPortalClick()
+      } else {
+        onZoneClick?.(userData.name, VILLAGE_LAYOUT[userData.name]?.label)
+      }
     }
   }
 

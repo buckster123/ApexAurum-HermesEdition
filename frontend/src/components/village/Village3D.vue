@@ -35,7 +35,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['zone-click', 'agent-click', 'agent-task', 'pedestal-click', 'webgl-error'])
+const emit = defineEmits(['zone-click', 'agent-click', 'agent-task', 'pedestal-click', 'portal-click', 'webgl-error'])
 
 const containerRef = ref(null)
 const showAgentPopup = ref(false)
@@ -63,6 +63,9 @@ const villageOptions = {
   },
   onPedestalClick: () => {
     emit('pedestal-click')
+  },
+  onPortalClick: () => {
+    emit('portal-click')
   },
   onWebGLError: (error) => {
     emit('webgl-error', error)

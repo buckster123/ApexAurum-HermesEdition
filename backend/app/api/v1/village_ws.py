@@ -72,7 +72,7 @@ async def village_websocket(websocket: WebSocket):
 
     await websocket.accept()
     broadcaster = get_village_broadcaster()
-    await broadcaster.connect(websocket)
+    await broadcaster.connect(websocket, user_id=user.id)
 
     try:
         while True:

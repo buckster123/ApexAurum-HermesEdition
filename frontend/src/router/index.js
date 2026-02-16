@@ -130,6 +130,13 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/village-gui/visit/:userId',
+      name: 'village-visit',
+      component: () => import('@/views/VillageGUIView.vue'),
+      meta: { requiresAuth: true },
+      props: true,
+    },
+    {
       path: '/nursery',
       name: 'nursery',
       component: () => import('@/views/NurseryView.vue'),

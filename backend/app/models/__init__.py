@@ -30,6 +30,7 @@ from app.models.progression import UserProgression
 from app.models.apexjoule import ApexJouleBalance, ApexJouleTransaction, LoveScore
 from app.models.solana_payment import SolanaPayment
 from app.models.marketplace import MarketplaceListing, MarketplacePurchase
+from app.models.multiverse import VillageProfile, Portal, PortalVisit, CrossVillageTransaction, FriendConnection
 
 # User references all of the above, so import LAST
 from app.models.user import User
@@ -79,5 +80,10 @@ __all__ = [
     "SolanaPayment",
     "MarketplaceListing",
     "MarketplacePurchase",
+    "VillageProfile",
+    "Portal",
+    "PortalVisit",
+    "CrossVillageTransaction",
+    "FriendConnection",
     # "UserVector",  # Temp disabled
 ]

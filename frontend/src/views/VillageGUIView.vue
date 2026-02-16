@@ -21,6 +21,7 @@ import VillageTutorial from '@/components/village/VillageTutorial.vue'
 import StageTransition from '@/components/village/StageTransition.vue'
 import TaskTickerBar from '@/components/village/TaskTickerBar.vue'
 import TaskDetailPanel from '@/components/village/TaskDetailPanel.vue'
+import VillagePortalPanel from '@/components/village/VillagePortalPanel.vue'
 import { useVillageTasking } from '@/composables/useVillageTasking'
 import { useVillageGamification } from '@/composables/useVillageGamification'
 import { useApexJouleStore } from '@/stores/apexjoule'
@@ -61,6 +62,7 @@ const {
 const showTaskDialog = ref(false)
 const taskDialogZone = ref(null)
 const showResultPanel = ref(false)
+const showPortalPanel = ref(false)
 
 // Navigate to chat with selected agent (2D/Iso only — 3D has its own popup)
 function handleAgentClick(agentId) {
@@ -173,6 +175,21 @@ function handleOpenInChat(conversationId) {
 function handleCloseResult() {
   showResultPanel.value = false
   clearResult()
+}
+
+// Portal System (Phase 3)
+function handlePortalClick() {
+  playTone(440, 0.08, 'sine', 0.15)
+  showPortalPanel.value = true
+}
+
+function handleVisitVillage(userId) {
+  router.push(`/village-gui/visit/${userId}`)
+}
+
+function handleEnterPortal(portal) {
+  // For now, navigate to the village visit view
+  router.push(`/village-gui/visit/${portal.other_user_id}`)
 }
 
 // --- Gamification computed props for dialog ---
@@ -682,6 +699,7 @@ onUnmounted(() => {
             @zone-click="handleZoneClick"
             @agent-task="handleAgentTask"
             @pedestal-click="router.push('/achievements')"
+            @portal-click="handlePortalClick"
             @webgl-error="handleWebGLError"
           />
         </div>
@@ -766,6 +784,14 @@ onUnmounted(() => {
       @close="handleCloseResult"
       @open-in-chat="handleOpenInChat"
       @cancel="cancelTask"
+    />
+
+    <!-- Portal Panel (Phase 3 — Multiverse) -->
+    <VillagePortalPanel
+      :show="showPortalPanel"
+      @close="showPortalPanel = false"
+      @visit-village="handleVisitVillage"
+      @enter-portal="handleEnterPortal"
     />
   </div>
 </template>
