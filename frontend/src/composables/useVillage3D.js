@@ -1937,30 +1937,23 @@ export function useVillage3D(containerRef, options = {}) {
         _placeAsset(portalArch, bp[0], 0, bp[2], 3, Math.PI * 0.15)
       }
 
-      // --- Helper: create InstancedMesh from a GLB template ---
+      // --- Helper: create InstancedMesh(es) from a GLB template ---
+      // Handles multi-mesh GLBs (e.g. tree trunk + crown as separate meshes)
       function _createInstancedVegetation(template, positions, baseScale, scaleRange, offsetRange) {
         if (!template) return
-        // Find first mesh in the GLB scene graph, preserving its local transform
-        let srcMesh = null
         template.updateMatrixWorld(true)
+
+        // Collect ALL meshes in the GLB (trunk, crown, leaves, etc.)
+        const meshes = []
         template.traverse((child) => {
-          if (!srcMesh && child.isMesh) {
-            srcMesh = child
-          }
+          if (child.isMesh && child.geometry) meshes.push(child)
         })
-        if (!srcMesh || !srcMesh.geometry) return
+        if (meshes.length === 0) return
 
+        // Pre-generate instance transforms (shared across all meshes in this GLB)
         const count = positions.length
-        const mat = srcMesh.material.clone()
-        const instanced = new THREE.InstancedMesh(srcMesh.geometry, mat, count)
-        instanced.castShadow = !isMobile
-        instanced.receiveShadow = true
-
-        // Capture the mesh's local transform from the GLB hierarchy
-        const meshLocalMatrix = srcMesh.matrixWorld.clone()
-
         const dummy = new THREE.Object3D()
-        const combined = new THREE.Matrix4()
+        const instanceMatrices = []
         for (let i = 0; i < count; i++) {
           const [px, py, pz] = positions[i]
           const ox = (Math.random() - 0.5) * offsetRange
@@ -1970,14 +1963,27 @@ export function useVillage3D(containerRef, options = {}) {
           dummy.rotation.set(0, Math.random() * Math.PI * 2, 0)
           dummy.scale.setScalar(s)
           dummy.updateMatrix()
-          // Combine instance placement with mesh's GLB-internal transform
-          combined.multiplyMatrices(dummy.matrix, meshLocalMatrix)
-          instanced.setMatrixAt(i, combined)
+          instanceMatrices.push(dummy.matrix.clone())
         }
-        instanced.instanceMatrix.needsUpdate = true
 
-        scene.add(instanced)
-        instancedMeshes.push(instanced)
+        // Create one InstancedMesh per GLB mesh part (trunk, crown, etc.)
+        const combined = new THREE.Matrix4()
+        for (const srcMesh of meshes) {
+          const mat = srcMesh.material.clone()
+          const instanced = new THREE.InstancedMesh(srcMesh.geometry, mat, count)
+          instanced.castShadow = !isMobile
+          instanced.receiveShadow = true
+
+          const meshLocal = srcMesh.matrixWorld.clone()
+          for (let i = 0; i < count; i++) {
+            combined.multiplyMatrices(instanceMatrices[i], meshLocal)
+            instanced.setMatrixAt(i, combined)
+          }
+          instanced.instanceMatrix.needsUpdate = true
+
+          scene.add(instanced)
+          instancedMeshes.push(instanced)
+        }
       }
 
       // 3. Trees - two InstancedMesh (round + conifer), split positions evenly
