@@ -1,7 +1,7 @@
 # Athaverse — Current Plan
 
 > Updated: 2026-02-16
-> **Phase 10 SHIPPED** (7dd6d27, +500 lines)
+> **Phase 12 SHIPPED** (+265 lines)
 
 ---
 
@@ -21,6 +21,7 @@
 | H | Grand Prizes — achievement gallery, Agora badges, 3D pedestal, share cards | Shipped |
 | 9 | FPV Agent Mode — per-agent vision, PointerLock WASD, post-processing profiles | Shipped (b3a591c) |
 | 10 | FPV Agent Interaction — proximity prompt, E-key chat, streaming bubbles | Shipped (7dd6d27) |
+| 12 | Day/Night Cycle — dynamic lighting, sky gradient, firefly/star modulation | Shipped |
 
 ---
 

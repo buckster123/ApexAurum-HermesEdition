@@ -112,6 +112,7 @@ const {
   fpvAgent,
   postProcessing,
   fpvInteraction,
+  dayNight,
 } = useVillage3D(containerRef, villageOptions)
 
 // Expose scene control methods for parent (VillageGUIView) to drive animations
@@ -195,6 +196,8 @@ defineExpose({
   fpvAgent,
   // FPV Interaction (Phase 10)
   fpvInteraction,
+  // Day/Night Cycle (Phase 12)
+  dayNight,
 })
 
 onMounted(() => {
@@ -325,6 +328,19 @@ watch(() => props.events, (newEvents) => {
       <span class="text-xs text-gray-300">{{ status.connection === 'no-auth' ? 'offline' : status.connection }}</span>
       <span class="text-xs text-gray-500">|</span>
       <span class="text-xs text-gray-400">{{ status.eventCount }} events</span>
+    </div>
+
+    <!-- Day/Night time badge (Phase 12) -->
+    <div
+      v-if="isInitialized && dayNight"
+      class="absolute top-3 left-52 flex items-center gap-1.5 bg-black/50 backdrop-blur rounded px-2.5 py-1.5 cursor-pointer select-none hover:bg-black/70 transition-colors"
+      title="Click to pause/resume cycle"
+      @click="dayNight.togglePause()"
+    >
+      <span class="text-xs">{{ dayNight.phaseName.value === 'Night' ? '\u{1F319}' : dayNight.phaseName.value === 'Dawn' ? '\u{1F305}' : dayNight.phaseName.value === 'Day' ? '\u{2600}\u{FE0F}' : '\u{1F307}' }}</span>
+      <span class="text-xs text-gray-300 font-mono">{{ Math.floor(dayNight.villageHour.value) }}:{{ String(Math.floor((dayNight.villageHour.value % 1) * 60)).padStart(2, '0') }}</span>
+      <span class="text-xs text-gray-500">{{ dayNight.phaseName.value }}</span>
+      <span v-if="dayNight.isPaused.value" class="text-xs text-yellow-400">||</span>
     </div>
 
     <!-- Active zone indicator -->

@@ -24,6 +24,7 @@ import { useDistrictManager } from '@/composables/useDistrictManager'
 import { useVillagePostProcessing } from '@/composables/useVillagePostProcessing'
 import { useFPVMode } from '@/composables/useFPVMode'
 import { useFPVInteraction } from '@/composables/useFPVInteraction'
+import { useVillageDayNight } from '@/composables/useVillageDayNight'
 
 // Polyfill for roundRect (not available in all browsers)
 if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
@@ -393,8 +394,12 @@ class FireflySystem {
 
     this.points.geometry.attributes.position.needsUpdate = true
 
-    // Pulse overall opacity
-    this.points.material.opacity = 0.4 + Math.sin(time * 0.5) * 0.2
+    // Pulse overall opacity (modulated by day/night multiplier)
+    this.points.material.opacity = (0.4 + Math.sin(time * 0.5) * 0.2) * (this._opacityMultiplier ?? 1.0)
+  }
+
+  setOpacityMultiplier(m) {
+    this._opacityMultiplier = m
   }
 
   dispose() {
@@ -477,6 +482,7 @@ export function useVillage3D(containerRef, options = {}) {
   const postProcessing = useVillagePostProcessing()
   const fpvMode = useFPVMode()
   const fpvInteraction = useFPVInteraction()
+  const dayNight = useVillageDayNight()
 
   // Layout persistence
   const { loadLayout, saveLayout, resetLayout: resetDraggableLayout, hasCustomLayout } =
@@ -519,7 +525,7 @@ export function useVillage3D(containerRef, options = {}) {
     scene.fog = new THREE.FogExp2(0x0a0a14, 0.008)
 
     // --- Sky dome (gradient background) ---
-    _createSkyDome(scene)
+    const { skyDome, stars } = _createSkyDome(scene)
     sceneRef.value = scene
 
     // --- Camera ---
@@ -565,7 +571,7 @@ export function useVillage3D(containerRef, options = {}) {
     controlsRef.value = controls
 
     // --- Lighting ---
-    _setupLighting(scene)
+    const { dirLight, ambient, hemi, zoneLights } = _setupLighting(scene)
 
     // --- Ground ---
     _createGround(scene)
@@ -591,6 +597,9 @@ export function useVillage3D(containerRef, options = {}) {
 
     // --- Grand Prize Pedestal (H4) ---
     _createPedestal(scene)
+
+    // --- Day/Night Cycle (Phase 12) ---
+    dayNight.init({ dirLight, ambient, hemi, zoneLights, skyDome, stars, fog: scene.fog, renderer })
 
     // --- Apply saved layout if present ---
     const savedLayout = loadLayout()
@@ -668,13 +677,17 @@ export function useVillage3D(containerRef, options = {}) {
     scene.add(hemi)
 
     // Per-zone warm PointLights (lantern glow)
+    const zoneLights = []
     if (!isMobile) {
       for (const [, config] of Object.entries(VILLAGE_LAYOUT)) {
         const light = new THREE.PointLight(0xffd090, 0.4, 10, 2)
         light.position.set(config.pos[0], 3, config.pos[2])
         scene.add(light)
+        zoneLights.push(light)
       }
     }
+
+    return { dirLight, ambient, hemi, zoneLights }
   }
 
   // =========================================================================
@@ -751,7 +764,10 @@ export function useVillage3D(containerRef, options = {}) {
 
       const stars = new THREE.Points(starGeo, starMat)
       scene.add(stars)
+      return { skyDome, stars }
     }
+
+    return { skyDome, stars: null }
   }
 
   // =========================================================================
@@ -2215,6 +2231,12 @@ export function useVillage3D(containerRef, options = {}) {
     // --- Update fireflies ---
     if (fireflySystem) fireflySystem.update(elapsedTime)
 
+    // --- Update day/night cycle (Phase 12) ---
+    const dayNightResult = dayNight.update(dt)
+    if (fireflySystem && dayNightResult.fireflyMultiplier !== undefined) {
+      fireflySystem.setOpacityMultiplier(dayNightResult.fireflyMultiplier)
+    }
+
     // --- Update pedestal (H4) ---
     _updatePedestal(dt, elapsedTime)
 
@@ -2727,6 +2749,7 @@ export function useVillage3D(containerRef, options = {}) {
     fpvInteraction.dispose()
     fpvMode.dispose()
     postProcessing.dispose()
+    dayNight.dispose()
 
     // Cancel animation
     if (animationFrameId) {
@@ -3185,6 +3208,9 @@ export function useVillage3D(containerRef, options = {}) {
 
     // FPV Interaction (Phase 10)
     fpvInteraction,
+
+    // Day/Night Cycle (Phase 12)
+    dayNight,
 
     // Internal refs (for advanced use / debugging)
     scene: sceneRef,
