@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import uuid4, UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import cast, select, text
