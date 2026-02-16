@@ -5,8 +5,9 @@
  * "Where computation becomes currency"
  */
 
-import { onMounted, computed, ref } from 'vue'
+import { onMounted, computed, ref, watch } from 'vue'
 import { useApexJouleStore } from '@/stores/apexjoule'
+import api from '@/services/api'
 import SolanaPayModal from '@/components/SolanaPayModal.vue'
 import AgentExportModal from '@/components/AgentExportModal.vue'
 import AgentImportModal from '@/components/AgentImportModal.vue'
@@ -157,6 +158,36 @@ async function handleTip() {
 
 const stats = computed(() => aj.economyStats || {})
 const userAJ = computed(() => aj.userBalance?.balance || 0)
+
+// ═══════ Multiverse Economy Tab (Phase 6) ═══════
+const mvLeaderboard = ref([])
+const mvTransactions = ref([])
+const mvStats = ref({})
+const mvLoading = ref(false)
+const mvLoaded = ref(false)
+
+async function fetchMultiverseData() {
+  if (mvLoaded.value) return
+  mvLoading.value = true
+  try {
+    const [lb, txs, st] = await Promise.all([
+      api.get('/api/v1/multiverse/leaderboard?limit=20').catch(() => ({ data: { villages: [] } })),
+      api.get('/api/v1/multiverse/transactions?limit=50').catch(() => ({ data: { transactions: [] } })),
+      api.get('/api/v1/multiverse/stats').catch(() => ({ data: {} })),
+    ])
+    mvLeaderboard.value = lb.data.villages || []
+    mvTransactions.value = txs.data.transactions || []
+    mvStats.value = st.data || {}
+    mvLoaded.value = true
+  } finally {
+    mvLoading.value = false
+  }
+}
+
+// Lazy-load multiverse data when tab is first opened
+watch(activeTab, (tab) => {
+  if (tab === 'multiverse') fetchMultiverseData()
+})
 </script>
 
 <template>
@@ -206,12 +237,12 @@ const userAJ = computed(() => aj.userBalance?.balance || 0)
         </div>
 
         <!-- ═══════ Tab Navigation ═══════ -->
-        <div class="flex gap-1 mb-6 border-b border-apex-border">
+        <div class="flex gap-1 mb-6 border-b border-apex-border overflow-x-auto">
           <button
-            v-for="tab in ['leaderboard', 'transactions', 'shop', 'buy']"
+            v-for="tab in ['leaderboard', 'transactions', 'shop', 'buy', 'multiverse']"
             :key="tab"
             @click="activeTab = tab"
-            class="px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px capitalize"
+            class="px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px capitalize whitespace-nowrap"
             :class="activeTab === tab
               ? 'text-gold border-gold'
               : 'text-gray-500 border-transparent hover:text-gray-300 hover:border-gray-600'"
@@ -568,6 +599,134 @@ const userAJ = computed(() => aj.userBalance?.balance || 0)
             <p>Payments verified on-chain. 1 USDC = 1,000 AJ.</p>
             <p>SOL rate updates every 5 min via Jupiter.</p>
           </div>
+        </div>
+
+        <!-- ═══════ Section 5: Multiverse (Phase 6) ═══════ -->
+        <div v-if="activeTab === 'multiverse'">
+
+          <!-- Loading -->
+          <div v-if="mvLoading" class="flex items-center justify-center py-16">
+            <div class="flex flex-col items-center gap-3">
+              <div class="w-8 h-8 border-2 border-purple-500/30 border-t-purple-400 rounded-full animate-spin"></div>
+              <span class="text-sm text-gray-500">Loading multiverse data...</span>
+            </div>
+          </div>
+
+          <template v-else>
+            <!-- Summary stats -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+              <div class="stat-card">
+                <span class="stat-value text-purple-400">{{ mvStats.active_portals || 0 }}</span>
+                <span class="stat-label">Active Portals</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value text-green-400">{{ (mvStats.total_earned || 0).toFixed(1) }}</span>
+                <span class="stat-label">Earned from Visitors</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value text-amber-400">{{ (mvStats.total_spent || 0).toFixed(1) }}</span>
+                <span class="stat-label">Spent Visiting</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value text-blue-400">{{ mvStats.visits_hosted || 0 }}</span>
+                <span class="stat-label">Visits Hosted</span>
+              </div>
+            </div>
+
+            <!-- Village Leaderboard -->
+            <h3 class="text-sm font-serif text-purple-300 mb-4 flex items-center gap-2">
+              <span class="text-purple-500">&#9670;</span> Top Villages
+            </h3>
+
+            <div v-if="mvLeaderboard.length === 0" class="text-center py-8 text-gray-500">
+              <p>No villages in the multiverse yet</p>
+              <p class="text-xs mt-1">Open a portal from the Village to connect with others</p>
+            </div>
+
+            <div v-else class="space-y-2 mb-8">
+              <div
+                v-for="(v, i) in mvLeaderboard"
+                :key="v.user_id"
+                class="flex items-center gap-4 px-4 py-3 rounded-xl border transition-all"
+                :class="i === 0
+                  ? 'bg-apex-card border-purple-500/30 hover:border-purple-500/50'
+                  : 'bg-apex-card border-apex-border hover:border-apex-border/80'"
+              >
+                <span class="text-xs text-gray-600 w-4 text-right shrink-0">#{{ i + 1 }}</span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-semibold text-purple-300 truncate">{{ v.village_name }}</span>
+                    <span v-if="v.is_featured" class="text-[10px] px-1.5 py-0.5 rounded-full bg-gold/15 text-gold border border-gold/30">featured</span>
+                  </div>
+                  <div class="text-[11px] text-gray-500 mt-0.5">
+                    by {{ v.owner_name }} &middot; {{ v.total_visits }} visit{{ v.total_visits !== 1 ? 's' : '' }}
+                  </div>
+                </div>
+                <div class="text-right shrink-0">
+                  <div class="text-sm font-semibold text-gold tabular-nums">{{ v.total_aj_earned.toFixed(1) }}</div>
+                  <div class="text-[10px] text-gray-600 uppercase">AJ earned</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Cross-Village Transactions -->
+            <h3 class="text-sm font-serif text-purple-300 mb-4 flex items-center gap-2">
+              <span class="text-purple-500">&#9670;</span> Cross-Village Transactions
+            </h3>
+
+            <div v-if="mvTransactions.length === 0" class="text-center py-8 text-gray-500">
+              <p>No cross-village transactions yet</p>
+              <p class="text-xs mt-1">Tolls, tips, and gifts will appear here</p>
+            </div>
+
+            <div v-else class="space-y-1">
+              <div
+                v-for="tx in mvTransactions"
+                :key="tx.id"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/[0.02] transition-colors"
+              >
+                <!-- Amount -->
+                <span
+                  class="text-sm font-semibold tabular-nums w-20 text-right shrink-0"
+                  :class="tx.direction === 'in' ? 'text-green-400' : 'text-red-400/70'"
+                >
+                  {{ tx.direction === 'in' ? '+' : '-' }}{{ tx.amount.toFixed(2) }}
+                </span>
+
+                <!-- Direction arrow -->
+                <span class="text-xs text-gray-600">
+                  {{ tx.direction === 'in' ? '&#8592;' : '&#8594;' }}
+                </span>
+
+                <!-- Counterpart village -->
+                <span class="text-xs text-purple-300/80 truncate flex-1 min-w-0">
+                  {{ tx.counterpart_village }}
+                </span>
+
+                <!-- Type badge -->
+                <span
+                  class="text-[10px] px-1.5 py-0.5 rounded border shrink-0"
+                  :class="{
+                    'border-gold/30 text-gold/70': tx.type === 'toll',
+                    'border-green-500/30 text-green-500/70': tx.type === 'tip',
+                    'border-purple-500/30 text-purple-400/70': tx.type === 'gift',
+                  }"
+                >
+                  {{ tx.type }}
+                </span>
+
+                <!-- Fee -->
+                <span v-if="tx.fee > 0" class="text-[10px] text-gray-600 hidden sm:inline shrink-0">
+                  fee: {{ tx.fee.toFixed(2) }}
+                </span>
+
+                <!-- Time -->
+                <span class="text-[10px] text-gray-600 shrink-0">
+                  {{ timeAgo(tx.created_at) }}
+                </span>
+              </div>
+            </div>
+          </template>
         </div>
 
       </template>

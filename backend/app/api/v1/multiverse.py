@@ -126,6 +126,51 @@ async def get_user_profile(
     return svc._format_profile(profile)
 
 
+# ── Multiverse Economy (Phase 6) ─────────────────
+
+@router.get("/leaderboard")
+@limiter.limit("30/minute")
+async def multiverse_leaderboard(
+    request: Request,
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    """Top villages ranked by cross-village AJ earned."""
+    svc = MultiverseService(db)
+    villages = await svc.get_leaderboard(limit=limit, offset=offset)
+    return {"villages": villages, "count": len(villages)}
+
+
+@router.get("/transactions")
+@limiter.limit("30/minute")
+async def cross_village_transactions(
+    request: Request,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Your cross-village transaction history (tolls, tips, gifts)."""
+    svc = MultiverseService(db)
+    txs = await svc.get_cross_village_transactions(user.id, limit=limit, offset=offset)
+    return {"transactions": txs, "count": len(txs)}
+
+
+@router.get("/stats")
+@limiter.limit("30/minute")
+async def multiverse_stats(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Your multiverse summary stats (active portals, earned, spent, visits hosted)."""
+    svc = MultiverseService(db)
+    stats = await svc.get_multiverse_stats(user.id)
+    return stats
+
+
 # ── Village Directory ─────────────────────────────
 
 @router.get("/directory")

@@ -11,7 +11,7 @@ from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, func, or_, and_, case
+from sqlalchemy import select, func, or_, and_, case, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.multiverse import (
@@ -22,6 +22,7 @@ from app.models.multiverse import (
     FriendConnection,
 )
 from app.models.apexjoule import ApexJouleBalance
+from app.models.user import User
 
 logger = logging.getLogger("multiverse")
 
@@ -569,3 +570,123 @@ class MultiverseService:
             )
         )
         return result.scalar_one_or_none() is not None
+
+    # ──────────────────────────────────────────────
+    # Multiverse Economy (Phase 6)
+    # ──────────────────────────────────────────────
+
+    async def get_leaderboard(self, limit: int = 20, offset: int = 0) -> list[dict]:
+        """Top villages ranked by total AJ earned from cross-village activity."""
+        result = await self.db.execute(
+            select(VillageProfile, User.display_name)
+            .join(User, User.id == VillageProfile.user_id)
+            .where(VillageProfile.portal_access == "public")
+            .order_by(desc(VillageProfile.total_aj_earned))
+            .offset(offset)
+            .limit(limit)
+        )
+        rows = result.all()
+        return [
+            {
+                "user_id": str(profile.user_id),
+                "village_name": profile.name,
+                "owner_name": display_name or "Anonymous",
+                "theme": profile.theme,
+                "total_aj_earned": float(profile.total_aj_earned),
+                "total_visits": profile.total_visits,
+                "is_featured": profile.is_featured,
+            }
+            for profile, display_name in rows
+        ]
+
+    async def get_cross_village_transactions(
+        self, user_id: UUID, limit: int = 50, offset: int = 0
+    ) -> list[dict]:
+        """Get a user's cross-village transaction history with counterpart names."""
+        # Subquery to get counterpart user_id and direction
+        result = await self.db.execute(
+            select(CrossVillageTransaction)
+            .where(
+                or_(
+                    CrossVillageTransaction.from_user_id == user_id,
+                    CrossVillageTransaction.to_user_id == user_id,
+                )
+            )
+            .order_by(desc(CrossVillageTransaction.created_at))
+            .offset(offset)
+            .limit(limit)
+        )
+        txs = list(result.scalars().all())
+
+        # Batch-fetch counterpart profiles + names
+        counterpart_ids = set()
+        for tx in txs:
+            other = tx.to_user_id if tx.from_user_id == user_id else tx.from_user_id
+            counterpart_ids.add(other)
+
+        profiles_map = {}
+        if counterpart_ids:
+            prof_result = await self.db.execute(
+                select(VillageProfile.user_id, VillageProfile.name)
+                .where(VillageProfile.user_id.in_(counterpart_ids))
+            )
+            for uid, name in prof_result.all():
+                profiles_map[uid] = name
+
+        out = []
+        for tx in txs:
+            is_outgoing = tx.from_user_id == user_id
+            other_id = tx.to_user_id if is_outgoing else tx.from_user_id
+            out.append({
+                "id": str(tx.id),
+                "type": tx.tx_type,
+                "amount": float(tx.amount),
+                "fee": float(tx.fee_amount),
+                "direction": "out" if is_outgoing else "in",
+                "counterpart_user_id": str(other_id),
+                "counterpart_village": profiles_map.get(other_id, "Unknown Village"),
+                "created_at": tx.created_at.isoformat() if tx.created_at else None,
+            })
+        return out
+
+    async def get_multiverse_stats(self, user_id: UUID) -> dict:
+        """Summary stats for the multiverse economy tab."""
+        # Active portals count
+        portals_result = await self.db.execute(
+            select(func.count()).select_from(Portal).where(
+                or_(Portal.user_a_id == user_id, Portal.user_b_id == user_id),
+                Portal.status == "active",
+            )
+        )
+        active_portals = portals_result.scalar_one()
+
+        # AJ earned from visitors (incoming tolls + tips)
+        earned_result = await self.db.execute(
+            select(func.coalesce(func.sum(CrossVillageTransaction.amount), 0)).where(
+                CrossVillageTransaction.to_user_id == user_id,
+            )
+        )
+        total_earned = float(Decimal(str(earned_result.scalar_one())))
+
+        # AJ spent visiting (outgoing tolls + gifts)
+        spent_result = await self.db.execute(
+            select(func.coalesce(func.sum(CrossVillageTransaction.amount), 0)).where(
+                CrossVillageTransaction.from_user_id == user_id,
+            )
+        )
+        total_spent = float(Decimal(str(spent_result.scalar_one())))
+
+        # Total visits hosted
+        visits_result = await self.db.execute(
+            select(func.count()).select_from(PortalVisit).where(
+                PortalVisit.host_id == user_id,
+            )
+        )
+        visits_hosted = visits_result.scalar_one()
+
+        return {
+            "active_portals": active_portals,
+            "total_earned": total_earned,
+            "total_spent": total_spent,
+            "visits_hosted": visits_hosted,
+        }
