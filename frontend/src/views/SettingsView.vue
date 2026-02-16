@@ -1814,6 +1814,22 @@ function getAgentSymbol(agentId) {
       </div>
     </div>
 
+    <!-- Get the App -->
+    <div v-if="activeTab === 'profile' || !devMode" class="card mt-6 border-gold/20">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-sm font-medium text-white">ApexPocket for Android</h3>
+          <p class="text-xs text-gray-500 mt-0.5">Take the Athaverse with you &middot; Chat, sensors, AJ wallet</p>
+        </div>
+        <router-link
+          to="/download"
+          class="px-3 py-1.5 bg-gold/10 text-gold border border-gold/30 rounded text-sm hover:bg-gold/20 transition-colors whitespace-nowrap"
+        >
+          Get the App
+        </router-link>
+      </div>
+    </div>
+
     <!-- Danger Zone (shown in both modes) -->
     <div v-if="activeTab === 'profile' || !devMode" class="card mt-6 border-red-500/30">
       <h2 class="text-xl font-bold text-red-400 mb-4">Danger Zone</h2>

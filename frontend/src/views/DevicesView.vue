@@ -199,6 +199,12 @@ function soulStateColor(soul) {
           >
             Add Device
           </button>
+          <router-link
+            to="/download"
+            class="inline-block mt-3 text-sm text-gold/70 hover:text-gold transition-colors"
+          >
+            Get the Android app &rarr;
+          </router-link>
         </div>
       </div>
 
@@ -327,6 +333,20 @@ function soulStateColor(soul) {
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- ApexPocket App CTA -->
+      <div class="mt-4 bg-white/5 border border-gold/20 rounded-lg p-4 flex items-center justify-between">
+        <div>
+          <h4 class="text-sm font-medium text-white">ApexPocket for Android</h4>
+          <p class="text-xs text-gray-500 mt-0.5">Chat with your agents on the go &middot; Sensors &middot; AJ wallet</p>
+        </div>
+        <router-link
+          to="/download"
+          class="px-3 py-1.5 bg-gold/10 text-gold border border-gold/30 rounded text-sm hover:bg-gold/20 transition-colors whitespace-nowrap"
+        >
+          Download APK
+        </router-link>
       </div>
 
       <!-- Add Device Modal -->
