@@ -52,6 +52,7 @@ export function useVillageInteriors() {
   let _camera = null
   let _onHideVillage = null
   let _onShowVillage = null
+  let _vrCameraRig = null // Set when in VR — teleport moves rig, not camera
 
   // LRU cache: Map<zoneName, { group, lastUsed, animatedProps }>
   const _cache = new Map()
@@ -128,6 +129,14 @@ export function useVillageInteriors() {
       _fadeState = null
       if (cb) cb()
     }
+  }
+
+  // =========================================================================
+  // VR CAMERA RIG
+  // =========================================================================
+
+  function setVRCameraRig(rig) {
+    _vrCameraRig = rig || null
   }
 
   // =========================================================================
@@ -209,11 +218,16 @@ export function useVillageInteriors() {
         _scene.fog.density = INTERIOR_FOG_DENSITY
       }
 
-      // Teleport camera near exit portal, facing inward
+      // Teleport near exit portal, facing inward
       const dims = ZONE_DIMENSIONS[zoneName] || ZONE_DIMENSIONS._generic
-      _cameraEntry.set(0, 1.6, dims.d / 2 - 1.5)
-      _camera.position.copy(_cameraEntry)
-      _camera.lookAt(0, 1.6, 0)
+      if (_vrCameraRig) {
+        // VR: move rig at ground level — headset tracking adds height
+        _vrCameraRig.position.set(0, 0, dims.d / 2 - 1.5)
+      } else {
+        _cameraEntry.set(0, 1.6, dims.d / 2 - 1.5)
+        _camera.position.copy(_cameraEntry)
+        _camera.lookAt(0, 1.6, 0)
+      }
 
       // Update state
       isInside.value = true
@@ -248,11 +262,16 @@ export function useVillageInteriors() {
       // Show village objects
       if (_onShowVillage) _onShowVillage()
 
-      // Teleport camera back to building exterior
+      // Teleport back to building exterior
       const config = VILLAGE_LAYOUT[zoneName]
       if (config) {
-        _camera.position.set(config.pos[0] + 3, 1.6, config.pos[2] + 3)
-        _camera.lookAt(config.pos[0], 1.6, config.pos[2])
+        if (_vrCameraRig) {
+          // VR: move rig at ground level near building
+          _vrCameraRig.position.set(config.pos[0] + 3, 0, config.pos[2] + 3)
+        } else {
+          _camera.position.set(config.pos[0] + 3, 1.6, config.pos[2] + 3)
+          _camera.lookAt(config.pos[0], 1.6, config.pos[2])
+        }
       }
 
       isInside.value = false
@@ -1027,6 +1046,7 @@ export function useVillageInteriors() {
 
     _scene = null
     _camera = null
+    _vrCameraRig = null
     _onHideVillage = null
     _onShowVillage = null
   }
@@ -1040,6 +1060,7 @@ export function useVillageInteriors() {
     activeZone,
     nearestDoor,
     init,
+    setVRCameraRig,
     updateDoorProximity,
     enterInterior,
     exitInterior,

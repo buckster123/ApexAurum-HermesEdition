@@ -29,6 +29,7 @@ const VIGNETTE_FADE_SPEED = 8 // Opacity lerp speed
 const SNAP_COOLDOWN = 0.3 // Seconds between snap turns
 const VR_SPAWN_OFFSET = { x: 5, z: 5 } // Offset from origin to avoid Village Square collider
 const STUCK_FRAME_THRESHOLD = 10 // Bypass physics after N frames of zero movement
+const DOOR_COOLDOWN = 0.5 // Seconds between A-button door interactions
 
 // =============================================================================
 // COMPOSABLE
@@ -69,6 +70,10 @@ export function useVRMode() {
 
   // Stuck detection (physics returning zero movement)
   let stuckFrames = 0
+
+  // Door interaction (A-button)
+  let _doorCallback = null
+  let doorCooldown = 0
 
   // VR headlight (SpotLight attached to camera)
   let headlight = null
@@ -303,7 +308,7 @@ export function useVRMode() {
     _createVignette()
 
     // Create VR headlight (SpotLight attached to camera, points forward)
-    headlight = new THREE.SpotLight(0xddeeff, 2.0, 25, Math.PI / 5, 0.5, 1.5)
+    headlight = new THREE.SpotLight(0xddeeff, 4.0, 25, Math.PI / 5, 0.5, 1.5)
     headlight.position.set(0, 0, 0)
     _camera.add(headlight)
     // SpotLight needs a target — place it 5m ahead of camera
@@ -414,6 +419,7 @@ export function useVRMode() {
     if (!isVR.value || !cameraRig) return
 
     snapCooldown = Math.max(0, snapCooldown - dt)
+    doorCooldown = Math.max(0, doorCooldown - dt)
 
     let isMoving = false
 
@@ -432,6 +438,7 @@ export function useVRMode() {
         leftStickY = 0
       let rightStickX = 0
       let leftSqueeze = false
+      let rightAButton = false
 
       for (const source of session.inputSources) {
         if (!source.gamepad) continue
@@ -448,7 +455,15 @@ export function useVRMode() {
           leftSqueeze = gp.buttons[1]?.pressed ?? false
         } else if (source.handedness === 'right') {
           rightStickX = sx
+          // A button = buttons[4] on Quest Touch controllers
+          rightAButton = gp.buttons[4]?.pressed ?? false
         }
+      }
+
+      // --- A-Button Door Interaction ---
+      if (rightAButton && doorCooldown <= 0 && _doorCallback) {
+        _doorCallback()
+        doorCooldown = DOOR_COOLDOWN
       }
 
       // --- Smooth Locomotion (left stick) ---
@@ -620,6 +635,14 @@ export function useVRMode() {
   // HELPERS
   // -------------------------------------------------------------------------
 
+  function setDoorCallback(fn) {
+    _doorCallback = fn || null
+  }
+
+  function getCameraRig() {
+    return cameraRig
+  }
+
   function getCameraRigPosition() {
     if (cameraRig) {
       return cameraRig.getWorldPosition(tempWorldPos.clone())
@@ -639,6 +662,8 @@ export function useVRMode() {
     update,
     dispose,
     checkSupport,
+    setDoorCallback,
+    getCameraRig,
     getCameraRigPosition,
     // Hand tracking (Phase 18)
     hands,

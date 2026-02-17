@@ -478,6 +478,10 @@ export function useVillage3D(containerRef, options = {}) {
   // InstancedMesh objects for batched vegetation (Phase 0A performance)
   const instancedMeshes = []
 
+  // VR interior state tracking
+  let _wasVRActive = false
+  let _lastVRDoorZone = null // Track door prompt changes
+
   // External model loaders (singleton caches)
   const agentModels = useAgentModels()
   const villageModels = useVillageModels()
@@ -649,6 +653,17 @@ export function useVillage3D(containerRef, options = {}) {
       }
     })
 
+    // Wire VR A-button door callback for interiors
+    vrMode.setDoorCallback(() => {
+      // Ensure VR rig is passed for VR-aware teleport
+      interiors.setVRCameraRig(vrMode.getCameraRig())
+      if (interiors.isInside.value) {
+        interiors.exitInterior()
+      } else if (interiors.nearestDoor.value) {
+        interiors.enterInterior(interiors.nearestDoor.value.zoneName)
+      }
+    })
+
     // --- Agent Autonomy (Phase 15) ---
     agentAutonomy.init(agents, showBubble, VILLAGE_LAYOUT)
 
@@ -743,6 +758,11 @@ export function useVillage3D(containerRef, options = {}) {
           onPortalClick()
         } else {
           onZoneClick?.(userData.name, VILLAGE_LAYOUT[userData.name]?.label)
+        }
+        // VR pinch door entry: if pinch-selected zone matches nearest door → enter
+        if (vrMode.isVR.value && interiors.nearestDoor.value?.zoneName === userData.name) {
+          interiors.setVRCameraRig(vrMode.getCameraRig())
+          interiors.enterInterior(userData.name)
         }
         // Phase 19: VR UI panels — show zone info
         if (vrMode.isVR.value && vrMode.vrUI) {
@@ -2424,6 +2444,36 @@ export function useVillage3D(containerRef, options = {}) {
       interiors.updateDoorProximity(camera.position)
     } else if (vrMode.isVR.value && !interiors.isInside.value) {
       interiors.updateDoorProximity(vrMode.getCameraRigPosition())
+    }
+
+    // --- VR rig ↔ interiors wiring (Phase 21) ---
+    if (vrMode.isVR.value && !_wasVRActive) {
+      // VR just started — pass rig to interiors for VR-aware teleport
+      interiors.setVRCameraRig(vrMode.getCameraRig())
+      _wasVRActive = true
+    } else if (!vrMode.isVR.value && _wasVRActive) {
+      // VR just ended — clear rig ref
+      interiors.setVRCameraRig(null)
+      _wasVRActive = false
+    }
+
+    // --- VR door prompt on info panel ---
+    if (vrMode.isVR.value && vrMode.vrUI) {
+      const doorZone = interiors.nearestDoor.value?.zoneName || null
+      const insideZone = interiors.isInside.value ? interiors.activeZone.value : null
+      const promptZone = insideZone || doorZone
+      if (promptZone !== _lastVRDoorZone) {
+        _lastVRDoorZone = promptZone
+        if (insideZone) {
+          const layout = VILLAGE_LAYOUT[insideZone]
+          vrMode.vrUI.showZoneInfo(insideZone, `Exit ${layout?.label || insideZone}  [A]`, layout?.color || '#888')
+        } else if (doorZone) {
+          const layout = VILLAGE_LAYOUT[doorZone]
+          vrMode.vrUI.showZoneInfo(doorZone, `Enter ${layout?.label || doorZone}  [A]`, layout?.color || '#888')
+        }
+      }
+    } else if (_lastVRDoorZone && !vrMode.isVR.value) {
+      _lastVRDoorZone = null
     }
 
     // --- Update pedestal (H4) ---
