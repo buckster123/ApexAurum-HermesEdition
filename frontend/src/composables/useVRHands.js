@@ -33,6 +33,7 @@ const FIST_THRESHOLD = 0.03 // 3cm -- avg fingertip-to-palm for fist
 const MOVE_SPEED = 4 // m/s -- same as controller
 const SPRINT_SPEED = 8 // m/s -- same as controller
 const VILLAGE_BOUND = 75 // Same as useVRMode / useFPVMode
+const STUCK_FRAME_THRESHOLD = 10 // Bypass physics after N frames of zero movement
 
 // Joint names for finger tip detection
 const FINGER_TIP_JOINTS = [
@@ -70,6 +71,9 @@ export function useVRHands() {
   // Callbacks
   let _onPinchSelect = null // (intersection) => void
   let _interactables = [] // THREE.Object3D[] for raycasting
+
+  // Stuck detection
+  let _stuckFrames = 0
 
   // Pre-allocated temp vectors (avoid GC during animation loop)
   const _wristForward = new THREE.Vector3()
@@ -253,20 +257,30 @@ export function useVRHands() {
       // Apply physics or raw movement with bounds clamping
       if (physics?.isReady?.value) {
         const resolved = physics.moveCharacter(_moveDir)
-        _cameraRig.position.add(resolved)
+        // Stuck detection: bypass physics if zero movement for too many frames
+        if (Math.abs(resolved.x) < 0.0001 && Math.abs(resolved.z) < 0.0001) {
+          _stuckFrames++
+          if (_stuckFrames > STUCK_FRAME_THRESHOLD) {
+            _cameraRig.position.add(_moveDir)
+          }
+        } else {
+          _stuckFrames = 0
+          _cameraRig.position.add(resolved)
+        }
       } else {
         _cameraRig.position.add(_moveDir)
-        _cameraRig.position.x = THREE.MathUtils.clamp(
-          _cameraRig.position.x,
-          -VILLAGE_BOUND,
-          VILLAGE_BOUND,
-        )
-        _cameraRig.position.z = THREE.MathUtils.clamp(
-          _cameraRig.position.z,
-          -VILLAGE_BOUND,
-          VILLAGE_BOUND,
-        )
       }
+      // Clamp to village bounds
+      _cameraRig.position.x = THREE.MathUtils.clamp(
+        _cameraRig.position.x,
+        -VILLAGE_BOUND,
+        VILLAGE_BOUND,
+      )
+      _cameraRig.position.z = THREE.MathUtils.clamp(
+        _cameraRig.position.z,
+        -VILLAGE_BOUND,
+        VILLAGE_BOUND,
+      )
     }
 
     // --- Right hand pinch interaction ---

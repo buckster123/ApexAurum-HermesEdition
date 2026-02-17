@@ -27,6 +27,8 @@ const SPRINT_SPEED = 8 // Grip squeeze sprint
 const VILLAGE_BOUND = 75 // Same as useFPVMode
 const VIGNETTE_FADE_SPEED = 8 // Opacity lerp speed
 const SNAP_COOLDOWN = 0.3 // Seconds between snap turns
+const VR_SPAWN_OFFSET = { x: 5, z: 5 } // Offset from origin to avoid Village Square collider
+const STUCK_FRAME_THRESHOLD = 10 // Bypass physics after N frames of zero movement
 
 // =============================================================================
 // COMPOSABLE
@@ -64,6 +66,9 @@ export function useVRMode() {
   const tempForward = new THREE.Vector3()
   const tempRight = new THREE.Vector3()
   const tempWorldPos = new THREE.Vector3()
+
+  // Stuck detection (physics returning zero movement)
+  let stuckFrames = 0
 
   // Comfort vignette
   let vignetteMesh = null
@@ -268,11 +273,18 @@ export function useVRMode() {
 
     // --- Camera Rig ---
     cameraRig = new THREE.Group()
-    cameraRig.position.set(0, 0, 0)
+    // Spawn offset from Village Square center to avoid building collider
+    cameraRig.position.set(VR_SPAWN_OFFSET.x, 0, VR_SPAWN_OFFSET.z)
     _scene.add(cameraRig)
     // Re-parent camera into rig
     _camera.removeFromParent()
     cameraRig.add(_camera)
+
+    // Sync physics character to safe spawn point
+    if (_physics?.isReady?.value) {
+      _physics.setCharacterPosition(VR_SPAWN_OFFSET.x, 0, VR_SPAWN_OFFSET.z)
+    }
+    stuckFrames = 0
 
     // Setup controllers
     _setupControllers()
@@ -436,21 +448,31 @@ export function useVRMode() {
         // Apply physics collision (Phase 14) or raw fallback
         if (_physics?.isReady?.value) {
           const resolved = _physics.moveCharacter(moveDirection)
-          cameraRig.position.add(resolved)
+          // Stuck detection: if physics returns zero for too many frames, bypass it
+          if (Math.abs(resolved.x) < 0.0001 && Math.abs(resolved.z) < 0.0001) {
+            stuckFrames++
+            if (stuckFrames > STUCK_FRAME_THRESHOLD) {
+              // Bypass physics — apply raw movement to escape collider
+              cameraRig.position.add(moveDirection)
+            }
+          } else {
+            stuckFrames = 0
+            cameraRig.position.add(resolved)
+          }
         } else {
           cameraRig.position.add(moveDirection)
-          // Clamp to village bounds (fallback when no physics)
-          cameraRig.position.x = THREE.MathUtils.clamp(
-            cameraRig.position.x,
-            -VILLAGE_BOUND,
-            VILLAGE_BOUND,
-          )
-          cameraRig.position.z = THREE.MathUtils.clamp(
-            cameraRig.position.z,
-            -VILLAGE_BOUND,
-            VILLAGE_BOUND,
-          )
         }
+        // Clamp to village bounds
+        cameraRig.position.x = THREE.MathUtils.clamp(
+          cameraRig.position.x,
+          -VILLAGE_BOUND,
+          VILLAGE_BOUND,
+        )
+        cameraRig.position.z = THREE.MathUtils.clamp(
+          cameraRig.position.z,
+          -VILLAGE_BOUND,
+          VILLAGE_BOUND,
+        )
       }
 
       // --- Snap Turn (right stick X) ---
