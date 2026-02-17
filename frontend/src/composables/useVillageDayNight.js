@@ -16,22 +16,23 @@ import * as THREE from 'three'
 const PHASES = {
   night: {
     sunAngle: -Math.PI / 2,
-    sunColor: new THREE.Color(0x4466aa),
-    sunIntensity: 0.35,
-    ambientColor: new THREE.Color(0x151540),
-    ambientIntensity: 0.45,
-    hemiSkyColor: new THREE.Color(0x152050),
+    sunColor: new THREE.Color(0x6688cc),
+    sunIntensity: 0.5,
+    ambientColor: new THREE.Color(0x1a1a50),
+    ambientIntensity: 0.55,
+    hemiSkyColor: new THREE.Color(0x1a2a60),
     hemiGroundColor: new THREE.Color(0x1a0e00),
-    hemiIntensity: 0.35,
-    fogColor: new THREE.Color(0x0c0c1e),
-    fogDensity: 0.008,
+    hemiIntensity: 0.45,
+    fogColor: new THREE.Color(0x101025),
+    fogDensity: 0.006,
     zoneLightIntensity: 0.8,
-    exposure: 0.85,
+    exposure: 0.95,
     starOpacity: 0.8,
     fireflyMultiplier: 1.0,
-    skyHorizon: new THREE.Color(0x141428),
-    skyMid: new THREE.Color(0x101030),
-    skyZenith: new THREE.Color(0x060612),
+    skyHorizon: new THREE.Color(0x1a1a35),
+    skyMid: new THREE.Color(0x141438),
+    skyZenith: new THREE.Color(0x08081a),
+    moonOpacity: 1.0,
   },
   dawn: {
     sunAngle: 0,
@@ -51,6 +52,7 @@ const PHASES = {
     skyHorizon: new THREE.Color(0x553333),
     skyMid: new THREE.Color(0x331133),
     skyZenith: new THREE.Color(0x0a0515),
+    moonOpacity: 0.3,
   },
   day: {
     sunAngle: Math.PI / 2,
@@ -70,6 +72,7 @@ const PHASES = {
     skyHorizon: new THREE.Color(0x2a3050),
     skyMid: new THREE.Color(0x1a2040),
     skyZenith: new THREE.Color(0x0a0a20),
+    moonOpacity: 0.0,
   },
   dusk: {
     sunAngle: Math.PI,
@@ -89,6 +92,7 @@ const PHASES = {
     skyHorizon: new THREE.Color(0x442222),
     skyMid: new THREE.Color(0x220a22),
     skyZenith: new THREE.Color(0x080410),
+    moonOpacity: 0.4,
   },
 }
 
@@ -126,6 +130,7 @@ export function useVillageDayNight() {
   let _zoneLights = []
   let _skyDome = null
   let _stars = null
+  let _moon = null
   let _fog = null
   let _renderer = null
 
@@ -140,13 +145,14 @@ export function useVillageDayNight() {
   // INIT
   // =========================================================================
 
-  function init({ dirLight, ambient, hemi, zoneLights, skyDome, stars, fog, renderer }) {
+  function init({ dirLight, ambient, hemi, zoneLights, skyDome, stars, moon, fog, renderer }) {
     _dirLight = dirLight
     _ambient = ambient
     _hemi = hemi
     _zoneLights = zoneLights || []
     _skyDome = skyDome
     _stars = stars
+    _moon = moon || null
     _fog = fog
     _renderer = renderer
     _bakeSkyArrays()
@@ -279,6 +285,23 @@ export function useVillageDayNight() {
       _stars.material.opacity = _lerp(fromP.starOpacity, toP.starOpacity, t)
     }
 
+    // --- Moon (opposite the sun, rises at night) ---
+    if (_moon) {
+      const moonOpacity = _lerp(fromP.moonOpacity ?? 0, toP.moonOpacity ?? 0, t)
+      _moon.material.opacity = moonOpacity
+      _moon.visible = moonOpacity > 0.01
+
+      // Moon orbits opposite the sun (offset by PI)
+      const sunAngle = _lerp(fromP.sunAngle, toP.sunAngle, t)
+      const moonAngle = sunAngle + Math.PI
+      const moonR = 160
+      _moon.position.set(
+        Math.cos(moonAngle) * moonR * 0.6,
+        Math.sin(moonAngle) * moonR * 0.5 + 40,
+        -Math.sin(moonAngle * 0.5) * moonR * 0.3,
+      )
+    }
+
     // --- Tone mapping exposure ---
     if (_renderer) {
       _renderer.toneMappingExposure = _lerp(fromP.exposure, toP.exposure, t)
@@ -338,6 +361,7 @@ export function useVillageDayNight() {
     _zoneLights = []
     _skyDome = null
     _stars = null
+    _moon = null
     _fog = null
     _renderer = null
   }

@@ -539,7 +539,7 @@ export function useVillage3D(containerRef, options = {}) {
     scene.fog = new THREE.FogExp2(0x0a0a14, 0.008)
 
     // --- Sky dome (gradient background) ---
-    const { skyDome, stars } = _createSkyDome(scene)
+    const { skyDome, stars, moon } = _createSkyDome(scene)
     sceneRef.value = scene
 
     // --- Camera ---
@@ -613,7 +613,7 @@ export function useVillage3D(containerRef, options = {}) {
     _createPedestal(scene)
 
     // --- Day/Night Cycle (Phase 12) ---
-    dayNight.init({ dirLight, ambient, hemi, zoneLights, skyDome, stars, fog: scene.fog, renderer })
+    dayNight.init({ dirLight, ambient, hemi, zoneLights, skyDome, stars, moon, fog: scene.fog, renderer })
 
     // --- Weather (Phase 16) ---
     weather.init(scene, vrMode.isVR.value)
@@ -887,10 +887,40 @@ export function useVillage3D(containerRef, options = {}) {
 
       const stars = new THREE.Points(starGeo, starMat)
       scene.add(stars)
-      return { skyDome, stars }
+
+      // --- Moon sprite (glowing disc, positioned by day/night cycle) ---
+      const moonCanvas = document.createElement('canvas')
+      moonCanvas.width = 128
+      moonCanvas.height = 128
+      const mctx = moonCanvas.getContext('2d')
+      // Radial gradient: bright center → soft glow edge
+      const grad = mctx.createRadialGradient(64, 64, 0, 64, 64, 64)
+      grad.addColorStop(0, 'rgba(220, 230, 255, 1.0)')
+      grad.addColorStop(0.3, 'rgba(200, 215, 255, 0.9)')
+      grad.addColorStop(0.6, 'rgba(150, 170, 220, 0.3)')
+      grad.addColorStop(1, 'rgba(100, 120, 180, 0)')
+      mctx.fillStyle = grad
+      mctx.fillRect(0, 0, 128, 128)
+
+      const moonTex = new THREE.CanvasTexture(moonCanvas)
+      const moonMat = new THREE.SpriteMaterial({
+        map: moonTex,
+        transparent: true,
+        opacity: 0,
+        fog: false,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
+      const moon = new THREE.Sprite(moonMat)
+      moon.scale.set(30, 30, 1)
+      moon.position.set(0, 120, -80)
+      moon.visible = false
+      scene.add(moon)
+
+      return { skyDome, stars, moon }
     }
 
-    return { skyDome, stars: null }
+    return { skyDome, stars: null, moon: null }
   }
 
   // =========================================================================

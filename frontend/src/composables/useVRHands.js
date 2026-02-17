@@ -229,6 +229,19 @@ export function useVRHands() {
    * @returns {{ moving: boolean, speed: number } | null}
    */
   function update(dt, physics) {
+    // Runtime input mode correction:
+    // Quest 3 fires hand 'connected' even when controllers are active
+    // (because hand-tracking is an optional feature). If we're in 'hands'
+    // mode but no wrist joints are actually tracked, the user is holding
+    // controllers — fall back so controller locomotion runs instead.
+    if (inputMode.value === 'hands') {
+      const hasWrist = hand0?.joints?.['wrist'] && hand1?.joints?.['wrist']
+      if (!hasWrist) {
+        inputMode.value = 'controller'
+        return null
+      }
+    }
+
     if (inputMode.value !== 'hands') return null
 
     // Detect left hand gesture
