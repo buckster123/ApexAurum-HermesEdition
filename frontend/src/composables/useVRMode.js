@@ -423,6 +423,21 @@ export function useVRMode() {
 
     let isMoving = false
 
+    // --- A-Button Door Interaction (always check, regardless of input mode) ---
+    const session = _renderer.xr.getSession()
+    if (session) {
+      for (const source of session.inputSources) {
+        if (source.handedness === 'right' && source.gamepad) {
+          const aButton = source.gamepad.buttons[4]?.pressed ?? false
+          if (aButton && doorCooldown <= 0 && _doorCallback) {
+            _doorCallback()
+            doorCooldown = DOOR_COOLDOWN
+          }
+          break
+        }
+      }
+    }
+
     // --- Hand tracking update (Phase 18) ---
     const handResult = hands.update(dt, _physics)
 
@@ -431,14 +446,12 @@ export function useVRMode() {
       isMoving = handResult?.moving ?? false
     } else {
       // --- Controller input ---
-      const session = _renderer.xr.getSession()
       if (!session) return
 
       let leftStickX = 0,
         leftStickY = 0
       let rightStickX = 0
       let leftSqueeze = false
-      let rightAButton = false
 
       for (const source of session.inputSources) {
         if (!source.gamepad) continue
@@ -455,15 +468,7 @@ export function useVRMode() {
           leftSqueeze = gp.buttons[1]?.pressed ?? false
         } else if (source.handedness === 'right') {
           rightStickX = sx
-          // A button = buttons[4] on Quest Touch controllers
-          rightAButton = gp.buttons[4]?.pressed ?? false
         }
-      }
-
-      // --- A-Button Door Interaction ---
-      if (rightAButton && doorCooldown <= 0 && _doorCallback) {
-        _doorCallback()
-        doorCooldown = DOOR_COOLDOWN
       }
 
       // --- Smooth Locomotion (left stick) ---

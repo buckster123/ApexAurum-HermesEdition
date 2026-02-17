@@ -445,7 +445,7 @@ export function useVillageInteriors() {
     _buildExitPortal(group, d, portalMeshes)
 
     // --- Interior Lighting ---
-    const ambient = new THREE.AmbientLight(0x444466, 0.6)
+    const ambient = new THREE.AmbientLight(0x444466, 1.2)
     group.add(ambient)
 
     const ceilLight = new THREE.PointLight(0xffeedd, 1.2, w * 2.5)

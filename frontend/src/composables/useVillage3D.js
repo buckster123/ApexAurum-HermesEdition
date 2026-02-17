@@ -481,6 +481,7 @@ export function useVillage3D(containerRef, options = {}) {
   // VR interior state tracking
   let _wasVRActive = false
   let _lastVRDoorZone = null // Track door prompt changes
+  let _vrDoorPromptTimer = 0 // Re-show exit prompt before 8s auto-hide
 
   // External model loaders (singleton caches)
   const agentModels = useAgentModels()
@@ -741,6 +742,12 @@ export function useVillage3D(containerRef, options = {}) {
     ]
     vrMode.hands.setInteractables(handInteractables)
     vrMode.hands.setPinchSelectCallback((intersection) => {
+      // VR pinch exit: any pinch while inside an interior → exit
+      if (interiors.isInside.value && vrMode.isVR.value) {
+        interiors.setVRCameraRig(vrMode.getCameraRig())
+        interiors.exitInterior()
+        return
+      }
       // Walk parent chain to find userData, same as mouse click
       const userData = _findUserData([intersection])
       if (!userData) return
@@ -2420,13 +2427,18 @@ export function useVillage3D(containerRef, options = {}) {
       : camera.position
     const weatherMods = weather.update(dt, elapsedTime, cameraPos, dayNight.villageHour.value, dayNight.phaseName.value)
 
-    // Apply weather modifiers on top of day/night base values
-    if (scene.fog && dayNightResult.baseFogDensity !== undefined) {
-      scene.fog.density = dayNightResult.baseFogDensity * weatherMods.fogDensityMultiplier
-    }
-    if (renderer && dayNightResult.baseExposure !== undefined) {
-      renderer.toneMappingExposure = dayNightResult.baseExposure + weatherMods.exposureMod
-        + (weatherMods.lightningFlash ? 0.5 : 0)
+    // Apply weather modifiers on top of day/night base values (skip when inside interior)
+    if (!interiors.isInside.value) {
+      if (scene.fog && dayNightResult.baseFogDensity !== undefined) {
+        scene.fog.density = dayNightResult.baseFogDensity * weatherMods.fogDensityMultiplier
+      }
+      if (renderer && dayNightResult.baseExposure !== undefined) {
+        renderer.toneMappingExposure = dayNightResult.baseExposure + weatherMods.exposureMod
+          + (weatherMods.lightningFlash ? 0.5 : 0)
+      }
+    } else if (renderer) {
+      // Interior: stable, well-lit exposure regardless of time of day
+      renderer.toneMappingExposure = 1.2
     }
 
     // --- Update spatial audio (Phase 11) ---
@@ -2461,19 +2473,27 @@ export function useVillage3D(containerRef, options = {}) {
     if (vrMode.isVR.value && vrMode.vrUI) {
       const doorZone = interiors.nearestDoor.value?.zoneName || null
       const insideZone = interiors.isInside.value ? interiors.activeZone.value : null
-      const promptZone = insideZone || doorZone
-      if (promptZone !== _lastVRDoorZone) {
-        _lastVRDoorZone = promptZone
-        if (insideZone) {
+
+      if (insideZone) {
+        // Inside: re-show exit prompt every 7s (panel auto-hides at 8s)
+        _vrDoorPromptTimer += dt
+        if (insideZone !== _lastVRDoorZone || _vrDoorPromptTimer > 7) {
+          _lastVRDoorZone = insideZone
+          _vrDoorPromptTimer = 0
           const layout = VILLAGE_LAYOUT[insideZone]
-          vrMode.vrUI.showZoneInfo(insideZone, `Exit ${layout?.label || insideZone}  [A]`, layout?.color || '#888')
-        } else if (doorZone) {
+          vrMode.vrUI.showZoneInfo(insideZone, `Exit ${layout?.label || insideZone}  [A / Pinch]`, layout?.color || '#888')
+        }
+      } else if (doorZone !== _lastVRDoorZone) {
+        _lastVRDoorZone = doorZone
+        _vrDoorPromptTimer = 0
+        if (doorZone) {
           const layout = VILLAGE_LAYOUT[doorZone]
           vrMode.vrUI.showZoneInfo(doorZone, `Enter ${layout?.label || doorZone}  [A]`, layout?.color || '#888')
         }
       }
     } else if (_lastVRDoorZone && !vrMode.isVR.value) {
       _lastVRDoorZone = null
+      _vrDoorPromptTimer = 0
     }
 
     // --- Update pedestal (H4) ---
