@@ -1,7 +1,7 @@
 # Athaverse — Current Plan
 
 > Updated: 2026-02-17
-> **Phases 13, 14, 16 SHIPPED** — Building Interiors, Physics, Weather
+> **Phase 19 SHIPPED** — VR UI Panels
 
 ---
 
@@ -28,6 +28,8 @@
 | 15 | Agent Autonomy — wandering, zone preferences, musings, agent-to-agent dialogue | Shipped |
 | 16 | Weather & Atmosphere — rain, snow, fog, storm, aurora, lightning, probability schedule | Shipped |
 | 17 | WebXR VR Mode — Quest 3 immersive VR, thumbstick locomotion, comfort vignette | Shipped |
+| 18 | Hand Tracking — Quest 3 hand input, pinch-select, palm walk, fist sprint, dual input | Shipped (abd3ba7) |
+| 19 | VR UI Panels — floating spatial panels, agent/zone info, streaming chat, wrist HUD | Shipped |
 
 ---
 
@@ -53,8 +55,6 @@
 
 ## Future Horizons
 
-- **Phase 18: Hand Tracking** — Meta Quest hand input, gesture-based interactions
-- **Phase 19: VR UI Panels** — Floating spatial panels for chat, task dialog, settings in VR
 - **Phase 20: Agent Avatars in VR** — Full-body IK, eye tracking, lip sync
 - **WebGPU + TSL** — Three.js v0.171+ for compute shaders, node-based materials
 - **realism-effects** — SSGI, SSR, motion blur for near-photorealistic rendering

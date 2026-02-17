@@ -727,11 +727,22 @@ export function useVillage3D(containerRef, options = {}) {
       if (userData.type === 'agent') {
         selectedAgent.value = userData.id
         onAgentClick?.(userData.id, agents.get(userData.id))
+        // Phase 19: VR UI panels — show agent info + open chat
+        if (vrMode.isVR.value && vrMode.vrUI) {
+          const agent = agents.get(userData.id)
+          vrMode.vrUI.showAgentInfo(userData.id, agent?.currentZone || 'village_square')
+          vrMode.vrUI.showChat(userData.id)
+        }
       } else if (userData.type === 'zone') {
         if (userData.name === 'bridge_portal' && onPortalClick) {
           onPortalClick()
         } else {
           onZoneClick?.(userData.name, VILLAGE_LAYOUT[userData.name]?.label)
+        }
+        // Phase 19: VR UI panels — show zone info
+        if (vrMode.isVR.value && vrMode.vrUI) {
+          const layout = VILLAGE_LAYOUT[userData.name]
+          vrMode.vrUI.showZoneInfo(userData.name, layout?.label || userData.name, layout?.color || '#888')
         }
       } else if (userData.type === 'pedestal') {
         onPedestalClick?.()
@@ -2399,6 +2410,10 @@ export function useVillage3D(containerRef, options = {}) {
     if (vrMode.isVR.value) {
       // VR mode: headset controls camera, thumbstick locomotion via rig
       vrMode.update(dt)
+      // Phase 19: Feed wrist HUD with time + weather
+      if (vrMode.vrUI) {
+        vrMode.vrUI.updateWristHUD(dayNight.villageHour.value, weather.weatherState.value)
+      }
       renderer.render(scene, camera)
     } else if (fpvMode.isFPV.value) {
       // FPV mode: PointerLockControls handles camera rotation, we handle movement

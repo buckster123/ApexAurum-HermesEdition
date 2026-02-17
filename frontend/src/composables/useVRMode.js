@@ -14,6 +14,7 @@ import * as THREE from 'three'
 import { VRButton } from 'three/addons/webxr/VRButton.js'
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js'
 import { useVRHands } from '@/composables/useVRHands'
+import { useVRUI } from '@/composables/useVRUI'
 
 // =============================================================================
 // CONSTANTS
@@ -55,6 +56,7 @@ export function useVRMode() {
   let controllerGrip1 = null
   const controllerModelFactory = new XRControllerModelFactory()
   const hands = useVRHands()
+  const vrUI = useVRUI()
 
   // Locomotion
   let snapCooldown = 0
@@ -278,6 +280,9 @@ export function useVRMode() {
     // Setup hand tracking (Phase 18)
     hands.setup(_renderer, _camera, cameraRig, controller0, controller1)
 
+    // Setup VR UI panels (Phase 19)
+    vrUI.init(_scene, _camera, cameraRig, controller0, _renderer.xr.getHand(0))
+
     // Create comfort vignette
     _createVignette()
 
@@ -329,6 +334,9 @@ export function useVRMode() {
 
     // Teardown hand tracking (Phase 18)
     hands.teardown()
+
+    // Dispose VR UI panels (Phase 19)
+    vrUI.dispose()
 
     // Remove rig from scene
     if (cameraRig) {
@@ -453,6 +461,9 @@ export function useVRMode() {
       }
     }
 
+    // --- VR UI Panels (Phase 19) ---
+    vrUI.update(dt)
+
     // --- Comfort Vignette ---
     const targetOpacity = isMoving ? 0.5 : 0
     vignetteOpacity = THREE.MathUtils.lerp(vignetteOpacity, targetOpacity, VIGNETTE_FADE_SPEED * dt)
@@ -507,6 +518,9 @@ export function useVRMode() {
 
     // Dispose hands (Phase 18)
     hands.dispose()
+
+    // Dispose VR UI (Phase 19)
+    vrUI.dispose()
 
     // Dispose controllers
     _disposeControllers()
@@ -564,5 +578,7 @@ export function useVRMode() {
     getCameraRigPosition,
     // Hand tracking (Phase 18)
     hands,
+    // VR UI panels (Phase 19)
+    vrUI,
   }
 }

@@ -67,8 +67,31 @@ const showPortalPanel = ref(false)
 // Navigate to chat with selected agent (2D/Iso only — 3D has its own popup)
 function handleAgentClick(agentId) {
   playTone(660, 0.05, 'sine', 0.1)
-  if (viewMode.value === '3d') return // Village3D handles its own agent popup
+  if (viewMode.value === '3d') {
+    // Phase 19: VR auto-greet — pinch an agent triggers a greeting task
+    if (vrActive.value && village3dRef.value?.vrMode?.vrUI) {
+      _vrAutoGreet(agentId)
+    }
+    return // Village3D handles its own agent popup on desktop
+  }
   router.push({ path: '/chat', query: { agent: agentId } })
+}
+
+// Phase 19: Send a short greeting to the pinched agent in VR
+async function _vrAutoGreet(agentId) {
+  if (isExecuting.value) return
+  const task = {
+    prompt: 'Greet me briefly — I just walked up to you in VR.',
+    agents: [agentId],
+    mode: 'single',
+    zone: 'village_square',
+    useTools: false,
+  }
+  const result = await executeTask(task)
+  // Stop typing indicator when complete
+  if (village3dRef.value?.vrMode?.vrUI) {
+    village3dRef.value.vrMode.vrUI.updateChatText(result?.content || '', false)
+  }
 }
 
 // Zone click opens task dialog (Phase E)
@@ -432,10 +455,14 @@ watch(fpvChatOpen, (open) => {
   if (open) nextTick(() => fpvChatInputRef.value?.focus())
 })
 
-// Bridge streaming content from useVillageTasking into fpvInteraction
+// Bridge streaming content from useVillageTasking into fpvInteraction + VR UI
 watch(streamingContent, (text) => {
   if (fpvActive.value && fpvInteraction.value) {
     fpvInteraction.value.updateStreamingText(text)
+  }
+  // Phase 19: Forward streaming text to VR chat panel
+  if (vrActive.value && village3dRef.value?.vrMode?.vrUI) {
+    village3dRef.value.vrMode.vrUI.updateChatText(text, isExecuting.value)
   }
 })
 
