@@ -270,6 +270,8 @@ export function useVRHands() {
       // Apply physics or raw movement with bounds clamping
       if (physics?.isReady?.value) {
         const resolved = physics.moveCharacter(_moveDir)
+        // Zero out Y — prevents floating from Rapier autostep accumulation
+        resolved.y = 0
         // Stuck detection: bypass physics if zero movement for too many frames
         if (Math.abs(resolved.x) < 0.0001 && Math.abs(resolved.z) < 0.0001) {
           _stuckFrames++
@@ -283,7 +285,7 @@ export function useVRHands() {
       } else {
         _cameraRig.position.add(_moveDir)
       }
-      // Clamp to village bounds
+      // Clamp to village bounds and ground plane
       _cameraRig.position.x = THREE.MathUtils.clamp(
         _cameraRig.position.x,
         -VILLAGE_BOUND,
@@ -294,6 +296,7 @@ export function useVRHands() {
         -VILLAGE_BOUND,
         VILLAGE_BOUND,
       )
+      _cameraRig.position.y = 0
     }
 
     // --- Right hand pinch interaction ---

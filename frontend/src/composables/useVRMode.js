@@ -70,6 +70,10 @@ export function useVRMode() {
   // Stuck detection (physics returning zero movement)
   let stuckFrames = 0
 
+  // VR headlight (SpotLight attached to camera)
+  let headlight = null
+  let headlightTarget = null
+
   // Comfort vignette
   let vignetteMesh = null
   let vignetteOpacity = 0
@@ -298,6 +302,16 @@ export function useVRMode() {
     // Create comfort vignette
     _createVignette()
 
+    // Create VR headlight (SpotLight attached to camera, points forward)
+    headlight = new THREE.SpotLight(0xddeeff, 2.0, 25, Math.PI / 5, 0.5, 1.5)
+    headlight.position.set(0, 0, 0)
+    _camera.add(headlight)
+    // SpotLight needs a target — place it 5m ahead of camera
+    headlightTarget = new THREE.Object3D()
+    headlightTarget.position.set(0, -0.3, -5)
+    _camera.add(headlightTarget)
+    headlight.target = headlightTarget
+
     // Resume AudioContext (browser autoplay policy)
     _camera.traverse((child) => {
       if (child.type === 'AudioListener' && child.context?.state === 'suspended') {
@@ -368,6 +382,17 @@ export function useVRMode() {
     savedCameraPos = null
     savedCameraQuat = null
     savedControlsTarget = null
+
+    // Remove headlight
+    if (headlight) {
+      _camera.remove(headlight)
+      headlight.dispose()
+      headlight = null
+    }
+    if (headlightTarget) {
+      _camera.remove(headlightTarget)
+      headlightTarget = null
+    }
 
     // Hide vignette
     if (vignetteMesh) {
@@ -448,6 +473,11 @@ export function useVRMode() {
         // Apply physics collision (Phase 14) or raw fallback
         if (_physics?.isReady?.value) {
           const resolved = _physics.moveCharacter(moveDirection)
+          // Zero out Y — Rapier autostep/ground-snap returns small +Y each
+          // frame which accumulates because the character body is reset to
+          // Y=0 every frame. VR rig stays on the ground plane; the headset
+          // tracking handles actual head height.
+          resolved.y = 0
           // Stuck detection: if physics returns zero for too many frames, bypass it
           if (Math.abs(resolved.x) < 0.0001 && Math.abs(resolved.z) < 0.0001) {
             stuckFrames++
@@ -462,7 +492,7 @@ export function useVRMode() {
         } else {
           cameraRig.position.add(moveDirection)
         }
-        // Clamp to village bounds
+        // Clamp to village bounds and ground plane
         cameraRig.position.x = THREE.MathUtils.clamp(
           cameraRig.position.x,
           -VILLAGE_BOUND,
@@ -473,6 +503,7 @@ export function useVRMode() {
           -VILLAGE_BOUND,
           VILLAGE_BOUND,
         )
+        cameraRig.position.y = 0
       }
 
       // --- Snap Turn (right stick X) ---
@@ -528,6 +559,17 @@ export function useVRMode() {
       }
 
       _renderer.xr.enabled = false
+    }
+
+    // Dispose headlight
+    if (headlight) {
+      _camera?.remove(headlight)
+      headlight.dispose()
+      headlight = null
+    }
+    if (headlightTarget) {
+      _camera?.remove(headlightTarget)
+      headlightTarget = null
     }
 
     // Dispose vignette
