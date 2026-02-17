@@ -93,13 +93,16 @@ export function useVRMode() {
   // INIT
   // -------------------------------------------------------------------------
 
-  function init(renderer, camera, scene, orbitControls, fpvMode, postProcessing) {
+  let _physics = null
+
+  function init(renderer, camera, scene, orbitControls, fpvMode, postProcessing, physics) {
     _renderer = renderer
     _camera = camera
     _scene = scene
     _orbitControls = orbitControls
     _fpvMode = fpvMode
     _postProcessing = postProcessing
+    _physics = physics || null
 
     // Enable WebXR on the renderer (must be before first render)
     renderer.xr.enabled = true
@@ -403,19 +406,24 @@ export function useVRMode() {
       moveDirection.addScaledVector(tempForward, -leftStickY * speed * dt)
       moveDirection.addScaledVector(tempRight, leftStickX * speed * dt)
 
-      cameraRig.position.add(moveDirection)
-
-      // Clamp to village bounds
-      cameraRig.position.x = THREE.MathUtils.clamp(
-        cameraRig.position.x,
-        -VILLAGE_BOUND,
-        VILLAGE_BOUND,
-      )
-      cameraRig.position.z = THREE.MathUtils.clamp(
-        cameraRig.position.z,
-        -VILLAGE_BOUND,
-        VILLAGE_BOUND,
-      )
+      // Apply physics collision (Phase 14) or raw fallback
+      if (_physics?.isReady?.value) {
+        const resolved = _physics.moveCharacter(moveDirection)
+        cameraRig.position.add(resolved)
+      } else {
+        cameraRig.position.add(moveDirection)
+        // Clamp to village bounds (fallback when no physics)
+        cameraRig.position.x = THREE.MathUtils.clamp(
+          cameraRig.position.x,
+          -VILLAGE_BOUND,
+          VILLAGE_BOUND,
+        )
+        cameraRig.position.z = THREE.MathUtils.clamp(
+          cameraRig.position.z,
+          -VILLAGE_BOUND,
+          VILLAGE_BOUND,
+        )
+      }
     }
 
     // --- Snap Turn (right stick X) ---
@@ -508,6 +516,17 @@ export function useVRMode() {
   }
 
   // -------------------------------------------------------------------------
+  // HELPERS
+  // -------------------------------------------------------------------------
+
+  function getCameraRigPosition() {
+    if (cameraRig) {
+      return cameraRig.getWorldPosition(tempWorldPos.clone())
+    }
+    return _camera ? _camera.position.clone() : new THREE.Vector3()
+  }
+
+  // -------------------------------------------------------------------------
   // RETURN
   // -------------------------------------------------------------------------
 
@@ -519,5 +538,6 @@ export function useVRMode() {
     update,
     dispose,
     checkSupport,
+    getCameraRigPosition,
   }
 }

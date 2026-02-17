@@ -28,6 +28,9 @@ import { useVillageDayNight } from '@/composables/useVillageDayNight'
 import { useAgentAutonomy } from '@/composables/useAgentAutonomy'
 import { useVillageSoundscape } from '@/composables/useVillageSoundscape'
 import { useVRMode } from '@/composables/useVRMode'
+import { useVillagePhysics } from '@/composables/useVillagePhysics'
+import { useVillageWeather } from '@/composables/useVillageWeather'
+import { useVillageInteriors } from '@/composables/useVillageInteriors'
 
 // Polyfill for roundRect (not available in all browsers)
 if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
@@ -489,6 +492,9 @@ export function useVillage3D(containerRef, options = {}) {
   const agentAutonomy = useAgentAutonomy()
   const soundscape = useVillageSoundscape()
   const vrMode = useVRMode()
+  const physics = useVillagePhysics()
+  const weather = useVillageWeather()
+  const interiors = useVillageInteriors()
 
   // Layout persistence
   const { loadLayout, saveLayout, resetLayout: resetDraggableLayout, hasCustomLayout } =
@@ -607,6 +613,40 @@ export function useVillage3D(containerRef, options = {}) {
     // --- Day/Night Cycle (Phase 12) ---
     dayNight.init({ dirLight, ambient, hemi, zoneLights, skyDome, stars, fog: scene.fog, renderer })
 
+    // --- Weather (Phase 16) ---
+    weather.init(scene, vrMode.isVR.value)
+    weather.setThunderCallback(() => soundscape.playThunder())
+
+    // --- Interiors (Phase 13) ---
+    interiors.init(scene, camera, {
+      hideVillage: () => {
+        for (const group of zoneGroups.values()) group.visible = false
+        for (const agent of agents.values()) agent.group.visible = false
+        for (const visitor of visitors.values()) visitor.group.visible = false
+        if (fireflySystem) fireflySystem.mesh.visible = false
+        for (const im of instancedMeshes) im.visible = false
+        for (const obj of environmentObjects) obj.visible = false
+      },
+      showVillage: () => {
+        for (const group of zoneGroups.values()) group.visible = true
+        for (const agent of agents.values()) agent.group.visible = true
+        for (const visitor of visitors.values()) visitor.group.visible = true
+        if (fireflySystem) fireflySystem.mesh.visible = true
+        for (const im of instancedMeshes) im.visible = true
+        for (const obj of environmentObjects) obj.visible = true
+      },
+    })
+
+    // Wire F-key door callback for interiors
+    fpvMode.setDoorCallback(() => {
+      if (interiors.isInside.value) {
+        interiors.exitInterior()
+        fpvMode.clearBoundsOverride()
+      } else if (interiors.nearestDoor.value) {
+        interiors.enterInterior(interiors.nearestDoor.value.zoneName)
+      }
+    })
+
     // --- Agent Autonomy (Phase 15) ---
     agentAutonomy.init(agents, showBubble, VILLAGE_LAYOUT)
 
@@ -647,14 +687,28 @@ export function useVillage3D(containerRef, options = {}) {
 
     // --- FPV + Post-Processing (Phase 9) ---
     postProcessing.init(renderer, scene, camera)
-    fpvMode.init(renderer, camera)
+    fpvMode.init(renderer, camera, physics)
 
     // --- FPV Interaction (Phase 10) ---
     fpvInteraction.init(camera, renderer, agents, fpvMode)
     fpvMode.setInteractionCallback(() => fpvInteraction.beginInteraction())
 
     // --- WebXR VR Mode (Phase 17) ---
-    vrMode.init(renderer, camera, scene, controls, fpvMode, postProcessing)
+    vrMode.init(renderer, camera, scene, controls, fpvMode, postProcessing, physics)
+
+    // --- Physics (Phase 14) — async, non-blocking ---
+    physics.init().then(() => {
+      if (!physics.isReady.value || !isInitialized.value) return
+      // Create building colliders from current zone bounding boxes
+      for (const [name, config] of Object.entries(VILLAGE_LAYOUT)) {
+        const group = zoneGroups.get(name)
+        if (group) {
+          const aabb = new THREE.Box3().setFromObject(group)
+          physics.addBuildingCollider(name, { x: config.pos[0], z: config.pos[2] }, aabb)
+        }
+      }
+      console.log('[Village3D] Physics colliders created for', buildingColliders.size || zoneGroups.size, 'zones')
+    })
     if (vrMode.vrButtonEl.value) {
       containerRef.value.appendChild(vrMode.vrButtonEl.value)
     }
@@ -1870,6 +1924,12 @@ export function useVillage3D(containerRef, options = {}) {
           })
 
           group.add(clone)
+
+          // Update physics collider with actual GLB bounding box (Phase 14)
+          if (physics.isReady.value) {
+            const aabb = new THREE.Box3().setFromObject(group)
+            physics.addBuildingCollider(name, { x: config.pos[0], z: config.pos[2] }, aabb)
+          }
         }
       }
     })
@@ -2263,6 +2323,21 @@ export function useVillage3D(containerRef, options = {}) {
       fireflySystem.setOpacityMultiplier(dayNightResult.fireflyMultiplier)
     }
 
+    // --- Update weather (Phase 16) ---
+    const cameraPos = vrMode.isVR.value
+      ? vrMode.getCameraRigPosition()
+      : camera.position
+    const weatherMods = weather.update(dt, elapsedTime, cameraPos, dayNight.villageHour.value, dayNight.phaseName.value)
+
+    // Apply weather modifiers on top of day/night base values
+    if (scene.fog && dayNightResult.baseFogDensity !== undefined) {
+      scene.fog.density = dayNightResult.baseFogDensity * weatherMods.fogDensityMultiplier
+    }
+    if (renderer && dayNightResult.baseExposure !== undefined) {
+      renderer.toneMappingExposure = dayNightResult.baseExposure + weatherMods.exposureMod
+        + (weatherMods.lightningFlash ? 0.5 : 0)
+    }
+
     // --- Update spatial audio (Phase 11) ---
     if (soundscape.audioReady.value) {
       soundscape.update(dt, camera.position, {
@@ -2272,8 +2347,28 @@ export function useVillage3D(containerRef, options = {}) {
       })
     }
 
+    // --- Update interiors (Phase 13) ---
+    interiors.update(dt, elapsedTime)
+    if (fpvMode.isFPV.value && !interiors.isInside.value) {
+      interiors.updateDoorProximity(camera.position)
+    } else if (vrMode.isVR.value && !interiors.isInside.value) {
+      interiors.updateDoorProximity(vrMode.getCameraRigPosition())
+    }
+
     // --- Update pedestal (H4) ---
     _updatePedestal(dt, elapsedTime)
+
+    // --- Physics step (Phase 14) ---
+    if (physics.isReady.value) {
+      // Sync character position before stepping
+      if (fpvMode.isFPV.value) {
+        physics.setCharacterPosition(camera.position.x, 0, camera.position.z)
+      } else if (vrMode.isVR.value) {
+        const rigPos = vrMode.getCameraRigPosition()
+        physics.setCharacterPosition(rigPos.x, 0, rigPos.z)
+      }
+      physics.step()
+    }
 
     // --- Render (3 branches: VR → FPV → Orbit) ---
     if (vrMode.isVR.value) {
@@ -2326,13 +2421,29 @@ export function useVillage3D(containerRef, options = {}) {
 
       if (dist > 0.3) {
         const step = agent.walkSpeed * dt
-        const moveRatio = Math.min(step / dist, 1)
-        current.x += dx * moveRatio
-        current.z += dz * moveRatio
+        let moveX = (dx / dist) * step
+        let moveZ = (dz / dist) * step
+
+        // --- Physics obstacle avoidance (Phase 14) ---
+        if (physics.isReady.value) {
+          const moveDir = { x: dx / dist, y: 0, z: dz / dist }
+          const hit = physics.agentRaycast(current, moveDir, Math.max(step * 2, 1.5))
+          if (hit && hit.distance < step + 0.5 && hit.normal) {
+            // Deflect perpendicular to hit normal (slide along wall)
+            const dot = moveDir.x * hit.normal.x + moveDir.z * hit.normal.z
+            moveX = (moveDir.x - hit.normal.x * dot) * step
+            moveZ = (moveDir.z - hit.normal.z * dot) * step
+          }
+        }
+
+        current.x += moveX
+        current.z += moveZ
 
         // Face direction of movement (rotate mesh group)
-        const angle = Math.atan2(dx, dz)
-        agent.group.rotation.y = angle
+        const angle = Math.atan2(moveX, moveZ)
+        if (Math.abs(moveX) > 0.001 || Math.abs(moveZ) > 0.001) {
+          agent.group.rotation.y = angle
+        }
       } else {
         // Arrived at destination
         current.x = target.x
@@ -2789,6 +2900,9 @@ export function useVillage3D(containerRef, options = {}) {
     isInitialized.value = false
 
     // Dispose composables
+    interiors.dispose()
+    weather.dispose()
+    physics.dispose()
     vrMode.dispose()
     fpvInteraction.dispose()
     soundscape.dispose()
@@ -3263,6 +3377,15 @@ export function useVillage3D(containerRef, options = {}) {
 
     // Spatial Audio (Phase 11)
     soundscape,
+
+    // Interiors (Phase 13)
+    interiors,
+
+    // Weather (Phase 16)
+    weather,
+
+    // Physics (Phase 14)
+    physics,
 
     // WebXR VR Mode (Phase 17)
     vrMode,

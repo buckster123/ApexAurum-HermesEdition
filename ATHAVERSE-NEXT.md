@@ -1,7 +1,7 @@
 # Athaverse — Current Plan
 
-> Updated: 2026-02-16
-> **Phase 17 SHIPPED** — WebXR VR Mode for Meta Quest 3
+> Updated: 2026-02-17
+> **Phases 13, 14, 16 SHIPPED** — Building Interiors, Physics, Weather
 
 ---
 
@@ -21,86 +21,13 @@
 | H | Grand Prizes — achievement gallery, Agora badges, 3D pedestal, share cards | Shipped |
 | 9 | FPV Agent Mode — per-agent vision, PointerLock WASD, post-processing profiles | Shipped (b3a591c) |
 | 10 | FPV Agent Interaction — proximity prompt, E-key chat, streaming bubbles | Shipped (7dd6d27) |
-| 12 | Day/Night Cycle — dynamic lighting, sky gradient, firefly/star modulation | Shipped (166deec) |
-| 15 | Agent Autonomy — wandering, zone preferences, musings, agent-to-agent dialogue | Shipped |
 | 11 | Spatial Audio — zone ambients, TTS agent voices, FPV footsteps, volume control | Shipped |
+| 12 | Day/Night Cycle — dynamic lighting, sky gradient, firefly/star modulation | Shipped (166deec) |
+| 13 | Building Interiors — procedural rooms, exit portals, 7 unique interiors, LRU cache | Shipped |
+| 14 | Physics & Collision — Rapier3D WASM, character controller, building colliders, agent raycasting | Shipped |
+| 15 | Agent Autonomy — wandering, zone preferences, musings, agent-to-agent dialogue | Shipped |
+| 16 | Weather & Atmosphere — rain, snow, fog, storm, aurora, lightning, probability schedule | Shipped |
 | 17 | WebXR VR Mode — Quest 3 immersive VR, thumbstick locomotion, comfort vignette | Shipped |
-
----
-
-## Phase 9: FPV Agent Mode
-
-**Goal:** Click an agent in the Village 3D view, enter First Person View through that agent's eyes. Each agent has a unique visual signature — different post-processing, color grading, and effects that reflect their personality.
-
-### 9.1 — Post-Processing Foundation
-
-**New composable:** `useVillagePostProcessing.js` (~150 lines)
-
-Install `postprocessing` (pmndrs) — merged-pass EffectComposer for performance.
-
-- Create `EffectComposer` that wraps the existing renderer
-- Define per-agent effect profiles (see table below)
-- `activateProfile(agentId)` / `deactivateProfile()` to swap effects
-- Hook into existing render loop via `addAnimationCallback()`
-
-**Per-Agent Vision Profiles:**
-
-| Agent | Color Grade | Signature Effects | Mood |
-|-------|-------------|------------------|------|
-| AZOTH | Warm gold tones | Bloom + film grain + subtle lens flare | Alchemical, ancient |
-| VAJRA | Cool blue shift | Chromatic aberration + scan lines + glitch | Technical, precise |
-| ELYSIAN | Soft pink/rose | Heavy depth of field + vignette + dream blur | Ethereal, emotional |
-| KETHER | Deep purple | God rays + noise + volumetric fog | Mystical, transcendent |
-
-**Package:** `npm install postprocessing`
-
-### 9.2 — FPV Camera & Movement
-
-**New composable:** `useFPVMode.js` (~200 lines)
-
-- `PointerLockControls` from `three/addons` — FPS mouse look
-- WASD movement with configurable speed
-- Head bob (sinusoidal Y offset tied to movement speed, ~15 lines)
-- Camera positioned at agent eye height
-- Smooth transition animation: OrbitControls -> FPV (dolly + rotate blend)
-- ESC to exit FPV, return to orbit view
-- `enterFPV(agentId, position, rotation)` / `exitFPV()`
-- Expose `isFPV` ref for UI to react (hide HUD elements, show FPV overlay)
-
-### 9.3 — Village3D Integration
-
-Wire FPV into existing click flow:
-
-- Agent click currently opens task dialog or navigates to chat
-- Add FPV option: hold click / long press / dedicated button in agent popup
-- On FPV enter: disable OrbitControls, activate PointerLock, apply agent post-processing
-- On FPV exit: restore OrbitControls, remove post-processing, return camera
-- Pause district tracking / HUD while in FPV
-
-### 9.4 — FPV UI Overlay
-
-Minimal HUD while in first-person:
-
-- Agent name + identity badge (top-left)
-- "Press ESC to exit" hint (bottom-center, fades after 3s)
-- Optional: agent-themed crosshair or reticle
-- Optional: interact prompt when looking at other agents / buildings
-
-### 9.5 — Physics & Collision (Optional Enhancement)
-
-**Package:** `npm install @dimforge/rapier3d` (Rust/WASM)
-
-- `KinematicCharacterController` for proper collision response
-- Step-over for low obstacles, slope limits
-- Boundary enforcement (stay within village 160x160)
-- Only add if movement without collision feels too floaty
-
-**Files:**
-- `frontend/src/composables/useFPVMode.js` (new)
-- `frontend/src/composables/useVillagePostProcessing.js` (new)
-- `frontend/src/composables/useVillage3D.js` (wire FPV entry/exit)
-- `frontend/src/components/village/Village3D.vue` (FPV toggle in agent interaction)
-- `frontend/src/views/VillageGUIView.vue` (FPV UI overlay)
 
 ---
 
@@ -126,9 +53,10 @@ Minimal HUD while in first-person:
 
 ## Future Horizons
 
+- **Phase 18: Hand Tracking** — Meta Quest hand input, gesture-based interactions
+- **Phase 19: VR UI Panels** — Floating spatial panels for chat, task dialog, settings in VR
+- **Phase 20: Agent Avatars in VR** — Full-body IK, eye tracking, lip sync
 - **WebGPU + TSL** — Three.js v0.171+ for compute shaders, node-based materials
-- **Rapier physics** — full collision world for village navigation
-- **WebXR extension** — FPV mode naturally extends to VR headsets via Three.js WebXRManager
 - **realism-effects** — SSGI, SSR, motion blur for near-photorealistic rendering
 - **Gaussian Splatting** — photogrammetry environments in browser
 

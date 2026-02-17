@@ -473,6 +473,50 @@ export function useVillageSoundscape() {
   }
 
   // =========================================================================
+  // THUNDER (Phase 16 — Weather)
+  // =========================================================================
+
+  function playThunder() {
+    if (!_listener || masterVolume.value === 0) return
+
+    const ctx = _listener.context
+    if (ctx.state !== 'running') return
+
+    try {
+      // Low-frequency noise burst with exponential decay, lowpass filtered
+      const duration = 1.5
+      const sampleRate = ctx.sampleRate
+      const length = Math.floor(sampleRate * duration)
+      const buffer = ctx.createBuffer(1, length, sampleRate)
+      const data = buffer.getChannelData(0)
+
+      for (let i = 0; i < length; i++) {
+        const t = i / sampleRate
+        const envelope = Math.exp(-t * 3) * 0.6
+        data[i] = (Math.random() * 2 - 1) * envelope
+      }
+
+      const source = ctx.createBufferSource()
+      source.buffer = buffer
+
+      const filter = ctx.createBiquadFilter()
+      filter.type = 'lowpass'
+      filter.frequency.value = 200
+
+      const gain = ctx.createGain()
+      gain.gain.value = 0.4 * masterVolume.value
+
+      source.connect(filter)
+      filter.connect(gain)
+      gain.connect(ctx.destination)
+
+      source.start()
+    } catch {
+      /* audio synthesis error — skip */
+    }
+  }
+
+  // =========================================================================
   // VOLUME CONTROL
   // =========================================================================
 
@@ -540,5 +584,6 @@ export function useVillageSoundscape() {
     dispose,
     setVolume,
     playAgentVoice,
+    playThunder,
   }
 }

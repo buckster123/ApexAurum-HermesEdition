@@ -39,6 +39,10 @@ export function useFPVMode() {
   // Interaction — prevents unlock from triggering FPV exit during chat
   let interactionUnlock = false
   let _onInteractionCallback = null
+  let _onDoorCallback = null
+
+  // Bounds override (for interiors — smaller bounds inside buildings)
+  let _boundsOverride = null
 
   // Movement
   const keys = new Set()
@@ -67,6 +71,11 @@ export function useFPVMode() {
       _onInteractionCallback()
       return
     }
+    // F key triggers door callback (Phase 13: interiors)
+    if (e.code === 'KeyF' && _onDoorCallback) {
+      _onDoorCallback()
+      return
+    }
     keys.add(e.code)
   }
 
@@ -78,9 +87,12 @@ export function useFPVMode() {
   // INIT
   // -------------------------------------------------------------------------
 
-  function init(renderer, camera) {
+  let _physics = null
+
+  function init(renderer, camera, physics) {
     _renderer = renderer
     _camera = camera
+    _physics = physics || null
 
     pointerControls = new PointerLockControls(camera, renderer.domElement)
 
@@ -115,6 +127,11 @@ export function useFPVMode() {
 
     // Target: agent position at eye height
     const targetPos = new THREE.Vector3(position.x, EYE_HEIGHT, position.z)
+
+    // Sync physics character to entry position (Phase 14)
+    if (_physics?.isReady?.value) {
+      _physics.setCharacterPosition(targetPos.x, 0, targetPos.z)
+    }
 
     transition = {
       type: 'enter',
@@ -251,11 +268,23 @@ export function useFPVMode() {
     velocity.addScaledVector(forward, -direction.z * speed * dt)
     velocity.addScaledVector(right, direction.x * speed * dt)
 
-    _camera.position.add(velocity)
-
-    // Clamp to village bounds
-    _camera.position.x = Math.max(-VILLAGE_BOUND, Math.min(VILLAGE_BOUND, _camera.position.x))
-    _camera.position.z = Math.max(-VILLAGE_BOUND, Math.min(VILLAGE_BOUND, _camera.position.z))
+    // Apply physics collision (Phase 14) or raw fallback
+    if (_physics?.isReady?.value) {
+      const resolved = _physics.moveCharacter(velocity)
+      _camera.position.add(resolved)
+    } else {
+      _camera.position.add(velocity)
+      // Clamp to village bounds (fallback when no physics)
+      const bound = _boundsOverride || VILLAGE_BOUND
+      if (typeof bound === 'number') {
+        _camera.position.x = Math.max(-bound, Math.min(bound, _camera.position.x))
+        _camera.position.z = Math.max(-bound, Math.min(bound, _camera.position.z))
+      } else {
+        // Object bounds: { minX, maxX, minZ, maxZ }
+        _camera.position.x = Math.max(bound.minX, Math.min(bound.maxX, _camera.position.x))
+        _camera.position.z = Math.max(bound.minZ, Math.min(bound.maxZ, _camera.position.z))
+      }
+    }
 
     // Head bob
     if (isMoving.value) {
@@ -294,6 +323,22 @@ export function useFPVMode() {
   }
 
   // -------------------------------------------------------------------------
+  // INTERIOR SUPPORT (Phase 13)
+  // -------------------------------------------------------------------------
+
+  function setDoorCallback(cb) {
+    _onDoorCallback = cb
+  }
+
+  function setBoundsOverride(bounds) {
+    _boundsOverride = bounds
+  }
+
+  function clearBoundsOverride() {
+    _boundsOverride = null
+  }
+
+  // -------------------------------------------------------------------------
   // DISPOSE
   // -------------------------------------------------------------------------
 
@@ -329,5 +374,9 @@ export function useFPVMode() {
     setInteractionCallback,
     unlockForInteraction,
     relockAfterInteraction,
+    // Interior support (Phase 13)
+    setDoorCallback,
+    setBoundsOverride,
+    clearBoundsOverride,
   }
 }

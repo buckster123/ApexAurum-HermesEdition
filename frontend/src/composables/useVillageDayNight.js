@@ -296,8 +296,18 @@ export function useVillageDayNight() {
       colorAttr.needsUpdate = true
     }
 
+    // Base values (for weather modulation — Phase 16)
+    const baseFogDensity = _lerp(fromP.fogDensity, toP.fogDensity, t)
+    const baseAmbientIntensity = _lerp(fromP.ambientIntensity, toP.ambientIntensity, t)
+    const baseSunIntensity = _lerp(fromP.sunIntensity, toP.sunIntensity, t)
+    const baseExposure = _lerp(fromP.exposure, toP.exposure, t)
+
     return {
       fireflyMultiplier: _lerp(fromP.fireflyMultiplier, toP.fireflyMultiplier, t),
+      baseFogDensity,
+      baseAmbientIntensity,
+      baseSunIntensity,
+      baseExposure,
     }
   }
 

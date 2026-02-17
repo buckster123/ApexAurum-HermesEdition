@@ -390,6 +390,21 @@ const vrActive = computed(() =>
   viewMode.value === '3d' && village3dRef.value?.isVR?.value === true
 )
 
+// --- Weather (Phase 16) ---
+const villageWeather = computed(() => village3dRef.value?.weather)
+const weatherLabel = computed(() => {
+  const state = villageWeather.value?.weatherState?.value || 'clear'
+  const icons = { clear: '\u2600', rain: '\uD83C\uDF27', fog: '\uD83C\uDF2B', snow: '\u2744', storm: '\u26C8', aurora: '\uD83C\uDF0C' }
+  const names = { clear: 'Clear', rain: 'Rain', fog: 'Fog', snow: 'Snow', storm: 'Storm', aurora: 'Aurora' }
+  return { icon: icons[state] || '\u2600', name: names[state] || 'Clear' }
+})
+
+// --- Interiors (Phase 13) ---
+const villageInteriors = computed(() => village3dRef.value?.interiors)
+const isInsideBuilding = computed(() => villageInteriors.value?.isInside?.value === true)
+const interiorZone = computed(() => villageInteriors.value?.activeZone?.value || null)
+const nearestDoor = computed(() => villageInteriors.value?.nearestDoor?.value || null)
+
 // --- Spatial Audio (Phase 11) ---
 const villageSoundscape = computed(() => village3dRef.value?.soundscape)
 const villageVolume = computed({
@@ -838,12 +853,17 @@ onUnmounted(() => {
           />
         </div>
 
-        <!-- District Name Badge (Phase 2) — top-left overlay, 3D mode only, hidden in FPV -->
+        <!-- District Name + Weather Badge (Phase 2 + 16) — top-left overlay, 3D mode only, hidden in FPV -->
         <div
           v-if="viewMode === '3d' && !fpvActive && !vrActive"
-          class="absolute top-3 left-3 z-10 px-3 py-1.5 rounded-lg bg-black/40 backdrop-blur-sm border border-white/10 text-xs font-mono text-amber-200/80 tracking-wider select-none transition-all duration-500"
+          class="absolute top-3 left-3 z-10 flex items-center gap-2 select-none"
         >
-          {{ currentDistrictName }}
+          <div class="px-3 py-1.5 rounded-lg bg-black/40 backdrop-blur-sm border border-white/10 text-xs font-mono text-amber-200/80 tracking-wider transition-all duration-500">
+            {{ currentDistrictName }}
+          </div>
+          <div class="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-sm border border-white/10 text-xs font-mono text-sky-300/70 tracking-wider transition-all duration-500">
+            {{ weatherLabel.icon }} {{ weatherLabel.name }}
+          </div>
         </div>
 
         <!-- VR Mirror Mode Indicator (Phase 17) -->
@@ -863,8 +883,8 @@ onUnmounted(() => {
         <!-- FPV Mode Overlay (Phase 9) -->
         <transition name="fade">
           <div v-if="fpvActive && !vrActive" class="absolute inset-0 z-20 pointer-events-none">
-            <!-- Agent identity badge (top-left) -->
-            <div class="absolute top-4 left-4 pointer-events-auto">
+            <!-- Agent identity badge (top-left, hidden when inside building) -->
+            <div v-if="!isInsideBuilding" class="absolute top-4 left-4 pointer-events-auto">
               <div
                 class="flex items-center gap-3 px-4 py-2.5 rounded-xl border backdrop-blur-md"
                 :style="{ borderColor: fpvAgentColor + '4d', backgroundColor: fpvAgentColor + '15' }"
@@ -904,6 +924,31 @@ onUnmounted(() => {
                 <span class="text-white/80">ESC</span> exit
               </div>
             </div>
+
+            <!-- Interior location badge (Phase 13, replaces agent badge when inside) -->
+            <transition name="fade">
+              <div v-if="isInsideBuilding" class="absolute top-4 left-4 pointer-events-auto">
+                <div class="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-900/20 backdrop-blur-md">
+                  <div class="w-8 h-8 rounded-full flex items-center justify-center bg-amber-600 text-black font-bold text-sm">&#127970;</div>
+                  <div>
+                    <div class="text-white font-medium text-sm">{{ interiorZone || 'Interior' }}</div>
+                    <div class="text-xs text-amber-400">Press F to exit</div>
+                  </div>
+                </div>
+              </div>
+            </transition>
+
+            <!-- Door proximity prompt (Phase 13) -->
+            <transition name="fade">
+              <div
+                v-if="nearestDoor && !isInsideBuilding && !fpvChatOpen"
+                class="absolute bottom-20 left-1/2 -translate-x-1/2 pointer-events-none"
+              >
+                <div class="px-4 py-2 rounded-lg bg-amber-900/60 backdrop-blur border border-amber-500/30 text-sm text-amber-200 text-center">
+                  Press <span class="text-white font-bold">F</span> to enter {{ nearestDoor.label }}
+                </div>
+              </div>
+            </transition>
 
             <!-- Exit button (top-right) -->
             <button
