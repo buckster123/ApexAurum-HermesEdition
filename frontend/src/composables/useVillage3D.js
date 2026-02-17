@@ -31,6 +31,7 @@ import { useVRMode } from '@/composables/useVRMode'
 import { useVillagePhysics } from '@/composables/useVillagePhysics'
 import { useVillageWeather } from '@/composables/useVillageWeather'
 import { useVillageInteriors } from '@/composables/useVillageInteriors'
+import { useVRAgentPresence } from '@/composables/useVRAgentPresence'
 
 // Polyfill for roundRect (not available in all browsers)
 if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
@@ -495,6 +496,7 @@ export function useVillage3D(containerRef, options = {}) {
   const physics = useVillagePhysics()
   const weather = useVillageWeather()
   const interiors = useVillageInteriors()
+  const vrAgentPresence = useVRAgentPresence()
 
   // Layout persistence
   const { loadLayout, saveLayout, resetLayout: resetDraggableLayout, hasCustomLayout } =
@@ -649,6 +651,9 @@ export function useVillage3D(containerRef, options = {}) {
 
     // --- Agent Autonomy (Phase 15) ---
     agentAutonomy.init(agents, showBubble, VILLAGE_LAYOUT)
+
+    // --- VR Agent Presence (Phase 20) ---
+    vrAgentPresence.init(agents, showBubble)
 
     // --- Spatial Audio (Phase 11) ---
     soundscape.init(camera, scene, agents, VILLAGE_LAYOUT)
@@ -2410,6 +2415,9 @@ export function useVillage3D(containerRef, options = {}) {
     if (vrMode.isVR.value) {
       // VR mode: headset controls camera, thumbstick locomotion via rig
       vrMode.update(dt)
+      // Phase 20: VR agent presence — gaze, walk anim, speech, proximity
+      const speakingId = vrMode.vrUI?.getSpeakingAgentId?.() || null
+      vrAgentPresence.update(dt, agents, vrMode.getCameraRigPosition(), speakingId)
       // Phase 19: Feed wrist HUD with time + weather
       if (vrMode.vrUI) {
         vrMode.vrUI.updateWristHUD(dayNight.villageHour.value, weather.weatherState.value)
@@ -2940,6 +2948,7 @@ export function useVillage3D(containerRef, options = {}) {
     isInitialized.value = false
 
     // Dispose composables
+    vrAgentPresence.dispose()
     interiors.dispose()
     weather.dispose()
     physics.dispose()

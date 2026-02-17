@@ -646,6 +646,11 @@ export function useVRUI() {
   // RETURN
   // -------------------------------------------------------------------------
 
+  // Return the agent currently streaming chat (for VR presence animations)
+  function getSpeakingAgentId() {
+    return _chatIsStreaming ? _chatAgentId : null
+  }
+
   return {
     init,
     showAgentInfo,
@@ -656,5 +661,6 @@ export function useVRUI() {
     updateWristHUD,
     update,
     dispose,
+    getSpeakingAgentId,
   }
 }
