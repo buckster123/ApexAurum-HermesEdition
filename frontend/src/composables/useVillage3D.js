@@ -713,6 +713,31 @@ export function useVillage3D(containerRef, options = {}) {
       containerRef.value.appendChild(vrMode.vrButtonEl.value)
     }
 
+    // --- Hand Tracking Interaction (Phase 18) ---
+    // Pass zone + agent meshes as interactables for pinch-select raycasting
+    const handInteractables = [
+      ...zoneGroups.values(),
+      ...Array.from(agents.values()).map((a) => a.group),
+    ]
+    vrMode.hands.setInteractables(handInteractables)
+    vrMode.hands.setPinchSelectCallback((intersection) => {
+      // Walk parent chain to find userData, same as mouse click
+      const userData = _findUserData([intersection])
+      if (!userData) return
+      if (userData.type === 'agent') {
+        selectedAgent.value = userData.id
+        onAgentClick?.(userData.id, agents.get(userData.id))
+      } else if (userData.type === 'zone') {
+        if (userData.name === 'bridge_portal' && onPortalClick) {
+          onPortalClick()
+        } else {
+          onZoneClick?.(userData.name, VILLAGE_LAYOUT[userData.name]?.label)
+        }
+      } else if (userData.type === 'pedestal') {
+        onPedestalClick?.()
+      }
+    })
+
     isInitialized.value = true
 
     // --- Start render loop (setAnimationLoop supports both XR and non-XR) ---

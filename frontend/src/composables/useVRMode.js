@@ -13,6 +13,7 @@ import { ref } from 'vue'
 import * as THREE from 'three'
 import { VRButton } from 'three/addons/webxr/VRButton.js'
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js'
+import { useVRHands } from '@/composables/useVRHands'
 
 // =============================================================================
 // CONSTANTS
@@ -53,6 +54,7 @@ export function useVRMode() {
   let controllerGrip0 = null
   let controllerGrip1 = null
   const controllerModelFactory = new XRControllerModelFactory()
+  const hands = useVRHands()
 
   // Locomotion
   let snapCooldown = 0
@@ -109,7 +111,10 @@ export function useVRMode() {
     renderer.xr.setReferenceSpaceType('local-floor')
 
     // Create VR button (handles "ENTER VR" / "VR NOT SUPPORTED" states)
-    const button = VRButton.createButton(renderer)
+    // Request hand-tracking as optional feature (Phase 18)
+    const button = VRButton.createButton(renderer, {
+      optionalFeatures: ['hand-tracking'],
+    })
     // Style to sit at bottom center of the village container
     button.style.position = 'absolute'
     button.style.bottom = '20px'
@@ -270,6 +275,9 @@ export function useVRMode() {
     // Setup controllers
     _setupControllers()
 
+    // Setup hand tracking (Phase 18)
+    hands.setup(_renderer, _camera, cameraRig, controller0, controller1)
+
     // Create comfort vignette
     _createVignette()
 
@@ -319,6 +327,9 @@ export function useVRMode() {
       _scene.add(_camera)
     }
 
+    // Teardown hand tracking (Phase 18)
+    hands.teardown()
+
     // Remove rig from scene
     if (cameraRig) {
       // Remove controller grips/models
@@ -359,78 +370,87 @@ export function useVRMode() {
 
     snapCooldown = Math.max(0, snapCooldown - dt)
 
-    // Read gamepads from XR session
-    const session = _renderer.xr.getSession()
-    if (!session) return
-
-    let leftStickX = 0,
-      leftStickY = 0
-    let rightStickX = 0
-    let leftSqueeze = false
-
-    for (const source of session.inputSources) {
-      if (!source.gamepad) continue
-      const gp = source.gamepad
-
-      // Quest Touch controllers: axes[2] = thumbstick X, axes[3] = thumbstick Y
-      // Fallback to axes[0]/[1] for other controllers
-      const sx = gp.axes.length > 2 ? gp.axes[2] : gp.axes[0] ?? 0
-      const sy = gp.axes.length > 3 ? gp.axes[3] : gp.axes[1] ?? 0
-
-      if (source.handedness === 'left') {
-        leftStickX = sx
-        leftStickY = sy
-        leftSqueeze = gp.buttons[1]?.pressed ?? false
-      } else if (source.handedness === 'right') {
-        rightStickX = sx
-      }
-    }
-
-    // --- Smooth Locomotion (left stick) ---
     let isMoving = false
-    const speed = leftSqueeze ? SPRINT_SPEED : MOVE_SPEED
 
-    if (Math.abs(leftStickX) > DEADZONE || Math.abs(leftStickY) > DEADZONE) {
-      isMoving = true
+    // --- Hand tracking update (Phase 18) ---
+    const handResult = hands.update(dt, _physics)
 
-      // Camera forward direction (horizontal plane only)
-      _camera.getWorldDirection(tempForward)
-      tempForward.y = 0
-      tempForward.normalize()
+    if (hands.inputMode.value === 'hands') {
+      // Hands active — locomotion handled by useVRHands
+      isMoving = handResult?.moving ?? false
+    } else {
+      // --- Controller input ---
+      const session = _renderer.xr.getSession()
+      if (!session) return
 
-      // Right direction
-      tempRight.crossVectors(tempForward, THREE.Object3D.DEFAULT_UP).normalize()
+      let leftStickX = 0,
+        leftStickY = 0
+      let rightStickX = 0
+      let leftSqueeze = false
 
-      // Move relative to head direction
-      moveDirection.set(0, 0, 0)
-      moveDirection.addScaledVector(tempForward, -leftStickY * speed * dt)
-      moveDirection.addScaledVector(tempRight, leftStickX * speed * dt)
+      for (const source of session.inputSources) {
+        if (!source.gamepad) continue
+        const gp = source.gamepad
 
-      // Apply physics collision (Phase 14) or raw fallback
-      if (_physics?.isReady?.value) {
-        const resolved = _physics.moveCharacter(moveDirection)
-        cameraRig.position.add(resolved)
-      } else {
-        cameraRig.position.add(moveDirection)
-        // Clamp to village bounds (fallback when no physics)
-        cameraRig.position.x = THREE.MathUtils.clamp(
-          cameraRig.position.x,
-          -VILLAGE_BOUND,
-          VILLAGE_BOUND,
-        )
-        cameraRig.position.z = THREE.MathUtils.clamp(
-          cameraRig.position.z,
-          -VILLAGE_BOUND,
-          VILLAGE_BOUND,
-        )
+        // Quest Touch controllers: axes[2] = thumbstick X, axes[3] = thumbstick Y
+        // Fallback to axes[0]/[1] for other controllers
+        const sx = gp.axes.length > 2 ? gp.axes[2] : gp.axes[0] ?? 0
+        const sy = gp.axes.length > 3 ? gp.axes[3] : gp.axes[1] ?? 0
+
+        if (source.handedness === 'left') {
+          leftStickX = sx
+          leftStickY = sy
+          leftSqueeze = gp.buttons[1]?.pressed ?? false
+        } else if (source.handedness === 'right') {
+          rightStickX = sx
+        }
       }
-    }
 
-    // --- Snap Turn (right stick X) ---
-    if (Math.abs(rightStickX) > 0.6 && snapCooldown <= 0) {
-      const snapDir = rightStickX > 0 ? -SNAP_ANGLE : SNAP_ANGLE
-      cameraRig.rotation.y += snapDir
-      snapCooldown = SNAP_COOLDOWN
+      // --- Smooth Locomotion (left stick) ---
+      const speed = leftSqueeze ? SPRINT_SPEED : MOVE_SPEED
+
+      if (Math.abs(leftStickX) > DEADZONE || Math.abs(leftStickY) > DEADZONE) {
+        isMoving = true
+
+        // Camera forward direction (horizontal plane only)
+        _camera.getWorldDirection(tempForward)
+        tempForward.y = 0
+        tempForward.normalize()
+
+        // Right direction
+        tempRight.crossVectors(tempForward, THREE.Object3D.DEFAULT_UP).normalize()
+
+        // Move relative to head direction
+        moveDirection.set(0, 0, 0)
+        moveDirection.addScaledVector(tempForward, -leftStickY * speed * dt)
+        moveDirection.addScaledVector(tempRight, leftStickX * speed * dt)
+
+        // Apply physics collision (Phase 14) or raw fallback
+        if (_physics?.isReady?.value) {
+          const resolved = _physics.moveCharacter(moveDirection)
+          cameraRig.position.add(resolved)
+        } else {
+          cameraRig.position.add(moveDirection)
+          // Clamp to village bounds (fallback when no physics)
+          cameraRig.position.x = THREE.MathUtils.clamp(
+            cameraRig.position.x,
+            -VILLAGE_BOUND,
+            VILLAGE_BOUND,
+          )
+          cameraRig.position.z = THREE.MathUtils.clamp(
+            cameraRig.position.z,
+            -VILLAGE_BOUND,
+            VILLAGE_BOUND,
+          )
+        }
+      }
+
+      // --- Snap Turn (right stick X) ---
+      if (Math.abs(rightStickX) > 0.6 && snapCooldown <= 0) {
+        const snapDir = rightStickX > 0 ? -SNAP_ANGLE : SNAP_ANGLE
+        cameraRig.rotation.y += snapDir
+        snapCooldown = SNAP_COOLDOWN
+      }
     }
 
     // --- Comfort Vignette ---
@@ -484,6 +504,9 @@ export function useVRMode() {
       _camera?.remove(vignetteMesh)
       vignetteMesh = null
     }
+
+    // Dispose hands (Phase 18)
+    hands.dispose()
 
     // Dispose controllers
     _disposeControllers()
@@ -539,5 +562,7 @@ export function useVRMode() {
     dispose,
     checkSupport,
     getCameraRigPosition,
+    // Hand tracking (Phase 18)
+    hands,
   }
 }
