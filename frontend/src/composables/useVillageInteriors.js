@@ -180,6 +180,87 @@ export function useVillageInteriors() {
   // ENTER / EXIT
   // =========================================================================
 
+  // --- Shared interior swap logic (used by both fade and instant paths) ---
+
+  function _doEnterSwap(zoneName) {
+    // Hide village objects
+    if (_onHideVillage) _onHideVillage()
+
+    // Save current fog
+    if (_scene.fog) {
+      _savedFog = {
+        color: _scene.fog.color.clone(),
+        density: _scene.fog.density,
+      }
+    }
+
+    // Build or retrieve interior
+    const entry = _getOrBuildInterior(zoneName)
+    _activeGroup = entry.group
+    _animatedProps = entry.animatedProps
+    _portalMeshes = entry.portalMeshes
+    entry.lastUsed = Date.now()
+
+    // Add to scene at world origin
+    _scene.add(_activeGroup)
+
+    // Set interior fog
+    if (_scene.fog) {
+      _scene.fog.color.setHex(INTERIOR_FOG_COLOR)
+      _scene.fog.density = INTERIOR_FOG_DENSITY
+    }
+
+    // Teleport near exit portal, facing inward
+    const dims = ZONE_DIMENSIONS[zoneName] || ZONE_DIMENSIONS._generic
+    if (_vrCameraRig) {
+      // VR: move rig at ground level — headset tracking adds height
+      _vrCameraRig.position.set(0, 0, dims.d / 2 - 1.5)
+    } else {
+      _cameraEntry.set(0, 1.6, dims.d / 2 - 1.5)
+      _camera.position.copy(_cameraEntry)
+      _camera.lookAt(0, 1.6, 0)
+    }
+
+    // Update state
+    isInside.value = true
+    activeZone.value = zoneName
+  }
+
+  function _doExitSwap(zoneName) {
+    // Remove interior from scene (keep in cache)
+    if (_activeGroup && _activeGroup.parent) {
+      _scene.remove(_activeGroup)
+    }
+    _activeGroup = null
+    _animatedProps = []
+    _portalMeshes = []
+
+    // Restore fog
+    if (_savedFog && _scene.fog) {
+      _scene.fog.color.copy(_savedFog.color)
+      _scene.fog.density = _savedFog.density
+    }
+    _savedFog = null
+
+    // Show village objects
+    if (_onShowVillage) _onShowVillage()
+
+    // Teleport back to building exterior
+    const config = VILLAGE_LAYOUT[zoneName]
+    if (config) {
+      if (_vrCameraRig) {
+        // VR: move rig at ground level near building
+        _vrCameraRig.position.set(config.pos[0] + 3, 0, config.pos[2] + 3)
+      } else {
+        _camera.position.set(config.pos[0] + 3, 1.6, config.pos[2] + 3)
+        _camera.lookAt(config.pos[0], 1.6, config.pos[2])
+      }
+    }
+
+    isInside.value = false
+    activeZone.value = null
+  }
+
   function enterInterior(zoneName) {
     if (isInside.value || _fadeState) return
 
@@ -189,53 +270,16 @@ export function useVillageInteriors() {
       return
     }
 
-    // Fade to black, then swap scenes
-    _startFade('in', () => {
-      // Hide village objects
-      if (_onHideVillage) _onHideVillage()
-
-      // Save current fog
-      if (_scene.fog) {
-        _savedFog = {
-          color: _scene.fog.color.clone(),
-          density: _scene.fog.density,
-        }
-      }
-
-      // Build or retrieve interior
-      const entry = _getOrBuildInterior(zoneName)
-      _activeGroup = entry.group
-      _animatedProps = entry.animatedProps
-      _portalMeshes = entry.portalMeshes
-      entry.lastUsed = Date.now()
-
-      // Add to scene at world origin
-      _scene.add(_activeGroup)
-
-      // Set interior fog
-      if (_scene.fog) {
-        _scene.fog.color.setHex(INTERIOR_FOG_COLOR)
-        _scene.fog.density = INTERIOR_FOG_DENSITY
-      }
-
-      // Teleport near exit portal, facing inward
-      const dims = ZONE_DIMENSIONS[zoneName] || ZONE_DIMENSIONS._generic
-      if (_vrCameraRig) {
-        // VR: move rig at ground level — headset tracking adds height
-        _vrCameraRig.position.set(0, 0, dims.d / 2 - 1.5)
-      } else {
-        _cameraEntry.set(0, 1.6, dims.d / 2 - 1.5)
-        _camera.position.copy(_cameraEntry)
-        _camera.lookAt(0, 1.6, 0)
-      }
-
-      // Update state
-      isInside.value = true
-      activeZone.value = zoneName
-
-      // Fade back in
-      _startFade('out', null)
-    })
+    if (_vrCameraRig) {
+      // VR: instant swap (fade overlay conflicts with VR vignette in stereo)
+      _doEnterSwap(zoneName)
+    } else {
+      // Desktop: smooth fade transition
+      _startFade('in', () => {
+        _doEnterSwap(zoneName)
+        _startFade('out', null)
+      })
+    }
   }
 
   function exitInterior() {
@@ -243,42 +287,16 @@ export function useVillageInteriors() {
 
     const zoneName = activeZone.value
 
-    _startFade('in', () => {
-      // Remove interior from scene (keep in cache)
-      if (_activeGroup && _activeGroup.parent) {
-        _scene.remove(_activeGroup)
-      }
-      _activeGroup = null
-      _animatedProps = []
-      _portalMeshes = []
-
-      // Restore fog
-      if (_savedFog && _scene.fog) {
-        _scene.fog.color.copy(_savedFog.color)
-        _scene.fog.density = _savedFog.density
-      }
-      _savedFog = null
-
-      // Show village objects
-      if (_onShowVillage) _onShowVillage()
-
-      // Teleport back to building exterior
-      const config = VILLAGE_LAYOUT[zoneName]
-      if (config) {
-        if (_vrCameraRig) {
-          // VR: move rig at ground level near building
-          _vrCameraRig.position.set(config.pos[0] + 3, 0, config.pos[2] + 3)
-        } else {
-          _camera.position.set(config.pos[0] + 3, 1.6, config.pos[2] + 3)
-          _camera.lookAt(config.pos[0], 1.6, config.pos[2])
-        }
-      }
-
-      isInside.value = false
-      activeZone.value = null
-
-      _startFade('out', null)
-    })
+    if (_vrCameraRig) {
+      // VR: instant swap
+      _doExitSwap(zoneName)
+    } else {
+      // Desktop: smooth fade transition
+      _startFade('in', () => {
+        _doExitSwap(zoneName)
+        _startFade('out', null)
+      })
+    }
   }
 
   // =========================================================================
