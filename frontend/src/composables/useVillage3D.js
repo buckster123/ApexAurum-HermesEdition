@@ -482,6 +482,7 @@ export function useVillage3D(containerRef, options = {}) {
   let _wasVRActive = false
   let _lastVRDoorZone = null // Track door prompt changes
   let _vrDoorPromptTimer = 0 // Re-show exit prompt before 8s auto-hide
+  let _wasZoneHUDOpen = false // Track HUD state for interactables refresh
 
   // External model loaders (singleton caches)
   const agentModels = useAgentModels()
@@ -654,16 +655,37 @@ export function useVillage3D(containerRef, options = {}) {
       }
     })
 
-    // Wire VR A-button door callback for interiors
+    // Wire VR A-button door callback — Zone HUD (default) or interiors (fallback)
     vrMode.setDoorCallback(() => {
-      // Ensure VR rig is passed for VR-aware teleport
-      interiors.setVRCameraRig(vrMode.getCameraRig())
-      if (interiors.isInside.value) {
-        interiors.exitInterior()
-      } else if (interiors.nearestDoor.value) {
-        interiors.enterInterior(interiors.nearestDoor.value.zoneName)
+      const zoneHUD = vrMode.zoneHUD
+      if (zoneHUD) {
+        // Zone HUD mode: toggle Jarvis-style panels
+        if (zoneHUD.isOpen.value) {
+          zoneHUD.close()
+        } else if (interiors.nearestDoor.value) {
+          zoneHUD.toggle(interiors.nearestDoor.value.zoneName)
+        }
+      } else {
+        // Fallback: interior entry (kept for future use)
+        interiors.setVRCameraRig(vrMode.getCameraRig())
+        if (interiors.isInside.value) {
+          interiors.exitInterior()
+        } else if (interiors.nearestDoor.value) {
+          interiors.enterInterior(interiors.nearestDoor.value.zoneName)
+        }
       }
     })
+
+    // Wire Zone HUD "Start Chat" to VR UI chat panel
+    if (vrMode.zoneHUD) {
+      vrMode.zoneHUD.setOnStartChat((agentId, zoneName) => {
+        if (vrMode.vrUI) {
+          vrMode.vrUI.showChat(agentId)
+        }
+        // Emit zone-click so VillageGUIView can open task dialog
+        onZoneClick?.({ name: zoneName, label: VILLAGE_LAYOUT[zoneName]?.label || zoneName, color: VILLAGE_LAYOUT[zoneName]?.color || '#888' })
+      })
+    }
 
     // --- Agent Autonomy (Phase 15) ---
     agentAutonomy.init(agents, showBubble, VILLAGE_LAYOUT)
@@ -745,10 +767,20 @@ export function useVillage3D(containerRef, options = {}) {
     ]
     vrMode.hands.setInteractables(handInteractables)
     vrMode.hands.setPinchSelectCallback((intersection) => {
+      // VR Zone HUD button click — check first before anything else
+      if (intersection.object?.userData?.type === 'hud-button') {
+        vrMode.zoneHUD?.handleButtonClick(intersection.object.userData.id)
+        return
+      }
       // VR pinch exit: any pinch while inside an interior → exit
       if (interiors.isInside.value && vrMode.isVR.value) {
         interiors.setVRCameraRig(vrMode.getCameraRig())
         interiors.exitInterior()
+        return
+      }
+      // VR pinch dismiss: any pinch while Zone HUD is open → close it
+      if (vrMode.zoneHUD?.isOpen.value && vrMode.isVR.value) {
+        vrMode.zoneHUD.close()
         return
       }
       // Walk parent chain to find userData, same as mouse click
@@ -769,13 +801,11 @@ export function useVillage3D(containerRef, options = {}) {
         } else {
           onZoneClick?.(userData.name, VILLAGE_LAYOUT[userData.name]?.label)
         }
-        // VR pinch door entry: if pinch-selected zone matches nearest door → enter
-        if (vrMode.isVR.value && interiors.nearestDoor.value?.zoneName === userData.name) {
-          interiors.setVRCameraRig(vrMode.getCameraRig())
-          interiors.enterInterior(userData.name)
-        }
-        // Phase 19: VR UI panels — show zone info
-        if (vrMode.isVR.value && vrMode.vrUI) {
+        // VR pinch near zone → open Zone HUD (replaces interior entry)
+        if (vrMode.isVR.value && vrMode.zoneHUD) {
+          vrMode.zoneHUD.toggle(userData.name)
+        } else if (vrMode.isVR.value && vrMode.vrUI) {
+          // Fallback: show zone info panel
           const layout = VILLAGE_LAYOUT[userData.name]
           vrMode.vrUI.showZoneInfo(userData.name, layout?.label || userData.name, layout?.color || '#888')
         }
@@ -2476,8 +2506,39 @@ export function useVillage3D(containerRef, options = {}) {
       _wasVRActive = false
     }
 
-    // --- VR door prompt on info panel ---
-    if (vrMode.isVR.value && vrMode.vrUI) {
+    // --- VR Zone HUD interactables refresh ---
+    if (vrMode.isVR.value && vrMode.zoneHUD) {
+      const hudOpen = vrMode.zoneHUD.isOpen.value
+      if (hudOpen && !_wasZoneHUDOpen) {
+        // HUD just opened — add button meshes to interactables
+        const hudButtons = vrMode.zoneHUD.getInteractables()
+        const base = [
+          ...zoneGroups.values(),
+          ...Array.from(agents.values()).map((a) => a.group),
+        ]
+        vrMode.hands.setInteractables([...base, ...hudButtons])
+        // Feed agents at zone
+        const zoneName = interiors.nearestDoor.value?.zoneName
+        if (zoneName) {
+          const atZone = []
+          for (const [id, agent] of agents) {
+            if (agent.currentZone === zoneName) atZone.push(id)
+          }
+          vrMode.zoneHUD.setAgentsAtZone(atZone)
+        }
+        _wasZoneHUDOpen = true
+      } else if (!hudOpen && _wasZoneHUDOpen) {
+        // HUD just closed — restore base interactables
+        vrMode.hands.setInteractables([
+          ...zoneGroups.values(),
+          ...Array.from(agents.values()).map((a) => a.group),
+        ])
+        _wasZoneHUDOpen = false
+      }
+    }
+
+    // --- VR door prompt on info panel (suppress when Zone HUD is open) ---
+    if (vrMode.isVR.value && vrMode.vrUI && !vrMode.zoneHUD?.isOpen.value) {
       const doorZone = interiors.nearestDoor.value?.zoneName || null
       const insideZone = interiors.isInside.value ? interiors.activeZone.value : null
 

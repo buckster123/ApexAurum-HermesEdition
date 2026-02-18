@@ -15,6 +15,7 @@ import { VRButton } from 'three/addons/webxr/VRButton.js'
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js'
 import { useVRHands } from '@/composables/useVRHands'
 import { useVRUI } from '@/composables/useVRUI'
+import { useVRZoneHUD } from '@/composables/useVRZoneHUD'
 
 // =============================================================================
 // CONSTANTS
@@ -62,6 +63,7 @@ export function useVRMode() {
   const controllerModelFactory = new XRControllerModelFactory()
   const hands = useVRHands()
   const vrUI = useVRUI()
+  const zoneHUD = useVRZoneHUD()
 
   // Locomotion
   let snapCooldown = 0
@@ -340,6 +342,9 @@ export function useVRMode() {
     // Setup VR UI panels (Phase 19)
     vrUI.init(_scene, _camera, cameraRig, controller0, _renderer.xr.getHand(0))
 
+    // Setup VR Zone HUD (Jarvis-style building interface)
+    zoneHUD.init(_scene, _camera, cameraRig)
+
     // Create comfort vignette
     _createVignette()
 
@@ -427,6 +432,9 @@ export function useVRMode() {
 
     // Dispose VR UI panels (Phase 19)
     vrUI.dispose()
+
+    // Dispose VR Zone HUD
+    zoneHUD.dispose()
 
     // Remove rig from scene
     if (cameraRig) {
@@ -596,6 +604,9 @@ export function useVRMode() {
     // --- VR UI Panels (Phase 19) ---
     vrUI.update(dt)
 
+    // --- VR Zone HUD ---
+    zoneHUD.update(dt)
+
     // --- Comfort Vignette / Blink Transition ---
     if (_blinkPhase) {
       // Blink overrides normal vignette — fast fade to black, run callback at peak, fade back
@@ -695,6 +706,9 @@ export function useVRMode() {
     // Dispose VR UI (Phase 19)
     vrUI.dispose()
 
+    // Dispose VR Zone HUD
+    zoneHUD.dispose()
+
     // Dispose controllers
     _disposeControllers()
 
@@ -780,5 +794,7 @@ export function useVRMode() {
     hands,
     // VR UI panels (Phase 19)
     vrUI,
+    // VR Zone HUD (Jarvis building interface)
+    zoneHUD,
   }
 }
