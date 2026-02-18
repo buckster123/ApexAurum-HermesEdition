@@ -28,7 +28,7 @@ const ZONE_DIMENSIONS = {
 
 const DOOR_ENTER_RADIUS = 4
 const FADE_DURATION = 0.5 // seconds
-const MAX_CACHE = 3
+const MAX_CACHE = 7 // All zones cached when pre-built for VR
 
 const INTERIOR_FOG_COLOR = 0x0a0a1a
 const INTERIOR_FOG_DENSITY = 0.04
@@ -53,6 +53,7 @@ export function useVillageInteriors() {
   let _onHideVillage = null
   let _onShowVillage = null
   let _vrCameraRig = null // Set when in VR — teleport moves rig, not camera
+  let _vrBlinkFn = null // VR blink transition callback (set from outside)
 
   // LRU cache: Map<zoneName, { group, lastUsed, animatedProps }>
   const _cache = new Map()
@@ -137,6 +138,30 @@ export function useVillageInteriors() {
 
   function setVRCameraRig(rig) {
     _vrCameraRig = rig || null
+  }
+
+  function setVRBlink(fn) {
+    _vrBlinkFn = fn || null
+  }
+
+  // =========================================================================
+  // VR PRE-BUILD — Spread construction across XR frames to stay in budget
+  // =========================================================================
+
+  async function prebuildAll() {
+    const zones = Object.keys(ZONE_DIMENSIONS).filter(z => z !== '_generic')
+    let built = 0
+    for (const zoneName of zones) {
+      if (_cache.has(zoneName)) continue
+      const t0 = performance.now()
+      _cache.set(zoneName, _buildInterior(zoneName))
+      const ms = (performance.now() - t0).toFixed(1)
+      built++
+      console.log(`[Interiors] Pre-built ${zoneName} (${ms}ms) [${built}/${zones.length}]`)
+      // Yield to the browser — let one XR frame render between builds
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+    console.log(`[Interiors] Pre-built ${built} interiors for VR (${zones.length} zones total)`)
   }
 
   // =========================================================================
@@ -270,8 +295,11 @@ export function useVillageInteriors() {
       return
     }
 
-    if (_vrCameraRig) {
-      // VR: instant swap (fade overlay conflicts with VR vignette in stereo)
+    if (_vrCameraRig && _vrBlinkFn) {
+      // VR: blink transition — vignette fades to black, swap at peak, fade back
+      _vrBlinkFn(() => _doEnterSwap(zoneName))
+    } else if (_vrCameraRig) {
+      // VR fallback: instant swap (pre-built cache hit, no construction)
       _doEnterSwap(zoneName)
     } else {
       // Desktop: smooth fade transition
@@ -287,8 +315,11 @@ export function useVillageInteriors() {
 
     const zoneName = activeZone.value
 
-    if (_vrCameraRig) {
-      // VR: instant swap
+    if (_vrCameraRig && _vrBlinkFn) {
+      // VR: blink transition
+      _vrBlinkFn(() => _doExitSwap(zoneName))
+    } else if (_vrCameraRig) {
+      // VR fallback: instant swap
       _doExitSwap(zoneName)
     } else {
       // Desktop: smooth fade transition
@@ -1065,6 +1096,7 @@ export function useVillageInteriors() {
     _scene = null
     _camera = null
     _vrCameraRig = null
+    _vrBlinkFn = null
     _onHideVillage = null
     _onShowVillage = null
   }
@@ -1079,6 +1111,8 @@ export function useVillageInteriors() {
     nearestDoor,
     init,
     setVRCameraRig,
+    setVRBlink,
+    prebuildAll,
     updateDoorProximity,
     enterInterior,
     exitInterior,

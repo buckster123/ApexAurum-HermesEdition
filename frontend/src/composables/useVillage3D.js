@@ -716,6 +716,9 @@ export function useVillage3D(containerRef, options = {}) {
 
     // --- WebXR VR Mode (Phase 17) ---
     vrMode.init(renderer, camera, scene, controls, fpvMode, postProcessing, physics)
+    // Wire interiors ↔ VR mode for pre-building + blink transitions
+    vrMode.setInteriors(interiors)
+    interiors.setVRBlink((cb) => vrMode.triggerBlink(cb))
 
     // --- Physics (Phase 14) — async, non-blocking ---
     physics.init().then(() => {

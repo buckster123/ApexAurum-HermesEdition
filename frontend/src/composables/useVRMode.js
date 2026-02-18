@@ -31,6 +31,7 @@ const VR_SPAWN_OFFSET = { x: 10, z: 8 } // Clear open ground between inner ring 
 const STUCK_FRAME_THRESHOLD = 10 // Bypass physics after N frames of zero movement
 const DOOR_COOLDOWN = 0.5 // Seconds between A-button door interactions
 const VR_MIN_EXPOSURE = 0.9 // Minimum tone mapping exposure in VR (prevents pitch-black nights)
+const BLINK_DURATION = 0.15 // 150ms per phase — fast VR "blink" for scene transitions
 
 // =============================================================================
 // COMPOSABLE
@@ -83,6 +84,14 @@ export function useVRMode() {
   // Comfort vignette
   let vignetteMesh = null
   let vignetteOpacity = 0
+
+  // VR blink transition (scene swap behind vignette)
+  let _blinkCallback = null
+  let _blinkPhase = null // 'in' | 'out'
+  let _blinkElapsed = 0
+
+  // Interiors ref for pre-building at session start
+  let _interiors = null
 
   // VR streetlights (added after PointLight cull, removed on exit)
   const vrStreetlights = []
@@ -337,6 +346,10 @@ export function useVRMode() {
     // Create VR streetlights (after PointLight cull, so they survive)
     _createVRStreetlights()
 
+    // Pre-build all interiors across multiple frames (async, non-blocking)
+    // Each interior builds in one frame with a yield between — stays within XR budget
+    if (_interiors) _interiors.prebuildAll()
+
     // Create VR headlight (SpotLight attached to camera, points forward)
     // Wide 60° cone with soft penumbra for comfortable VR peripheral vision
     headlight = new THREE.SpotLight(0xddeeff, 3.0, 30, Math.PI / 3, 0.6, 1.5)
@@ -583,9 +596,31 @@ export function useVRMode() {
     // --- VR UI Panels (Phase 19) ---
     vrUI.update(dt)
 
-    // --- Comfort Vignette ---
-    const targetOpacity = isMoving ? 0.5 : 0
-    vignetteOpacity = THREE.MathUtils.lerp(vignetteOpacity, targetOpacity, VIGNETTE_FADE_SPEED * dt)
+    // --- Comfort Vignette / Blink Transition ---
+    if (_blinkPhase) {
+      // Blink overrides normal vignette — fast fade to black, run callback at peak, fade back
+      _blinkElapsed += dt
+      if (_blinkPhase === 'in') {
+        vignetteOpacity = Math.min(_blinkElapsed / BLINK_DURATION, 1)
+        if (vignetteOpacity >= 1) {
+          // Peak — run the scene swap callback
+          if (_blinkCallback) _blinkCallback()
+          _blinkCallback = null
+          _blinkPhase = 'out'
+          _blinkElapsed = 0
+        }
+      } else {
+        vignetteOpacity = 1 - Math.min(_blinkElapsed / BLINK_DURATION, 1)
+        if (vignetteOpacity <= 0) {
+          _blinkPhase = null
+          vignetteOpacity = 0
+        }
+      }
+    } else {
+      // Normal movement vignette
+      const targetOpacity = isMoving ? 0.5 : 0
+      vignetteOpacity = THREE.MathUtils.lerp(vignetteOpacity, targetOpacity, VIGNETTE_FADE_SPEED * dt)
+    }
     if (vignetteMesh) {
       vignetteMesh.material.uniforms.opacity.value = vignetteOpacity
     }
@@ -698,6 +733,16 @@ export function useVRMode() {
     _doorCallback = fn || null
   }
 
+  function setInteriors(interiorsRef) {
+    _interiors = interiorsRef || null
+  }
+
+  function triggerBlink(callback) {
+    _blinkCallback = callback
+    _blinkPhase = 'in'
+    _blinkElapsed = 0
+  }
+
   function getCameraRig() {
     return cameraRig
   }
@@ -726,6 +771,8 @@ export function useVRMode() {
     dispose,
     checkSupport,
     setDoorCallback,
+    setInteriors,
+    triggerBlink,
     getCameraRig,
     getMinExposure,
     getCameraRigPosition,
