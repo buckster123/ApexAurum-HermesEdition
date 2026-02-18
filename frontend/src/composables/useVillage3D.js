@@ -2433,8 +2433,12 @@ export function useVillage3D(containerRef, options = {}) {
         scene.fog.density = dayNightResult.baseFogDensity * weatherMods.fogDensityMultiplier
       }
       if (renderer && dayNightResult.baseExposure !== undefined) {
-        renderer.toneMappingExposure = dayNightResult.baseExposure + weatherMods.exposureMod
+        let finalExposure = dayNightResult.baseExposure + weatherMods.exposureMod
           + (weatherMods.lightningFlash ? 0.5 : 0)
+        // VR exposure floor — prevents pitch-black nights in headset
+        const vrMinExp = vrMode.getMinExposure()
+        if (vrMinExp > 0) finalExposure = Math.max(finalExposure, vrMinExp)
+        renderer.toneMappingExposure = finalExposure
       }
     } else if (renderer) {
       // Interior: stable, well-lit exposure regardless of time of day

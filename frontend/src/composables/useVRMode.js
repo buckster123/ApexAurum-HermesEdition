@@ -27,9 +27,10 @@ const SPRINT_SPEED = 8 // Grip squeeze sprint
 const VILLAGE_BOUND = 75 // Same as useFPVMode
 const VIGNETTE_FADE_SPEED = 8 // Opacity lerp speed
 const SNAP_COOLDOWN = 0.3 // Seconds between snap turns
-const VR_SPAWN_OFFSET = { x: 5, z: 5 } // Offset from origin to avoid Village Square collider
+const VR_SPAWN_OFFSET = { x: 10, z: 8 } // Clear open ground between inner ring zones
 const STUCK_FRAME_THRESHOLD = 10 // Bypass physics after N frames of zero movement
 const DOOR_COOLDOWN = 0.5 // Seconds between A-button door interactions
+const VR_MIN_EXPOSURE = 0.9 // Minimum tone mapping exposure in VR (prevents pitch-black nights)
 
 // =============================================================================
 // COMPOSABLE
@@ -82,6 +83,10 @@ export function useVRMode() {
   // Comfort vignette
   let vignetteMesh = null
   let vignetteOpacity = 0
+
+  // VR streetlights (added after PointLight cull, removed on exit)
+  const vrStreetlights = []
+  let _exposureFloorActive = false
 
   // Saved state for clean restore on exit
   let savedShadowMapEnabled = false
@@ -235,6 +240,28 @@ export function useVRMode() {
   }
 
   // -------------------------------------------------------------------------
+  // VR STREETLIGHTS
+  // -------------------------------------------------------------------------
+
+  function _createVRStreetlights() {
+    // 5 warm PointLights for VR village navigation
+    // Added AFTER the PointLight cull so they survive
+    const specs = [
+      { pos: [0, 5, 0], intensity: 2.0, range: 30 },     // Village center
+      { pos: [12, 4, 0], intensity: 1.2, range: 20 },    // East road
+      { pos: [-12, 4, 0], intensity: 1.2, range: 20 },   // West road
+      { pos: [0, 4, 12], intensity: 1.2, range: 20 },    // North road
+      { pos: [0, 4, -12], intensity: 1.2, range: 20 },   // South road
+    ]
+    for (const spec of specs) {
+      const light = new THREE.PointLight(0xffd090, spec.intensity, spec.range, 2)
+      light.position.set(spec.pos[0], spec.pos[1], spec.pos[2])
+      _scene.add(light)
+      vrStreetlights.push(light)
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // SESSION START — Enter VR
   // -------------------------------------------------------------------------
 
@@ -307,8 +334,12 @@ export function useVRMode() {
     // Create comfort vignette
     _createVignette()
 
+    // Create VR streetlights (after PointLight cull, so they survive)
+    _createVRStreetlights()
+
     // Create VR headlight (SpotLight attached to camera, points forward)
-    headlight = new THREE.SpotLight(0xddeeff, 4.0, 25, Math.PI / 5, 0.5, 1.5)
+    // Wide 60° cone with soft penumbra for comfortable VR peripheral vision
+    headlight = new THREE.SpotLight(0xddeeff, 3.0, 30, Math.PI / 3, 0.6, 1.5)
     headlight.position.set(0, 0, 0)
     _camera.add(headlight)
     // SpotLight needs a target — place it 5m ahead of camera
@@ -317,6 +348,9 @@ export function useVRMode() {
     _camera.add(headlightTarget)
     headlight.target = headlightTarget
 
+    // Enable VR exposure floor
+    _exposureFloorActive = true
+
     // Resume AudioContext (browser autoplay policy)
     _camera.traverse((child) => {
       if (child.type === 'AudioListener' && child.context?.state === 'suspended') {
@@ -324,10 +358,14 @@ export function useVRMode() {
       }
     })
 
-    // Enable vignette
-    if (vignetteMesh) vignetteMesh.visible = true
+    // Smooth fade-in from black (vignette lerps to 0 in update loop)
+    if (vignetteMesh) {
+      vignetteMesh.visible = true
+      vignetteOpacity = 1.0
+      vignetteMesh.material.uniforms.opacity.value = 1.0
+    }
 
-    console.log('[VRMode] Session started — VR performance tier active')
+    console.log('[VRMode] Session started — VR performance tier active, 5 streetlights added')
   }
 
   // -------------------------------------------------------------------------
@@ -350,6 +388,14 @@ export function useVRMode() {
 
     // Restore pixel ratio
     _renderer.setPixelRatio(savedPixelRatio)
+
+    // Remove VR streetlights
+    for (const light of vrStreetlights) {
+      _scene.remove(light)
+      light.dispose()
+    }
+    vrStreetlights.length = 0
+    _exposureFloorActive = false
 
     // Restore PointLights
     for (const { light, intensity } of savedPointLights) {
@@ -600,6 +646,14 @@ export function useVRMode() {
       vignetteMesh = null
     }
 
+    // Dispose VR streetlights
+    for (const light of vrStreetlights) {
+      _scene?.remove(light)
+      light.dispose()
+    }
+    vrStreetlights.length = 0
+    _exposureFloorActive = false
+
     // Dispose hands (Phase 18)
     hands.dispose()
 
@@ -648,6 +702,10 @@ export function useVRMode() {
     return cameraRig
   }
 
+  function getMinExposure() {
+    return _exposureFloorActive ? VR_MIN_EXPOSURE : 0
+  }
+
   function getCameraRigPosition() {
     if (cameraRig) {
       return cameraRig.getWorldPosition(tempWorldPos.clone())
@@ -669,6 +727,7 @@ export function useVRMode() {
     checkSupport,
     setDoorCallback,
     getCameraRig,
+    getMinExposure,
     getCameraRigPosition,
     // Hand tracking (Phase 18)
     hands,
