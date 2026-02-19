@@ -464,7 +464,11 @@ export function useVRZoneHUD() {
     if (_camera) {
       _camera.getWorldPosition(_tempPos)
       for (const panel of [_mainPanel, _statsPanel, _actionPanel]) {
-        if (panel?.mesh.visible) panel.mesh.lookAt(_tempPos)
+        if (panel?.mesh.visible) {
+          panel.mesh.lookAt(_tempPos)
+          // Force world matrix update so button child meshes have correct transforms for raycasting
+          panel.mesh.updateMatrixWorld(true)
+        }
       }
     }
 

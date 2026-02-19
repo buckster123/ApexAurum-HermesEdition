@@ -75,6 +75,13 @@ export function useVRMode() {
   // Stuck detection (physics returning zero movement)
   let stuckFrames = 0
 
+  // Controller raycaster (for HUD button interaction in controller mode)
+  const _controllerRaycaster = new THREE.Raycaster()
+  const _rayOrigin = new THREE.Vector3()
+  const _rayDir = new THREE.Vector3()
+  let _wasTriggerPressed = false
+  let _hoveredButton = null // userData of hovered button mesh
+
   // Door interaction (A-button)
   let _doorCallback = null
   let doorCooldown = 0
@@ -598,6 +605,41 @@ export function useVRMode() {
         const snapDir = rightStickX > 0 ? -SNAP_ANGLE : SNAP_ANGLE
         cameraRig.rotation.y += snapDir
         snapCooldown = SNAP_COOLDOWN
+      }
+
+      // --- Controller Raycasting (HUD button interaction) ---
+      if (controller1 && zoneHUD.isOpen.value) {
+        // Ray from right controller, forward along local -Z
+        controller1.getWorldPosition(_rayOrigin)
+        controller1.getWorldDirection(_rayDir)
+        _rayDir.negate() // controller forward is -Z
+        _controllerRaycaster.set(_rayOrigin, _rayDir)
+        _controllerRaycaster.far = 5
+
+        // Ensure button meshes have up-to-date world matrices
+        const hudTargets = zoneHUD.getInteractables()
+        for (const btn of hudTargets) {
+          btn.updateWorldMatrix(true, false)
+        }
+
+        const hits = _controllerRaycaster.intersectObjects(hudTargets, false)
+        _hoveredButton = hits.length > 0 ? hits[0].object.userData : null
+
+        // Check right trigger press (buttons[0] on Quest Touch)
+        let triggerPressed = false
+        for (const source of session.inputSources) {
+          if (source.handedness === 'right' && source.gamepad) {
+            triggerPressed = source.gamepad.buttons[0]?.pressed ?? false
+            break
+          }
+        }
+
+        if (triggerPressed && !_wasTriggerPressed && _hoveredButton?.type === 'hud-button') {
+          zoneHUD.handleButtonClick(_hoveredButton.id)
+        }
+        _wasTriggerPressed = triggerPressed
+      } else {
+        _hoveredButton = null
       }
     }
 
