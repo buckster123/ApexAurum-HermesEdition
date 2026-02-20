@@ -28,7 +28,7 @@ router = APIRouter()
 
 # --- Schemas ---
 
-VALID_DEVICE_TYPES = {"apex_pocket", "sensor_head"}
+VALID_DEVICE_TYPES = {"apex_pocket", "sensor_head", "eeg_headset"}
 
 
 class DeviceCreateRequest(BaseModel):

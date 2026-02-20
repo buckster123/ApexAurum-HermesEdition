@@ -57,13 +57,15 @@ class BridgeConnectionManager:
         user_id: UUID,
         websocket: WebSocket,
         device_name: Optional[str] = None,
+        device_type: str = "sensor_head",
     ) -> BridgeConnection:
-        """Register a new SensorHead connection."""
+        """Register a new bridge device connection."""
         conn = BridgeConnection(
             device_id=device_id,
             user_id=user_id,
             websocket=websocket,
             device_name=device_name,
+            device_type=device_type,
         )
         self._connections[device_id] = conn
         logger.info(
@@ -109,16 +111,21 @@ class BridgeConnectionManager:
         self,
         user_id: UUID,
         device_name: Optional[str] = None,
+        device_type: Optional[str] = None,
     ) -> Optional[BridgeConnection]:
-        """Find a connected SensorHead for a user, optionally by name."""
+        """Find a connected bridge device for a user, optionally by name or type."""
         devices = self.get_connected_devices(user_id)
         if not devices:
             return None
+        if device_type:
+            devices = [d for d in devices if d.device_type == device_type]
+            if not devices:
+                return None
         if device_name:
             for d in devices:
                 if d.device_name and d.device_name.lower() == device_name.lower():
                     return d
-        return devices[0]  # Default to first connected device
+        return devices[0]  # Default to first matching device
 
     async def send_command(
         self,

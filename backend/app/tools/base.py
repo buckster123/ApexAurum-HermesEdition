@@ -26,6 +26,7 @@ class ToolCategory(str, Enum):
     CREATIVE = "creative"  # Suno compiler, prompt engineering
     NURSERY = "nursery"  # Model training studio
     SENSORHEAD = "sensorhead"  # Physical sensor hardware
+    EEG = "eeg"  # Brain-computer interface (OpenBCI EEG)
 
 
 class ToolResult(BaseModel):

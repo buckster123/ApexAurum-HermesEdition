@@ -52,10 +52,11 @@ async def authenticate_device_ws(websocket: WebSocket) -> tuple | None:
 
         for device in candidates:
             if verify_password(token, device.token_hash):
-                # Verify it's a sensor_head device
-                if device.device_type != "sensor_head":
+                # Verify it's a bridge-capable device type
+                BRIDGE_DEVICE_TYPES = {"sensor_head", "eeg_headset"}
+                if device.device_type not in BRIDGE_DEVICE_TYPES:
                     logger.warning(
-                        f"Non-sensor_head device attempted bridge connection: "
+                        f"Non-bridge device attempted bridge connection: "
                         f"{device.id} (type={device.device_type})"
                     )
                     return None
@@ -123,6 +124,7 @@ async def bridge_websocket(websocket: WebSocket):
         user_id=user_id,
         websocket=websocket,
         device_name=device.device_name,
+        device_type=device.device_type,
     )
 
     # Mark device as seen
@@ -138,7 +140,7 @@ async def bridge_websocket(websocket: WebSocket):
             type=EventType.CONNECTION,
             agent_id="SYSTEM",
             zone="sensor_tower",
-            message=f"SensorHead '{device.device_name}' connected",
+            message=f"{device.device_type.replace('_', ' ').title()} '{device.device_name}' connected",
         ))
     except Exception:
         pass  # Non-fatal
@@ -164,15 +166,18 @@ async def bridge_websocket(websocket: WebSocket):
                         logger.debug(f"Orphaned response: {cmd_id}")
 
             elif msg_type == "telemetry":
-                # Periodic sensor readings
+                # Periodic readings (sensor or EEG)
                 readings = msg.get("readings", {})
                 timestamp = msg.get("timestamp")
                 accepted = manager.update_telemetry(device_id, readings, timestamp)
 
                 if accepted:
-                    # Store to database and update last_seen
+                    # Store to appropriate table and update last_seen
                     try:
-                        await _store_telemetry(device_id, user_id, readings)
+                        if device.device_type == "eeg_headset":
+                            await _store_eeg_telemetry(device_id, user_id, readings)
+                        else:
+                            await _store_telemetry(device_id, user_id, readings)
                         await _touch_device(device_id)
                     except Exception as e:
                         logger.debug(f"Telemetry store failed: {e}")
@@ -197,7 +202,7 @@ async def bridge_websocket(websocket: WebSocket):
 
     except WebSocketDisconnect:
         manager.unregister(device_id)
-        logger.info(f"SensorHead disconnected: {device.device_name}")
+        logger.info(f"Bridge device disconnected: {device.device_name} ({device.device_type})")
     except Exception as e:
         logger.error(f"Bridge WebSocket error: {e}")
         manager.unregister(device_id)
@@ -208,11 +213,12 @@ async def bridge_websocket(websocket: WebSocket):
             get_village_broadcaster, VillageEvent, EventType,
         )
         broadcaster = get_village_broadcaster()
+        device_label = device.device_type.replace("_", " ").title()
         await broadcaster.broadcast(VillageEvent(
             type=EventType.CONNECTION,
             agent_id="SYSTEM",
             zone="sensor_tower",
-            message=f"SensorHead '{device.device_name}' disconnected",
+            message=f"{device_label} '{device.device_name}' disconnected",
         ))
     except Exception:
         pass
@@ -247,6 +253,35 @@ async def _store_telemetry(device_id: UUID, user_id: UUID, readings: dict):
                 "t_min": readings.get("thermal_min_c"),
                 "t_max": readings.get("thermal_max_c"),
                 "t_avg": readings.get("thermal_avg_c"),
+                "raw": json.dumps(readings),
+            },
+        )
+        await db.commit()
+
+
+async def _store_eeg_telemetry(device_id: UUID, user_id: UUID, readings: dict):
+    """Store EEG emotion telemetry reading to database."""
+    from app.database import get_db_context
+
+    async with get_db_context() as db:
+        await db.execute(
+            __import__("sqlalchemy").text("""
+                INSERT INTO eeg_telemetry
+                    (device_id, user_id, valence, arousal, attention,
+                     engagement, possible_chills, band_powers, raw_data)
+                VALUES
+                    (:device_id, :user_id, :valence, :arousal, :attention,
+                     :engagement, :chills, :band_powers, :raw)
+            """),
+            {
+                "device_id": str(device_id),
+                "user_id": str(user_id),
+                "valence": readings.get("valence"),
+                "arousal": readings.get("arousal"),
+                "attention": readings.get("attention"),
+                "engagement": readings.get("engagement"),
+                "chills": readings.get("possible_chills", False),
+                "band_powers": json.dumps(readings.get("band_powers", {})),
                 "raw": json.dumps(readings),
             },
         )

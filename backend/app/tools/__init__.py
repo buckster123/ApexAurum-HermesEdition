@@ -271,6 +271,7 @@ def register_all_tools():
     from . import nursery  # noqa: F401
     from . import agora  # noqa: F401
     from . import sensorhead  # noqa: F401
+    from . import eeg  # noqa: F401
     from . import dream  # noqa: F401
 
     # All 18 tiers loaded!

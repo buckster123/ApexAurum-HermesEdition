@@ -107,6 +107,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/devices/:id/eeg',
+      name: 'eeg-dashboard',
+      component: () => import('@/views/EEGDashboardView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/neural',
       name: 'neural',
       component: () => import('@/views/NeuralView.vue'),

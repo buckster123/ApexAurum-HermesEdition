@@ -1237,6 +1237,44 @@ END $$;
         """))
         migrations.append("CREATE INDEX IF NOT EXISTS idx_sentinel_presets_user ON sentinel_presets(user_id);")
 
+        # ─── EEG / BCI session records & telemetry ───
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS eeg_sessions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                session_id VARCHAR(100) NOT NULL,
+                track_id VARCHAR(200),
+                track_title VARCHAR(500),
+                listener VARCHAR(200),
+                duration_ms INTEGER DEFAULT 0,
+                summary JSONB DEFAULT '{}',
+                narrative TEXT,
+                moments JSONB DEFAULT '[]',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        """))
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_eeg_sessions_device ON eeg_sessions(device_id, created_at DESC);")
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_eeg_sessions_user ON eeg_sessions(user_id, created_at DESC);")
+
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS eeg_telemetry (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                valence REAL,
+                arousal REAL,
+                attention REAL,
+                engagement REAL,
+                possible_chills BOOLEAN DEFAULT FALSE,
+                band_powers JSONB DEFAULT '{}',
+                raw_data JSONB DEFAULT '{}',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        """))
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_eeg_telemetry_device ON eeg_telemetry(device_id, created_at DESC);")
+        migrations.append("CREATE INDEX IF NOT EXISTS idx_eeg_telemetry_user ON eeg_telemetry(user_id, created_at DESC);")
+
         # ═══════════════════════════════════════════════════════════════════════
         # APEXJOULE ECONOMY v1 — The thermodynamic currency of the Athanor
         # ═══════════════════════════════════════════════════════════════════════
