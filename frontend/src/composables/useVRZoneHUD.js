@@ -363,26 +363,30 @@ export function useVRZoneHUD() {
     _clearButtonMeshes()
     if (!_actionPanel) return
 
-    // Button layout on action panel canvas (ACTION_CW x ACTION_CH):
-    // Agent buttons: 4 in a 2x2 grid starting at y=140, each 200x50 canvas px
-    // Start Chat: full width at y=320, 430x60 canvas px
-    // Dismiss: full width at y=400, 430x50 canvas px
+    // Button positions derived from the same layout constants used in _renderActionPanel
+    // gridX=22, gridY=96, btnW=195, btnH=44, gapX=10, gapY=10
+    // chatY = gridY + 2*(btnH+gapY) + 20 = 224, chatH=54
+    // dismissY = chatY + chatH + 16 = 294, dismissH=44
 
     const panelW = ACTION_W
     const panelH = ACTION_H
     const cw = ACTION_CW
     const ch = ACTION_CH
 
+    const gX = 22, gY = 96, bW = 195, bH = 44, gapX = 10, gapY = 10
+    const chatY = gY + 2 * (bH + gapY) + 20
+    const dismissY = chatY + 54 + 16
+
     const buttons = [
-      // Agent buttons (2x2 grid)
-      { id: 'agent_azoth', cx: 120, cy: 165, bw: 200, bh: 50 },
-      { id: 'agent_vajra', cx: 340, cy: 165, bw: 200, bh: 50 },
-      { id: 'agent_elysian', cx: 120, cy: 235, bw: 200, bh: 50 },
-      { id: 'agent_kether', cx: 340, cy: 235, bw: 200, bh: 50 },
-      // Start Chat
-      { id: 'start_chat', cx: cw / 2, cy: 340, bw: 400, bh: 60 },
-      // Dismiss
-      { id: 'dismiss', cx: cw / 2, cy: 420, bw: 400, bh: 50 },
+      // Agent buttons (2x2 grid) — centers match canvas drawing
+      { id: 'agent_azoth',   cx: gX + bW / 2,             cy: gY + bH / 2,               bw: bW, bh: bH },
+      { id: 'agent_vajra',   cx: gX + (bW + gapX) + bW/2, cy: gY + bH / 2,               bw: bW, bh: bH },
+      { id: 'agent_elysian', cx: gX + bW / 2,             cy: gY + (bH + gapY) + bH / 2, bw: bW, bh: bH },
+      { id: 'agent_kether',  cx: gX + (bW + gapX) + bW/2, cy: gY + (bH + gapY) + bH / 2, bw: bW, bh: bH },
+      // Start Chat — full width at chatY
+      { id: 'start_chat', cx: cw / 2, cy: chatY + 27, bw: cw - 48, bh: 54 },
+      // Dismiss — full width below chat
+      { id: 'dismiss', cx: cw / 2, cy: dismissY + 22, bw: cw - 48, bh: 44 },
     ]
 
     for (const btn of buttons) {
