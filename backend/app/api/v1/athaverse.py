@@ -277,6 +277,36 @@ async def athaverse_status(
 
 
 # =============================================================================
+# DEBUG ENDPOINT — test tool loading
+# =============================================================================
+
+@router.get("/debug/tools")
+async def athaverse_debug_tools(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Debug: test tool loading and list what's available."""
+    result = {"user_id": str(user.id), "configured_count": len(ATHAVERSE_TOOLS)}
+    try:
+        te = create_tool_executor(user_id=user.id, agent_id="AZOTH")
+        all_tools = te.get_available_tools()
+        all_names = sorted([t.get("name", "?") for t in all_tools])
+        matched = [n for n in all_names if n in ATHAVERSE_TOOLS]
+        unmatched = [n for n in all_names if n not in ATHAVERSE_TOOLS]
+        result["registry_total"] = len(all_tools)
+        result["matched_count"] = len(matched)
+        result["matched_tools"] = matched
+        result["excluded_tools"] = unmatched
+        result["status"] = "OK" if matched else "NO_MATCH"
+    except Exception as e:
+        import traceback
+        result["status"] = "ERROR"
+        result["error"] = str(e)
+        result["traceback"] = traceback.format_exc()
+    return result
+
+
+# =============================================================================
 # INTERNAL HELPERS
 # =============================================================================
 
@@ -431,7 +461,7 @@ async def _prepare_athaverse_chat(
         except Exception as e:
             logger.warning(f"Athaverse history load failed: {e}")
 
-    # Load tools
+    # Load tools — NO silent swallowing. If this fails, we need to know.
     tools = None
     tool_executor = None
     try:
@@ -441,13 +471,16 @@ async def _prepare_athaverse_chat(
             agent_id=agent,
         )
         all_tools = tool_executor.get_available_tools()
+        logger.info(f"Athaverse registry: {len(all_tools)} total tools available")
         tools = [t for t in all_tools if t.get("name") in ATHAVERSE_TOOLS]
-        if tools:
-            logger.info(f"Athaverse tools: {len(tools)} tools loaded for {agent}")
+        logger.info(f"Athaverse tools: {len(tools)} matched for {agent} (from {len(ATHAVERSE_TOOLS)} configured)")
+        if not tools:
+            # Log what names ARE available so we can debug mismatches
+            available_names = sorted([t.get("name", "?") for t in all_tools[:10]])
+            logger.error(f"Athaverse: NO tools matched! Sample registry names: {available_names}")
     except Exception as e:
-        logger.warning(f"Athaverse tool loading failed: {e}")
-        tools = None
-        tool_executor = None
+        import traceback
+        logger.error(f"Athaverse tool loading FAILED: {e}\n{traceback.format_exc()}")
 
     return {
         "model": ATHAVERSE_MODEL,
