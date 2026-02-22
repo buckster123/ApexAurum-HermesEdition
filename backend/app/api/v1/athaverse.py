@@ -129,7 +129,12 @@ async def athaverse_chat(
 
         try:
             conv_id = str(conversation.id) if conversation else None
-            yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv_id})}\n\n"
+            tool_count = len(tools) if tools else 0
+            yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv_id, 'tools_loaded': tool_count})}\n\n"
+
+            # Diagnostic: if tools failed to load, tell the user
+            if not tools:
+                yield f"data: {json.dumps({'type': 'tool_result', 'name': 'SYSTEM', 'result': f'Tool loading: {tool_count} tools available. tool_executor={tool_executor is not None}. Check /athaverse/debug/tools for details.', 'is_error': True})}\n\n"
 
             llm = create_llm_service("anthropic")
             current_messages = ctx["llm_messages"].copy()
