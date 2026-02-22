@@ -202,6 +202,12 @@ const router = createRouter({
       component: () => import('@/views/DownloadView.vue'),
       meta: { requiresAuth: false }
     },
+    {
+      path: '/pair',
+      name: 'pair',
+      component: () => import('@/views/PairView.vue'),
+      meta: { requiresAuth: true }
+    },
   ]
 })
 

@@ -2,6 +2,10 @@
 Authentication Endpoints
 """
 
+import secrets
+import time
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
@@ -174,3 +178,114 @@ async def logout():
     Note: For proper server-side invalidation, implement token blacklisting in Redis.
     """
     return {"message": "Logged out successfully"}
+
+
+# ---- Device Code Pairing (TV-style auth for Quest VR) ----
+
+DEVICE_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+DEVICE_CODE_LENGTH = 4
+DEVICE_CODE_TTL = 300  # 5 minutes
+
+# In-memory store: {code: {created_at, status, tokens}}
+_device_codes: dict[str, dict] = {}
+
+
+def _cleanup_expired_codes() -> None:
+    now = time.time()
+    expired = [c for c, d in _device_codes.items() if now - d["created_at"] > DEVICE_CODE_TTL]
+    for c in expired:
+        del _device_codes[c]
+
+
+def _generate_device_code() -> str:
+    _cleanup_expired_codes()
+    for _ in range(100):
+        code = "".join(secrets.choice(DEVICE_CODE_CHARS) for _ in range(DEVICE_CODE_LENGTH))
+        if code not in _device_codes:
+            return code
+    raise HTTPException(status_code=503, detail="Unable to generate unique code")
+
+
+class DeviceCodeResponse(BaseModel):
+    device_code: str
+    poll_interval: int = 3
+    expires_in: int = 300
+
+
+class DevicePollRequest(BaseModel):
+    device_code: str
+
+
+class DevicePollResponse(BaseModel):
+    status: str
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    token_type: Optional[str] = None
+
+
+class DeviceConfirmRequest(BaseModel):
+    device_code: str
+
+
+@router.post("/device-code", response_model=DeviceCodeResponse)
+async def request_device_code():
+    """Generate a device pairing code for VR/TV-style authentication."""
+    code = _generate_device_code()
+    _device_codes[code] = {
+        "created_at": time.time(),
+        "status": "pending",
+        "tokens": None,
+    }
+    return DeviceCodeResponse(
+        device_code=code,
+        poll_interval=3,
+        expires_in=DEVICE_CODE_TTL,
+    )
+
+
+@router.post("/device-poll", response_model=DevicePollResponse)
+async def poll_device_code(request: DevicePollRequest):
+    """Poll for device code confirmation status."""
+    code = request.device_code.upper().strip()
+    entry = _device_codes.get(code)
+    if not entry:
+        return DevicePollResponse(status="expired")
+    if time.time() - entry["created_at"] > DEVICE_CODE_TTL:
+        del _device_codes[code]
+        return DevicePollResponse(status="expired")
+    if entry["status"] == "confirmed" and entry["tokens"]:
+        tokens = entry["tokens"]
+        del _device_codes[code]
+        return DevicePollResponse(
+            status="confirmed",
+            access_token=tokens["access_token"],
+            refresh_token=tokens["refresh_token"],
+            token_type="bearer",
+        )
+    return DevicePollResponse(status="pending")
+
+
+@router.post("/device-confirm")
+async def confirm_device_code(
+    request: DeviceConfirmRequest,
+    user: User = Depends(get_current_user),
+):
+    """Confirm a device pairing code (authenticated user binds their account)."""
+    code = request.device_code.upper().strip()
+    entry = _device_codes.get(code)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Code not found or expired")
+    if time.time() - entry["created_at"] > DEVICE_CODE_TTL:
+        del _device_codes[code]
+        raise HTTPException(status_code=410, detail="Code expired")
+    if entry["status"] == "confirmed":
+        raise HTTPException(status_code=409, detail="Code already used")
+
+    access_token = create_access_token(user.id, user.email)
+    refresh_token = create_refresh_token(user.id, user.email)
+    entry["status"] = "confirmed"
+    entry["tokens"] = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+    }
+    return {"message": "Device paired successfully", "user_email": user.email}
