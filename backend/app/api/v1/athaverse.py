@@ -130,7 +130,7 @@ async def athaverse_chat(
         try:
             conv_id = str(conversation.id) if conversation else None
             tool_count = len(tools) if tools else 0
-            yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv_id, 'tools_loaded': tool_count})}\n\n"
+            yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv_id, 'tools_loaded': tool_count, 'personality': ctx.get('personality_source', 'unknown')})}\n\n"
 
             # Diagnostic: if tools failed to load, tell the user
             if not tools:
@@ -282,32 +282,80 @@ async def athaverse_status(
 
 
 # =============================================================================
-# DEBUG ENDPOINT — test tool loading
+# DIAGNOSTIC ENDPOINT — public, no auth (for Railway debugging)
 # =============================================================================
 
-@router.get("/debug/tools")
-async def athaverse_debug_tools(
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Debug: test tool loading and list what's available."""
-    result = {"user_id": str(user.id), "configured_count": len(ATHAVERSE_TOOLS)}
+@router.get("/diag")
+async def athaverse_diag():
+    """Public diagnostic: test tool loading and PAC prompt resolution."""
+    import traceback
+    from pathlib import Path
+
+    result = {
+        "configured_tools": len(ATHAVERSE_TOOLS),
+        "tools": {},
+        "pac": {},
+        "prompts_dir": {},
+    }
+
+    # --- Tool loading ---
     try:
-        te = create_tool_executor(user_id=user.id, agent_id="AZOTH")
+        te = create_tool_executor(agent_id="AZOTH")
         all_tools = te.get_available_tools()
         all_names = sorted([t.get("name", "?") for t in all_tools])
         matched = [n for n in all_names if n in ATHAVERSE_TOOLS]
-        unmatched = [n for n in all_names if n not in ATHAVERSE_TOOLS]
-        result["registry_total"] = len(all_tools)
-        result["matched_count"] = len(matched)
-        result["matched_tools"] = matched
-        result["excluded_tools"] = unmatched
-        result["status"] = "OK" if matched else "NO_MATCH"
+        result["tools"] = {
+            "status": "OK" if matched else "NO_MATCH",
+            "registry_total": len(all_tools),
+            "matched_count": len(matched),
+            "matched_sample": matched[:10],
+            "registry_sample": all_names[:10],
+        }
     except Exception as e:
-        import traceback
-        result["status"] = "ERROR"
-        result["error"] = str(e)
-        result["traceback"] = traceback.format_exc()
+        result["tools"] = {
+            "status": "ERROR",
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+    # --- PAC prompt loading ---
+    try:
+        from .chat import load_native_prompt, NATIVE_PROMPTS_DIR, NATIVE_AGENT_FILES
+
+        result["prompts_dir"] = {
+            "path": str(NATIVE_PROMPTS_DIR),
+            "exists": NATIVE_PROMPTS_DIR.exists() if NATIVE_PROMPTS_DIR else False,
+            "files": sorted([f.name for f in NATIVE_PROMPTS_DIR.iterdir()])
+                     if NATIVE_PROMPTS_DIR and NATIVE_PROMPTS_DIR.exists() else [],
+            "agent_files": NATIVE_AGENT_FILES,
+        }
+
+        for agent_id in ("AZOTH", "KETHER", "VAJRA", "ELYSIAN"):
+            filename = NATIVE_AGENT_FILES.get(agent_id, "?")
+            pac_filename = filename.replace(".txt", "-PAC.txt")
+            pac_path = NATIVE_PROMPTS_DIR / pac_filename
+            regular_path = NATIVE_PROMPTS_DIR / filename
+
+            pac_result = load_native_prompt(agent_id, use_pac=True)
+            regular_result = load_native_prompt(agent_id, use_pac=False)
+
+            result["pac"][agent_id] = {
+                "pac_file": pac_filename,
+                "pac_path_exists": pac_path.exists(),
+                "pac_loaded": pac_result is not None,
+                "pac_length": len(pac_result) if pac_result else 0,
+                "regular_file": filename,
+                "regular_path_exists": regular_path.exists(),
+                "regular_loaded": regular_result is not None,
+                "regular_length": len(regular_result) if regular_result else 0,
+            }
+    except Exception as e:
+        result["pac"] = {
+            "status": "ERROR",
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
     return result
 
 
@@ -333,12 +381,32 @@ async def _prepare_athaverse_chat(
     if agent not in ("AZOTH", "KETHER", "VAJRA", "ELYSIAN"):
         agent = "AZOTH"
 
-    from .chat import load_native_prompt
-    personality = load_native_prompt(agent, use_pac=True)
+    # Personality loading cascade:
+    # 1. PAC (full Perfected Alchemical Codex, ~12K chars)
+    # 2. Regular native prompt (~6K chars)
+    # 3. Pocket personality (~250 tokens, still excellent)
+    personality = None
+    personality_source = "none"
+    try:
+        from .chat import load_native_prompt
+        personality = load_native_prompt(agent, use_pac=True)
+        if personality:
+            personality_source = "pac"
+            logger.info(f"Athaverse: loaded PAC prompt for {agent} ({len(personality)} chars)")
+        else:
+            # Try regular (non-PAC) native prompt
+            personality = load_native_prompt(agent, use_pac=False)
+            if personality:
+                personality_source = "native"
+                logger.info(f"Athaverse: loaded native prompt for {agent} ({len(personality)} chars)")
+    except Exception as e:
+        logger.warning(f"Athaverse: native prompt loading failed for {agent}: {e}")
+
     if not personality:
-        # Fallback to pocket lite personality
         from .pocket import AGENT_PERSONALITIES
         personality = AGENT_PERSONALITIES.get(agent, AGENT_PERSONALITIES["AZOTH"])
+        personality_source = "pocket_lite"
+        logger.warning(f"Athaverse: using pocket lite personality for {agent} (native prompts unavailable)")
 
     # Retrieve cortex memories for context
     memory_block = ""
@@ -401,7 +469,7 @@ async def _prepare_athaverse_chat(
         logger.warning(f"Athaverse conversation persistence error: {e}")
         conversation = None
 
-    # Build system prompt (full PAC, no soul/expression)
+    # Build system prompt (full PAC + VR context + tool awareness)
     system_prompt = (
         f"You are {personality}\n\n"
         f"CONTEXT: The user is interacting with you in the Athaverse — "
@@ -409,6 +477,11 @@ async def _prepare_athaverse_chat(
         f"You are manifested as a crystalline station. "
         f"The user can see your responses in a floating panel and type via virtual keyboard.\n\n"
         f"{memory_block}"
+        f"TOOLS: You have access to real, working tools. When the user asks you to "
+        f"remember something, search the web, check the time, play music, or use any "
+        f"capability — actually USE your tools. Do NOT describe or list tools; call them. "
+        f"Key tools: cortex_recall (search memories), cortex_remember (save memories), "
+        f"web_search, web_fetch, music_generate, vault_read/write, calculator, get_current_time.\n\n"
         f"RULES:\n"
         f"- Be genuine and substantive\n"
         f"- Use your tools actively — search memories, recall context, browse the web\n"
@@ -497,6 +570,7 @@ async def _prepare_athaverse_chat(
         "billing": billing,
         "tools": tools,
         "tool_executor": tool_executor,
+        "personality_source": personality_source,
     }
 
 
