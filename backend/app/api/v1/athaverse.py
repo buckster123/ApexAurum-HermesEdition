@@ -6,6 +6,7 @@ Forked from pocket.py, stripped of soul/OLED/expression systems.
 JWT auth (via existing device-code pairing). Auto-loaded tools.
 """
 
+import difflib
 import json
 import logging
 import re
@@ -196,17 +197,27 @@ async def athaverse_chat(
                 # Append assistant message for tool continuation
                 current_messages.append({"role": "assistant", "content": assistant_content})
 
-                # Execute tools
+                # Execute tools (with fuzzy name matching for close misses)
                 tool_results = []
                 for tool_use in pending_tool_uses:
                     tool_name = tool_use.get("name", "")
+
+                    # Fuzzy match: if model gets name slightly wrong, find closest
+                    if tool_name not in ATHAVERSE_TOOLS:
+                        matches = difflib.get_close_matches(tool_name, ATHAVERSE_TOOLS, n=1, cutoff=0.6)
+                        if matches:
+                            corrected = matches[0]
+                            logger.info(f"Athaverse: fuzzy-matched '{tool_name}' → '{corrected}'")
+                            tool_name = corrected
+                            tool_use = {**tool_use, "name": corrected}
+
                     yield f"data: {json.dumps({'type': 'tool_start', 'name': tool_name})}\n\n"
 
                     if tool_name not in ATHAVERSE_TOOLS:
                         res = {
                             "type": "tool_result",
                             "tool_use_id": tool_use.get("id"),
-                            "content": f"Tool '{tool_name}' is not available in the Athaverse.",
+                            "content": f"Tool '{tool_name}' is not available. Use exact names from your tool list.",
                             "is_error": True,
                         }
                     else:
