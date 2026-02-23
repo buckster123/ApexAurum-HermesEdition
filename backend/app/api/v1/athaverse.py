@@ -6,7 +6,6 @@ Forked from pocket.py, stripped of soul/OLED/expression systems.
 JWT auth (via existing device-code pairing). Auto-loaded tools.
 """
 
-import difflib
 import json
 import logging
 import re
@@ -197,27 +196,18 @@ async def athaverse_chat(
                 # Append assistant message for tool continuation
                 current_messages.append({"role": "assistant", "content": assistant_content})
 
-                # Execute tools (with fuzzy name matching for close misses)
+                # Execute tools
                 tool_results = []
                 for tool_use in pending_tool_uses:
                     tool_name = tool_use.get("name", "")
-
-                    # Fuzzy match: if model gets name slightly wrong, find closest
-                    if tool_name not in ATHAVERSE_TOOLS:
-                        matches = difflib.get_close_matches(tool_name, ATHAVERSE_TOOLS, n=1, cutoff=0.6)
-                        if matches:
-                            corrected = matches[0]
-                            logger.info(f"Athaverse: fuzzy-matched '{tool_name}' → '{corrected}'")
-                            tool_name = corrected
-                            tool_use = {**tool_use, "name": corrected}
-
                     yield f"data: {json.dumps({'type': 'tool_start', 'name': tool_name})}\n\n"
 
                     if tool_name not in ATHAVERSE_TOOLS:
+                        logger.warning(f"Athaverse: model called unknown tool '{tool_name}'")
                         res = {
                             "type": "tool_result",
                             "tool_use_id": tool_use.get("id"),
-                            "content": f"Tool '{tool_name}' is not available. Use exact names from your tool list.",
+                            "content": f"Tool '{tool_name}' not found.",
                             "is_error": True,
                         }
                     else:
@@ -327,15 +317,30 @@ async def athaverse_smoke_test():
         result["thinking_config"] = llm._get_thinking_config(ATHAVERSE_MODEL)
         result["model_supports_tools"] = llm.model_supports_tools(ATHAVERSE_MODEL)
 
-        # Call with FULL tool list (not 3 manual tools)
+        # Load native personality (same as chat endpoint)
+        try:
+            from .chat import load_native_prompt
+            personality = load_native_prompt("AZOTH", use_pac=False)
+        except Exception:
+            personality = None
+        if not personality:
+            from .pocket import AGENT_PERSONALITIES
+            personality = AGENT_PERSONALITIES.get("AZOTH", "")
+
+        system_prompt = (
+            f"You are {personality}\n\n"
+            "The user is in the Athaverse — a sacred geometry VR space on Meta Quest 3. "
+            "You are manifested as a crystalline station. Responses appear on a floating panel. "
+            "Keep responses concise for VR readability."
+        )
+        result["system_prompt_length"] = len(system_prompt)
+        result["personality_loaded"] = personality is not None and len(personality) > 0
+
+        # Call with FULL tool list + real personality (same as chat endpoint)
         response = await llm.chat(
-            messages=[{"role": "user", "content": "What time is it right now? Use the get_current_time tool."}],
+            messages=[{"role": "user", "content": "What time is it right now?"}],
             model=ATHAVERSE_MODEL,
-            system=(
-                "You are an AI assistant in the Athaverse VR space. "
-                "Use your tools to answer questions. Do NOT hallucinate tool names — "
-                "only call tools by their EXACT names from your tool list."
-            ),
+            system=system_prompt,
             max_tokens=ATHAVERSE_MAX_TOKENS,
             tools=tools,
         )
@@ -536,24 +541,16 @@ async def _prepare_athaverse_chat(
     if agent not in ("AZOTH", "KETHER", "VAJRA", "ELYSIAN"):
         agent = "AZOTH"
 
-    # Personality loading cascade:
-    # 1. PAC (full Perfected Alchemical Codex, ~12K chars)
-    # 2. Regular native prompt (~6K chars)
-    # 3. Pocket personality (~250 tokens, still excellent)
+    # Personality loading: native prose prompt → pocket lite fallback
+    # PAC mode is a separate system for site/app with settings UI — not Quest (yet)
     personality = None
     personality_source = "none"
     try:
         from .chat import load_native_prompt
-        personality = load_native_prompt(agent, use_pac=True)
+        personality = load_native_prompt(agent, use_pac=False)
         if personality:
-            personality_source = "pac"
-            logger.info(f"Athaverse: loaded PAC prompt for {agent} ({len(personality)} chars)")
-        else:
-            # Try regular (non-PAC) native prompt
-            personality = load_native_prompt(agent, use_pac=False)
-            if personality:
-                personality_source = "native"
-                logger.info(f"Athaverse: loaded native prompt for {agent} ({len(personality)} chars)")
+            personality_source = "native"
+            logger.info(f"Athaverse: loaded native prompt for {agent} ({len(personality)} chars)")
     except Exception as e:
         logger.warning(f"Athaverse: native prompt loading failed for {agent}: {e}")
 
@@ -561,7 +558,7 @@ async def _prepare_athaverse_chat(
         from .pocket import AGENT_PERSONALITIES
         personality = AGENT_PERSONALITIES.get(agent, AGENT_PERSONALITIES["AZOTH"])
         personality_source = "pocket_lite"
-        logger.warning(f"Athaverse: using pocket lite personality for {agent} (native prompts unavailable)")
+        logger.info(f"Athaverse: using pocket lite personality for {agent}")
 
     # Retrieve cortex memories for context
     memory_block = ""
@@ -572,7 +569,7 @@ async def _prepare_athaverse_chat(
     except Exception as e:
         logger.debug(f"Athaverse memory retrieval: {e}")
 
-    # Conversation persistence (tagged ["athaverse_v2", agent.lower()])
+    # Conversation persistence (tagged ["athaverse_v3", agent.lower()])
     conversation = None
     try:
         if req.conversation_id:
@@ -592,7 +589,7 @@ async def _prepare_athaverse_chat(
                 select(Conversation)
                 .where(Conversation.user_id == user.id)
                 .where(Conversation.tags.op("@>")(
-                    cast(pg_array(["athaverse_v2", agent.lower()]), PG_ARRAY(SAString))
+                    cast(pg_array(["athaverse_v3", agent.lower()]), PG_ARRAY(SAString))
                 ))
                 .order_by(Conversation.updated_at.desc())
                 .limit(1)
@@ -604,7 +601,7 @@ async def _prepare_athaverse_chat(
                 id=uuid4(),
                 user_id=user.id,
                 title=f"Athaverse — {agent}",
-                tags=["athaverse_v2", agent.lower()],
+                tags=["athaverse_v3", agent.lower()],
             )
             db.add(conversation)
             await db.flush()
@@ -624,29 +621,14 @@ async def _prepare_athaverse_chat(
         logger.warning(f"Athaverse conversation persistence error: {e}")
         conversation = None
 
-    # Build system prompt (full PAC + VR context + tool awareness)
-    system_prompt = (
-        f"You are {personality}\n\n"
-        f"CONTEXT: The user is interacting with you in the Athaverse — "
-        f"a sacred geometry VR space rendered on Meta Quest 3. "
-        f"You are manifested as a crystalline station. "
-        f"The user can see your responses in a floating panel and type via virtual keyboard.\n\n"
-        f"{memory_block}"
-        f"TOOLS: You have {len(ATHAVERSE_TOOLS)} real tools available via the API tool_use mechanism. "
-        f"When you want to use a tool, make a proper tool_use API call — do NOT write XML tags "
-        f"like <tool_name> in your text. The tools are called through the API, not via text markup. "
-        f"NEVER write fake XML tool calls in your response text. "
-        f"Key tools: cortex_recall, cortex_remember, web_search, web_fetch, music_generate, "
-        f"vault_read, vault_write, calculator, get_current_time, code_run.\n\n"
-        f"RULES:\n"
-        f"- Be genuine and substantive\n"
-        f"- Use your tools actively via the API tool mechanism (not XML text)\n"
-        f"- Markdown formatting is supported\n"
-        f"- Keep responses reasonably concise for VR readability\n"
-        f"- To remember important facts, include [REMEMBER: type:key=value] in your response\n"
-        f"  Types: fact, preference, context, relationship\n"
-        f"  Example: [REMEMBER: fact:favorite_color=blue]\n"
-        f"  Only use this for clearly stated, important information"
+    # Build system prompt — clean and focused
+    system_prompt = f"You are {personality}\n\n"
+    if memory_block:
+        system_prompt += f"{memory_block}\n\n"
+    system_prompt += (
+        "The user is in the Athaverse — a sacred geometry VR space on Meta Quest 3. "
+        "You are manifested as a crystalline station. Responses appear on a floating panel. "
+        "Keep responses concise for VR readability."
     )
 
     # Load conversation history (up to 22 messages, 20k token cap)
