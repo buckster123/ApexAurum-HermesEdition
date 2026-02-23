@@ -282,6 +282,68 @@ async def athaverse_status(
 
 
 # =============================================================================
+# TOOL SMOKE TEST — direct API call with 3 tools (bypasses all complexity)
+# =============================================================================
+
+@router.get("/smoke")
+async def athaverse_smoke_test():
+    """Smoke test: make a real Anthropic API call with 3 tools and return the result."""
+    import traceback
+
+    # Use just 3 simple tools to minimize complexity
+    test_tools = [
+        {
+            "name": "get_current_time",
+            "description": "Get the current date and time",
+            "input_schema": {"type": "object", "properties": {}, "required": []},
+        },
+        {
+            "name": "web_search",
+            "description": "Search the web for information",
+            "input_schema": {
+                "type": "object",
+                "properties": {"query": {"type": "string", "description": "Search query"}},
+                "required": ["query"],
+            },
+        },
+        {
+            "name": "cortex_recall",
+            "description": "Search memories for relevant information",
+            "input_schema": {
+                "type": "object",
+                "properties": {"query": {"type": "string", "description": "Memory search query"}},
+                "required": ["query"],
+            },
+        },
+    ]
+
+    result = {"test_tools": len(test_tools), "model": ATHAVERSE_MODEL}
+
+    try:
+        llm = create_llm_service("anthropic")
+        # Non-streaming call to see the full response
+        response = await llm.chat(
+            messages=[{"role": "user", "content": "What time is it? Use your tools."}],
+            model=ATHAVERSE_MODEL,
+            system="You are an AI assistant. Use your tools to answer questions. Do NOT write XML.",
+            max_tokens=1024,
+            tools=test_tools,
+        )
+        result["response"] = response
+        result["status"] = "OK"
+
+        # Also check: does model_supports_tools pass?
+        result["model_supports_tools"] = llm.model_supports_tools(ATHAVERSE_MODEL)
+        result["thinking_config"] = llm._get_thinking_config(ATHAVERSE_MODEL)
+    except Exception as e:
+        result["status"] = "ERROR"
+        result["error"] = str(e)
+        result["traceback"] = traceback.format_exc()
+
+    return result
+
+
+# =============================================================================
 # DIAGNOSTIC ENDPOINT — public, no auth (for Railway debugging)
 # =============================================================================
 
