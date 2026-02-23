@@ -417,7 +417,7 @@ async def _prepare_athaverse_chat(
     except Exception as e:
         logger.debug(f"Athaverse memory retrieval: {e}")
 
-    # Conversation persistence (tagged ["athaverse", agent.lower()])
+    # Conversation persistence (tagged ["athaverse_v2", agent.lower()])
     conversation = None
     try:
         if req.conversation_id:
@@ -437,7 +437,7 @@ async def _prepare_athaverse_chat(
                 select(Conversation)
                 .where(Conversation.user_id == user.id)
                 .where(Conversation.tags.op("@>")(
-                    cast(pg_array(["athaverse", agent.lower()]), PG_ARRAY(SAString))
+                    cast(pg_array(["athaverse_v2", agent.lower()]), PG_ARRAY(SAString))
                 ))
                 .order_by(Conversation.updated_at.desc())
                 .limit(1)
@@ -449,7 +449,7 @@ async def _prepare_athaverse_chat(
                 id=uuid4(),
                 user_id=user.id,
                 title=f"Athaverse — {agent}",
-                tags=["athaverse", agent.lower()],
+                tags=["athaverse_v2", agent.lower()],
             )
             db.add(conversation)
             await db.flush()
@@ -477,14 +477,15 @@ async def _prepare_athaverse_chat(
         f"You are manifested as a crystalline station. "
         f"The user can see your responses in a floating panel and type via virtual keyboard.\n\n"
         f"{memory_block}"
-        f"TOOLS: You have access to real, working tools. When the user asks you to "
-        f"remember something, search the web, check the time, play music, or use any "
-        f"capability — actually USE your tools. Do NOT describe or list tools; call them. "
-        f"Key tools: cortex_recall (search memories), cortex_remember (save memories), "
-        f"web_search, web_fetch, music_generate, vault_read/write, calculator, get_current_time.\n\n"
+        f"TOOLS: You have {len(ATHAVERSE_TOOLS)} real tools available via the API tool_use mechanism. "
+        f"When you want to use a tool, make a proper tool_use API call — do NOT write XML tags "
+        f"like <tool_name> in your text. The tools are called through the API, not via text markup. "
+        f"NEVER write fake XML tool calls in your response text. "
+        f"Key tools: cortex_recall, cortex_remember, web_search, web_fetch, music_generate, "
+        f"vault_read, vault_write, calculator, get_current_time, code_run.\n\n"
         f"RULES:\n"
         f"- Be genuine and substantive\n"
-        f"- Use your tools actively — search memories, recall context, browse the web\n"
+        f"- Use your tools actively via the API tool mechanism (not XML text)\n"
         f"- Markdown formatting is supported\n"
         f"- Keep responses reasonably concise for VR readability\n"
         f"- To remember important facts, include [REMEMBER: type:key=value] in your response\n"
@@ -516,10 +517,16 @@ async def _prepare_athaverse_chat(
                     continue
                 if not msg.content or not msg.content.strip():
                     continue
-                est = len(msg.content) // 4
+                content = msg.content
+                # Skip assistant messages with XML-hallucinated tool calls
+                # (artifact from before tools were properly connected)
+                if msg.role == "assistant" and re.search(r'<\w+_\w+>', content):
+                    logger.info("Athaverse: skipping history msg with XML tool hallucination")
+                    continue
+                est = len(content) // 4
                 if token_count + est > 20_000:
                     break
-                history.append({"role": msg.role, "content": msg.content})
+                history.append({"role": msg.role, "content": content})
                 token_count += est
 
             if history:
