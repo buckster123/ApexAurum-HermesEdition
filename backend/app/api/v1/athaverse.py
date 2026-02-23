@@ -294,59 +294,56 @@ async def athaverse_status(
 
 
 # =============================================================================
-# TOOL SMOKE TEST — direct API call with 3 tools (bypasses all complexity)
+# SMOKE TESTS — public, no auth
 # =============================================================================
 
 @router.get("/smoke")
 async def athaverse_smoke_test():
-    """Smoke test: make a real Anthropic API call with 3 tools and return the result."""
+    """Smoke test: real API call with REGISTRY tools (same as chat endpoint)."""
     import traceback
 
-    # Use just 3 simple tools to minimize complexity
-    test_tools = [
-        {
-            "name": "get_current_time",
-            "description": "Get the current date and time",
-            "input_schema": {"type": "object", "properties": {}, "required": []},
-        },
-        {
-            "name": "web_search",
-            "description": "Search the web for information",
-            "input_schema": {
-                "type": "object",
-                "properties": {"query": {"type": "string", "description": "Search query"}},
-                "required": ["query"],
-            },
-        },
-        {
-            "name": "cortex_recall",
-            "description": "Search memories for relevant information",
-            "input_schema": {
-                "type": "object",
-                "properties": {"query": {"type": "string", "description": "Memory search query"}},
-                "required": ["query"],
-            },
-        },
-    ]
-
-    result = {"test_tools": len(test_tools), "model": ATHAVERSE_MODEL}
+    result = {"model": ATHAVERSE_MODEL, "max_tokens": ATHAVERSE_MAX_TOKENS}
 
     try:
-        llm = create_llm_service("anthropic")
-        # Non-streaming call to see the full response
-        response = await llm.chat(
-            messages=[{"role": "user", "content": "What time is it? Use your tools."}],
-            model=ATHAVERSE_MODEL,
-            system="You are an AI assistant. Use your tools to answer questions. Do NOT write XML.",
-            max_tokens=1024,
-            tools=test_tools,
-        )
-        result["response"] = response
-        result["status"] = "OK"
+        # Load tools EXACTLY like the chat endpoint does
+        te = create_tool_executor(agent_id="AZOTH")
+        all_tools = te.get_available_tools()
+        tools = [t for t in all_tools if t.get("name") in ATHAVERSE_TOOLS]
+        result["tools_count"] = len(tools)
+        result["tool_names"] = sorted([t.get("name", "?") for t in tools])
 
-        # Also check: does model_supports_tools pass?
-        result["model_supports_tools"] = llm.model_supports_tools(ATHAVERSE_MODEL)
+        llm = create_llm_service("anthropic")
         result["thinking_config"] = llm._get_thinking_config(ATHAVERSE_MODEL)
+        result["model_supports_tools"] = llm.model_supports_tools(ATHAVERSE_MODEL)
+
+        # Call with FULL tool list (not 3 manual tools)
+        response = await llm.chat(
+            messages=[{"role": "user", "content": "What time is it right now? Use the get_current_time tool."}],
+            model=ATHAVERSE_MODEL,
+            system=(
+                "You are an AI assistant in the Athaverse VR space. "
+                "Use your tools to answer questions. Do NOT hallucinate tool names — "
+                "only call tools by their EXACT names from your tool list."
+            ),
+            max_tokens=ATHAVERSE_MAX_TOKENS,
+            tools=tools,
+        )
+
+        # Summarize response
+        content_blocks = response.get("content", [])
+        block_summary = []
+        for block in content_blocks:
+            bt = block.get("type", "?")
+            if bt == "text":
+                block_summary.append({"type": "text", "preview": block.get("text", "")[:300]})
+            elif bt == "tool_use":
+                block_summary.append({"type": "tool_use", "name": block.get("name"), "input": block.get("input")})
+            elif bt == "thinking":
+                block_summary.append({"type": "thinking", "length": len(block.get("thinking", ""))})
+        result["content_blocks"] = block_summary
+        result["stop_reason"] = response.get("stop_reason")
+        result["usage"] = response.get("usage")
+        result["status"] = "OK"
     except Exception as e:
         result["status"] = "ERROR"
         result["error"] = str(e)
