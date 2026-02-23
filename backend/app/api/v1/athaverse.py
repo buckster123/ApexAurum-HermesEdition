@@ -87,8 +87,8 @@ ATHAVERSE_TOOLS = {
     "random_number", "uuid_generate", "json_format",
 }
 
-ATHAVERSE_MODEL = "claude-sonnet-4-5-20250929"
-ATHAVERSE_MAX_TOKENS = 2048
+ATHAVERSE_MODEL = "claude-sonnet-4-6"
+ATHAVERSE_MAX_TOKENS = 8192
 ATHAVERSE_MAX_TOOL_TURNS = 3
 ATHAVERSE_TOOL_TIMEOUT = 60
 
@@ -429,6 +429,79 @@ async def athaverse_diag():
             "error": str(e),
             "traceback": traceback.format_exc(),
         }
+
+    return result
+
+
+# =============================================================================
+# DEBUG CHAT — authenticated, returns JSON (not SSE) for testing tools
+# =============================================================================
+
+@router.post("/debug-chat")
+async def athaverse_debug_chat(
+    request: AthaverseChatRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Debug endpoint: run full chat pipeline but return JSON instead of SSE.
+
+    Shows exactly what's sent to the API and what comes back.
+    Use with: curl -H "Authorization: Bearer <jwt>" -H "Content-Type: application/json" \
+              -d '{"message":"what time is it?"}' https://backend.../api/v1/athaverse/debug-chat
+    """
+    import traceback
+
+    result = {"model": ATHAVERSE_MODEL, "max_tokens": ATHAVERSE_MAX_TOKENS}
+
+    try:
+        ctx = await _prepare_athaverse_chat(request, user, db)
+        tools = ctx["tools"]
+
+        result["tools_count"] = len(tools) if tools else 0
+        result["tool_names"] = sorted([t.get("name", "?") for t in tools]) if tools else []
+        result["personality_source"] = ctx.get("personality_source", "unknown")
+        result["system_prompt_length"] = len(ctx["system_prompt"])
+        result["messages_count"] = len(ctx["llm_messages"])
+
+        # Check thinking config for this model
+        llm = create_llm_service("anthropic")
+        thinking_config = llm._get_thinking_config(ctx["model"])
+        result["thinking_config"] = str(thinking_config) if thinking_config else "none"
+
+        # Make the actual API call
+        response = await llm.chat(
+            messages=ctx["llm_messages"],
+            model=ctx["model"],
+            system=ctx["system_prompt"],
+            max_tokens=ctx["max_tokens"],
+            tools=tools,
+        )
+
+        result["stop_reason"] = response.get("stop_reason")
+        result["usage"] = response.get("usage")
+
+        # Summarize content blocks
+        content_blocks = response.get("content", [])
+        block_summary = []
+        for block in content_blocks:
+            bt = block.get("type", "?")
+            if bt == "text":
+                block_summary.append({"type": "text", "preview": block.get("text", "")[:200]})
+            elif bt == "tool_use":
+                block_summary.append({
+                    "type": "tool_use",
+                    "name": block.get("name"),
+                    "input": block.get("input"),
+                })
+            elif bt == "thinking":
+                block_summary.append({"type": "thinking", "length": len(block.get("thinking", ""))})
+        result["content_blocks"] = block_summary
+        result["status"] = "OK"
+
+    except Exception as e:
+        result["status"] = "ERROR"
+        result["error"] = str(e)
+        result["traceback"] = traceback.format_exc()
 
     return result
 

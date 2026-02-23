@@ -113,6 +113,14 @@ PROVIDER_MODELS = {
             "context_window": 200000,
             "description": "Excellent balance - fast and highly capable",
         },
+        "claude-sonnet-4-6": {
+            "name": "Sonnet 4.6",
+            "tier": "sonnet",
+            "max_tokens": 16384,
+            "context_window": 200000,
+            "description": "Latest Sonnet - fast, capable, reliable tool use",
+            "supports_tools": True,
+        },
         "claude-haiku-4-5-20251001": {
             "name": "Haiku 4.5",
             "tier": "haiku",
