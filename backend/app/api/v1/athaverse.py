@@ -113,7 +113,11 @@ async def athaverse_chat(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Chat with an agent in the Athaverse — SSE streaming with tool loop."""
+    """Chat with an agent in the Athaverse — SSE with non-streaming tool loop.
+
+    Uses llm.chat() (non-streaming) which is proven to work with tools,
+    then emits the response as SSE events for the Quest client.
+    """
     ctx = await _prepare_athaverse_chat(request, user, db)
 
     agent = ctx["agent"]
@@ -132,58 +136,64 @@ async def athaverse_chat(
             tool_count = len(tools) if tools else 0
             yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv_id, 'tools_loaded': tool_count, 'personality': ctx.get('personality_source', 'unknown')})}\n\n"
 
-            # Diagnostic: if tools failed to load, tell the user
             if not tools:
-                yield f"data: {json.dumps({'type': 'tool_result', 'name': 'SYSTEM', 'result': f'Tool loading: {tool_count} tools available. tool_executor={tool_executor is not None}. Check /athaverse/debug/tools for details.', 'is_error': True})}\n\n"
+                yield f"data: {json.dumps({'type': 'tool_result', 'name': 'SYSTEM', 'result': 'No tools loaded.', 'is_error': True})}\n\n"
 
             llm = create_llm_service("anthropic")
             current_messages = ctx["llm_messages"].copy()
 
             for turn in range(ATHAVERSE_MAX_TOOL_TURNS + 1):
-                pending_tool_uses = []
-                assistant_blocks = None
-
-                async for event in llm.chat_stream(
+                # Non-streaming call — proven to work with tools + thinking
+                response = await llm.chat(
                     messages=current_messages,
                     model=ctx["model"],
                     system=ctx["system_prompt"],
                     max_tokens=ctx["max_tokens"],
                     tools=tools,
-                ):
-                    event_type = event.get("type")
+                )
 
-                    if event_type == "token":
-                        content = event.get("content", "")
-                        full_response += content
-                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
-                    elif event_type == "tool_use":
-                        pending_tool_uses.append(event)
-                    elif event_type == "usage":
-                        u = event.get("usage", {})
-                        total_input += u.get("input_tokens", 0)
-                        total_output += u.get("output_tokens", 0)
-                    elif event_type == "content_blocks":
-                        assistant_blocks = event.get("blocks", [])
+                # Track usage
+                usage = response.get("usage", {})
+                total_input += usage.get("input_tokens", 0)
+                total_output += usage.get("output_tokens", 0)
+
+                # Parse response content blocks
+                content_blocks = response.get("content", [])
+                text_parts = []
+                pending_tool_uses = []
+                assistant_content = []  # For message continuation
+
+                for block in content_blocks:
+                    block_type = block.get("type", "")
+                    if block_type == "text":
+                        text = block.get("text", "")
+                        text_parts.append(text)
+                        assistant_content.append(block)
+                    elif block_type == "tool_use":
+                        pending_tool_uses.append(block)
+                        assistant_content.append(block)
+                    elif block_type == "thinking":
+                        # Preserve thinking blocks for tool continuation
+                        assistant_content.append({
+                            "type": "thinking",
+                            "thinking": block.get("thinking", ""),
+                            "signature": block.get("signature"),
+                        })
+
+                # Emit text tokens
+                turn_text = "".join(text_parts)
+                if turn_text:
+                    # Emit in chunks for smoother display
+                    for i in range(0, len(turn_text), 50):
+                        chunk = turn_text[i:i+50]
+                        yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+                    full_response += turn_text
 
                 # No tools requested — done
                 if not pending_tool_uses or not tool_executor:
                     break
 
-                # Build assistant content for tool continuation
-                if assistant_blocks:
-                    assistant_content = assistant_blocks
-                else:
-                    assistant_content = []
-                    if full_response:
-                        assistant_content.append({"type": "text", "text": full_response})
-                    for tu in pending_tool_uses:
-                        assistant_content.append({
-                            "type": "tool_use",
-                            "id": tu.get("id"),
-                            "name": tu.get("name"),
-                            "input": tu.get("input"),
-                        })
-
+                # Append assistant message for tool continuation
                 current_messages.append({"role": "assistant", "content": assistant_content})
 
                 # Execute tools
@@ -242,6 +252,8 @@ async def athaverse_chat(
 
         except Exception as e:
             logger.error(f"Athaverse stream error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(
