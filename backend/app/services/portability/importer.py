@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_memory import AgentMemory
-from app.models.apexjoule import ApexJouleBalance, LoveScore
+# # from app.models.apexjoule import ApexJouleBalance, LoveScore  # DELETED - commercial module removed
 
 logger = logging.getLogger(__name__)
 
@@ -135,68 +135,72 @@ class AgentImporter:
         return imported, skipped
 
     async def _import_economy(self, user_id: UUID, agent_id: str, economy: dict) -> bool:
-        """Restore economy state with caps to prevent inflation."""
-        entity_id = agent_id.lower()
-
-        # Check if balance already exists
-        result = await self.db.execute(
-            select(ApexJouleBalance)
-            .where(ApexJouleBalance.user_id == user_id)
-            .where(ApexJouleBalance.entity_id == entity_id)
-        )
-        existing = result.scalar_one_or_none()
-
-        if existing:
-            # Merge: keep higher level/love_depth, skip monetary fields (prevents AJ duplication)
-            existing.level = max(existing.level, economy.get("level", 1))
-            existing.love_depth = max(
-                float(existing.love_depth),
-                min(float(economy.get("love_depth", 1)), MAX_IMPORT_LOVE_DEPTH),
-            )
-            return True
-
-        # Create new balance — personality only, no monetary transfer
-        import_love = min(float(economy.get("love_depth", 1)), MAX_IMPORT_LOVE_DEPTH)
-
-        balance = ApexJouleBalance(
-            id=uuid4(),
-            user_id=user_id,
-            entity_id=entity_id,
-            balance=Decimal("0"),  # No monetary transfer
-            total_earned=Decimal("0"),
-            total_spent=Decimal("0"),
-            love_depth=Decimal(str(import_love)),
-            level=min(economy.get("level", 1), 4),  # Cap at Artisan
-            vitality=Decimal("100"),  # Fresh start
-        )
-        self.db.add(balance)
-        return True
+        """Restore economy state with caps to prevent inflation. (STUBBED)"""
+        # NOTE: ApexJouleBalance model deleted — economy import disabled
+        # entity_id = agent_id.lower()
+        #
+        # # Check if balance already exists
+        # result = await self.db.execute(
+        #     select(ApexJouleBalance)
+        #     .where(ApexJouleBalance.user_id == user_id)
+        #     .where(ApexJouleBalance.entity_id == entity_id)
+        # )
+        # existing = result.scalar_one_or_none()
+        #
+        # if existing:
+        #     # Merge: keep higher level/love_depth, skip monetary fields (prevents AJ duplication)
+        #     existing.level = max(existing.level, economy.get("level", 1))
+        #     existing.love_depth = max(
+        #         float(existing.love_depth),
+        #         min(float(economy.get("love_depth", 1)), MAX_IMPORT_LOVE_DEPTH),
+        #     )
+        #     return True
+        #
+        # # Create new balance — personality only, no monetary transfer
+        # import_love = min(float(economy.get("love_depth", 1)), MAX_IMPORT_LOVE_DEPTH)
+        #
+        # balance = ApexJouleBalance(
+        #     id=uuid4(),
+        #     user_id=user_id,
+        #     entity_id=entity_id,
+        #     balance=Decimal("0"),  # No monetary transfer
+        #     total_earned=Decimal("0"),
+        #     total_spent=Decimal("0"),
+        #     love_depth=Decimal(str(import_love)),
+        #     level=min(economy.get("level", 1), 4),  # Cap at Artisan
+        #     vitality=Decimal("100"),  # Fresh start
+        # )
+        # self.db.add(balance)
+        # return True
+        return False
 
     async def _seed_love(self, user_id: UUID, agent_id: str, love_history: list) -> bool:
-        """Seed love scores from import (last 10 only — warm start)."""
-        entity_id = agent_id.lower()
-
-        # Only import the 10 most recent
-        recent = love_history[:10]
-        if not recent:
-            return False
-
-        for entry in recent:
-            score = LoveScore(
-                id=uuid4(),
-                user_id=user_id,
-                agent_id=entity_id,
-                interaction_type=entry.get("interaction_type", "imported"),
-                c_score=Decimal(str(min(float(entry.get("c_score", 0.5)), 1.0))),
-                d_score=Decimal(str(min(float(entry.get("d_score", 0.5)), 1.0))),
-                c_breakdown=entry.get("c_breakdown"),
-                d_breakdown=entry.get("d_breakdown"),
-                love_depth_after=Decimal(str(min(float(entry.get("love_depth_after", 1) or 1), MAX_IMPORT_LOVE_DEPTH))),
-                created_at=datetime.now(timezone.utc),  # Use import time, not original
-            )
-            self.db.add(score)
-
-        return True
+        """Seed love scores from import (last 10 only — warm start). (STUBBED)"""
+        # NOTE: LoveScore model deleted — love seeding disabled
+        # entity_id = agent_id.lower()
+        #
+        # # Only import the 10 most recent
+        # recent = love_history[:10]
+        # if not recent:
+        #     return False
+        #
+        # for entry in recent:
+        #     score = LoveScore(
+        #         id=uuid4(),
+        #         user_id=user_id,
+        #         agent_id=entity_id,
+        #         interaction_type=entry.get("interaction_type", "imported"),
+        #         c_score=Decimal(str(min(float(entry.get("c_score", 0.5)), 1.0))),
+        #         d_score=Decimal(str(min(float(entry.get("d_score", 0.5)), 1.0))),
+        #         c_breakdown=entry.get("c_breakdown"),
+        #         d_breakdown=entry.get("d_breakdown"),
+        #         love_depth_after=Decimal(str(min(float(entry.get("love_depth_after", 1) or 1), MAX_IMPORT_LOVE_DEPTH))),
+        #         created_at=datetime.now(timezone.utc),  # Use import time, not original
+        #     )
+        #     self.db.add(score)
+        #
+        # return True
+        return False
 
     @staticmethod
     def validate_bundle(bundle: dict) -> list:

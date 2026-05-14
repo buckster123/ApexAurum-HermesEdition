@@ -55,10 +55,6 @@ class User(Base):
     memories = relationship("Memory", back_populates="user", cascade="all, delete-orphan")
     music_tasks = relationship("MusicTask", back_populates="user", cascade="all, delete-orphan")
 
-    # Billing & Monetization
-    subscription = relationship("Subscription", back_populates="user", uselist=False, cascade="all, delete-orphan")
-    credit_balance = relationship("CreditBalance", back_populates="user", uselist=False, cascade="all, delete-orphan")
-
     # The Vault - File Storage
     folders = relationship("Folder", back_populates="user", cascade="all, delete-orphan")
     files = relationship("File", back_populates="user", cascade="all, delete-orphan")
@@ -71,12 +67,6 @@ class User(Base):
     nursery_training_jobs = relationship("NurseryTrainingJob", back_populates="user", cascade="all, delete-orphan")
     nursery_models = relationship("NurseryModelRecord", back_populates="user", cascade="all, delete-orphan")
     nursery_apprentices = relationship("NurseryApprentice", back_populates="user", cascade="all, delete-orphan")
-
-    # Quest Progression
-    progression = relationship("UserProgression", back_populates="user", uselist=False, cascade="all, delete-orphan")
-
-    # ApexJoule Economy
-    aj_balances = relationship("ApexJouleBalance", back_populates="user", cascade="all, delete-orphan")
 
     # Devices (ApexPocket, etc.)
     devices = relationship("Device", back_populates="user", cascade="all, delete-orphan")

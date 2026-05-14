@@ -16,20 +16,15 @@ from app.models.village import VillageKnowledge
 from app.models.memory import Memory
 from app.models.music import MusicTask
 from app.models.agent_memory import AgentMemory
-from app.models.billing import Subscription, CreditBalance, CreditTransaction, WebhookEvent, Coupon, CouponRedemption
+from app.models.billing import Subscription
 from app.models.council import DeliberationSession, SessionAgent, DeliberationRound, SessionMessage
 from app.models.jam import JamSession, JamParticipant, JamTrack, JamMessage
 from app.models.feedback import BugReport
 from app.models.nursery import NurseryDataset, NurseryTrainingJob, NurseryModelRecord, NurseryApprentice
 from app.models.usage import UsageCounter
-from app.models.feature_credit import FeatureCreditBalance
 from app.models.system import SystemSettings
 from app.models.device import Device
 from app.models.agora import AgoraPost, AgoraReaction, AgoraComment
-from app.models.progression import UserProgression
-from app.models.apexjoule import ApexJouleBalance, ApexJouleTransaction, LoveScore
-from app.models.solana_payment import SolanaPayment
-from app.models.marketplace import MarketplaceListing, MarketplacePurchase
 from app.models.multiverse import VillageProfile, Portal, PortalVisit, CrossVillageTransaction, FriendConnection
 
 # User references all of the above, so import LAST
@@ -48,11 +43,6 @@ __all__ = [
     "File",
     "Folder",
     "Subscription",
-    "CreditBalance",
-    "CreditTransaction",
-    "WebhookEvent",
-    "Coupon",
-    "CouponRedemption",
     "DeliberationSession",
     "SessionAgent",
     "DeliberationRound",
@@ -67,23 +57,14 @@ __all__ = [
     "NurseryModelRecord",
     "NurseryApprentice",
     "UsageCounter",
-    "FeatureCreditBalance",
     "SystemSettings",
     "Device",
     "AgoraPost",
     "AgoraReaction",
     "AgoraComment",
-    "UserProgression",
-    "ApexJouleBalance",
-    "ApexJouleTransaction",
-    "LoveScore",
-    "SolanaPayment",
-    "MarketplaceListing",
-    "MarketplacePurchase",
     "VillageProfile",
     "Portal",
     "PortalVisit",
     "CrossVillageTransaction",
     "FriendConnection",
-    # "UserVector",  # Temp disabled
 ]

@@ -18,7 +18,7 @@ from app.rate_limit import limiter
 from app.database import get_db
 from app.auth.deps import get_current_user, get_current_user_optional
 from app.models.user import User
-from app.services.multiverse import MultiverseService
+# from app.services.multiverse import MultiverseService
 
 logger = logging.getLogger("api.multiverse")
 

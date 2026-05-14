@@ -36,14 +36,14 @@ from app.services.llm_provider import create_llm_service
 from app.services.billing import BillingService
 from app.services.memory import MemoryService
 from app.services.tool_executor import create_tool_executor
-from app.services.apexjoule.ledger import AJLedger
-from app.services.apexjoule.shop import AJShop
-from app.services.apexjoule.constants import (
-    LEVEL_NAMES, AJ_SHOP_PRICES, LEVEL_THRESHOLDS,
-    LOVE_DEPTH_TIERS, AJ_CITIZEN_WELCOME_BONUS,
-    AJ_CITIZEN_ACTION_COSTS, QUEST_BOUNTIES,
-)
-from app.services.apexjoule.love_scorer import love_depth_tier_name
+# # from app.services.apexjoule.ledger import AJLedger  # DELETED
+# # from app.services.apexjoule.shop import AJShop  # DELETED
+# # from app.services.apexjoule.constants import (
+#     LEVEL_NAMES, AJ_SHOP_PRICES, LEVEL_THRESHOLDS,
+#     LOVE_DEPTH_TIERS, AJ_CITIZEN_WELCOME_BONUS,
+#     AJ_CITIZEN_ACTION_COSTS, QUEST_BOUNTIES,
+# )  # DELETED
+# # from app.services.apexjoule.love_scorer import love_depth_tier_name  # DELETED
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -900,18 +900,19 @@ async def _finalize_pocket_chat(
         logger.debug(f"Pocket memory extraction skipped: {e}")
 
     # AJ economy: calculate cost and earnings for this message
+    # NOTE: ApexJoule economy removed in local mode
     aj_cost = None
     aj_earned = None
-    try:
-        from app.services.apexjoule.constants import AJ_SHOP_PRICES, AJ_CITIZEN_ACTION_COSTS
-        model_key = "message_haiku" if "haiku" in model else "message_sonnet" if "sonnet" in model else "message_opus" if "opus" in model else None
-        if model_key and model_key in AJ_SHOP_PRICES:
-            aj_cost = int(AJ_SHOP_PRICES[model_key])
-        # Earned from reply quality heuristic (~0.5-2.0 AJ per response)
-        response_len = len(response_text)
-        aj_earned = round(min(2.0, max(0.3, response_len / 500)), 1)
-    except Exception:
-        pass
+    # try:
+    #     # from app.services.apexjoule.constants import AJ_SHOP_PRICES, AJ_CITIZEN_ACTION_COSTS
+    #     model_key = "message_haiku" if "haiku" in model else "message_sonnet" if "sonnet" in model else "message_opus" if "opus" in model else None
+    #     if model_key and model_key in AJ_SHOP_PRICES:
+    #         aj_cost = int(AJ_SHOP_PRICES[model_key])
+    #     # Earned from reply quality heuristic (~0.5-2.0 AJ per response)
+    #     response_len = len(response_text)
+    #     aj_earned = round(min(2.0, max(0.3, response_len / 500)), 1)
+    # except Exception:
+    #     pass
 
     return {
         "response_text": response_text,
@@ -3057,7 +3058,7 @@ async def pocket_aj_subscribe(
     device, user = device_and_user
 
     from app.models.billing import Subscription
-    from app.services.apexjoule.constants import AJ_TIER_PRICES
+    # from app.services.apexjoule.constants import AJ_TIER_PRICES
     from datetime import datetime, timedelta
 
     body = await request.json()
@@ -3117,7 +3118,7 @@ async def pocket_aj_marketplace(
 ):
     """Browse marketplace listings from mobile."""
     from sqlalchemy import desc, func
-    from app.models.marketplace import MarketplaceListing
+    # from app.models.marketplace import MarketplaceListing
 
     query = select(MarketplaceListing).where(MarketplaceListing.status == "active")
 

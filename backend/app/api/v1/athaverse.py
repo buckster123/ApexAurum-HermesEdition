@@ -782,7 +782,7 @@ async def _finalize_athaverse_chat(
     aj_cost = None
     aj_earned = None
     try:
-        from app.services.apexjoule.constants import AJ_SHOP_PRICES
+        # from app.services.apexjoule.constants import AJ_SHOP_PRICES
         model_key = (
             "message_haiku" if "haiku" in model
             else "message_sonnet" if "sonnet" in model

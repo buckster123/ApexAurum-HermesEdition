@@ -83,6 +83,27 @@ PROVIDERS = {
         "default_model": "gpt-4o-mini",
         "supports_tools": True,
     },
+    "ollama": {
+        "name": "Ollama (Local)",
+        "base_url": "http://localhost:11434/v1",
+        "key_env": "OLLAMA_API_KEY",
+        "default_model": "llama3.1",
+        "supports_tools": True,
+    },
+    "lmstudio": {
+        "name": "LM Studio (Local)",
+        "base_url": "http://localhost:1234/v1",
+        "key_env": "LMSTUDIO_API_KEY",
+        "default_model": "local-model",
+        "supports_tools": True,
+    },
+    "vllm": {
+        "name": "vLLM (Local)",
+        "base_url": "http://localhost:8000/v1",
+        "key_env": "VLLM_API_KEY",
+        "default_model": "meta-llama/Llama-3.1-8B-Instruct",
+        "supports_tools": True,
+    },
 }
 
 
@@ -286,6 +307,68 @@ PROVIDER_MODELS = {
             "context_window": 400000,
             "description": "Fast GPT-5 variant - efficient reasoning + tools (400K ctx)",
             "supports_tools": True,
+        },
+    },
+    "ollama": {
+        "llama3.1": {
+            "name": "Llama 3.1 (Local)",
+            "tier": "local",
+            "max_tokens": 8192,
+            "context_window": 128000,
+            "description": "Local Ollama model - runs on your machine",
+        },
+        "llama3.1:70b": {
+            "name": "Llama 3.1 70B (Local)",
+            "tier": "local",
+            "max_tokens": 8192,
+            "context_window": 128000,
+            "description": "Local Ollama 70B - largest local model",
+        },
+        "qwen2.5": {
+            "name": "Qwen 2.5 (Local)",
+            "tier": "local",
+            "max_tokens": 8192,
+            "context_window": 128000,
+            "description": "Local Qwen model - great for coding",
+        },
+        "phi4": {
+            "name": "Phi-4 (Local)",
+            "tier": "local",
+            "max_tokens": 8192,
+            "context_window": 128000,
+            "description": "Local Phi-4 - fast and efficient",
+        },
+    },
+    "lmstudio": {
+        "local-model": {
+            "name": "LM Studio Model",
+            "tier": "local",
+            "max_tokens": 8192,
+            "context_window": 128000,
+            "description": "Any model loaded in LM Studio",
+        },
+    },
+    "vllm": {
+        "meta-llama/Llama-3.1-8B-Instruct": {
+            "name": "Llama 3.1 8B (vLLM)",
+            "tier": "local",
+            "max_tokens": 8192,
+            "context_window": 128000,
+            "description": "vLLM-served Llama 3.1 8B - fast local inference",
+        },
+        "meta-llama/Llama-3.3-70B-Instruct": {
+            "name": "Llama 3.3 70B (vLLM)",
+            "tier": "local",
+            "max_tokens": 8192,
+            "context_window": 128000,
+            "description": "vLLM-served Llama 3.3 70B - large local model",
+        },
+        "Qwen/Qwen2.5-72B-Instruct": {
+            "name": "Qwen 2.5 72B (vLLM)",
+            "tier": "local",
+            "max_tokens": 8192,
+            "context_window": 128000,
+            "description": "vLLM-served Qwen 2.5 72B - strong reasoning",
         },
     },
 }
@@ -495,12 +578,14 @@ class MultiProviderLLM:
         """
         if provider not in PROVIDERS:
             raise ValueError(f"Unknown provider: {provider}")
-
         self.provider = provider
         self.config = PROVIDERS[provider]
+
         self.api_key = api_key or os.getenv(self.config["key_env"])
 
-        if not self.api_key:
+        # Local providers don't strictly require API keys
+        local_providers = {"ollama", "lmstudio", "vllm"}
+        if not self.api_key and provider not in local_providers:
             raise ValueError(f"No API key for provider: {provider}")
 
         # Initialize appropriate client
@@ -510,7 +595,7 @@ class MultiProviderLLM:
         else:
             self.anthropic_client = None
             self.openai_client = AsyncOpenAI(
-                api_key=self.api_key,
+                api_key=self.api_key or "local",
                 base_url=self.config["base_url"],
             )
 
@@ -954,14 +1039,17 @@ def get_available_providers() -> list[dict]:
     Get list of available providers with their status.
 
     Returns providers that have API keys configured.
+    Local providers (ollama, lmstudio, vllm) are always marked available.
     """
     providers = []
+    local_providers = {"ollama", "lmstudio", "vllm"}
     for provider_id, config in PROVIDERS.items():
         api_key = os.getenv(config["key_env"])
+        is_local = provider_id in local_providers
         providers.append({
             "id": provider_id,
             "name": config["name"],
-            "available": bool(api_key),
+            "available": bool(api_key) or is_local,
             "default_model": config["default_model"],
         })
     return providers

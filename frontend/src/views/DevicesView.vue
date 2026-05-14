@@ -9,7 +9,7 @@
 import { ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDevicesStore } from '@/stores/devices'
-import QRCode from 'qrcode'
+// import QRCode from 'qrcode'  // REMOVED in local mode - qrcode package removed
 
 const router = useRouter()
 
@@ -25,7 +25,8 @@ const qrDataUrl = ref(null)
 
 watch(() => store.newDeviceToken, async (token) => {
   if (token) {
-    qrDataUrl.value = await QRCode.toDataURL(token, { width: 200, margin: 2 })
+    // qrDataUrl.value = await QRCode.toDataURL(token, { width: 200, margin: 2 })
+    qrDataUrl.value = null  // QR generation disabled in local mode
   } else {
     qrDataUrl.value = null
   }

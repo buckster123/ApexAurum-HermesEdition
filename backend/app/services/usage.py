@@ -23,8 +23,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.models.usage import UsageCounter
-from app.models.feature_credit import FeatureCreditBalance
-from app.config import CREDIT_PACKS
 
 logger = logging.getLogger(__name__)
 
@@ -197,34 +195,25 @@ class UsageService:
         if current < limit:
             return (True, current, limit)
 
-        # At tier limit -- check feature credits as overflow
-        resource_type = COUNTER_TO_RESOURCE.get(counter_type)
-        if resource_type:
-            try:
-                credit_svc = FeatureCreditService(self.db)
-                available = await credit_svc.get_available_credits(user_id, resource_type)
-                if available > 0:
-                    logger.debug(
-                        f"User {user_id} at tier limit for {counter_type} "
-                        f"but has {available} feature credits for {resource_type}"
-                    )
-                    return (True, current, limit)
-            except Exception as e:
-                logger.warning(f"Feature credit check failed (non-fatal): {e}")
-
-        # No feature credits -- check AJ self-sustain
-        if agent_id:
-            try:
-                from app.services.apexjoule.self_sustain import AJSelfSustain
-                sustain = AJSelfSustain(self.db)
-                if await sustain.can_self_sustain(user_id, agent_id, counter_type):
-                    logger.debug(
-                        f"User {user_id} at tier limit for {counter_type} "
-                        f"but agent {agent_id} can self-sustain via AJ"
-                    )
-                    return (True, current, limit)
-            except Exception as e:
-                logger.warning(f"AJ self-sustain check failed (non-fatal): {e}")
+        # At tier limit -- feature credits and AJ self-sustain removed (apexjoule module deleted)
+        # resource_type = COUNTER_TO_RESOURCE.get(counter_type)
+        # if resource_type:
+        #     try:
+        #         credit_svc = FeatureCreditService(self.db)
+        #         available = await credit_svc.get_available_credits(user_id, resource_type)
+        #         if available > 0:
+        #             return (True, current, limit)
+        #     except Exception as e:
+        #         logger.warning(f"Feature credit check failed (non-fatal): {e}")
+        #
+        # if agent_id:
+        #     try:
+        #         from app.services.apexjoule.self_sustain import AJSelfSustain
+        #         sustain = AJSelfSustain(self.db)
+        #         if await sustain.can_self_sustain(user_id, agent_id, counter_type):
+        #             return (True, current, limit)
+        #     except Exception as e:
+        #         logger.warning(f"AJ self-sustain check failed (non-fatal): {e}")
 
         return (False, current, limit)
 
@@ -285,36 +274,10 @@ class UsageService:
         tier_limit: Optional[int],
     ) -> bool:
         """
-        Deduct a feature credit if user has exceeded their tier limit.
-
-        Called AFTER an action succeeds. If the user's usage count is
-        over their tier limit, one feature credit is deducted.
-
-        Args:
-            user_id: The user.
-            counter_type: One of the COUNTER_* constants.
-            tier_limit: The tier's limit for this counter (None = unlimited).
-
-        Returns:
-            True if a feature credit was deducted, False otherwise.
+        Feature credits removed (apexjoule module deleted).
+        Always returns False.
         """
-        if tier_limit is None:
-            return False
-
-        current = await self.get_current_count(user_id, counter_type)
-        if current <= tier_limit:
-            return False  # Still within tier allowance
-
-        resource_type = COUNTER_TO_RESOURCE.get(counter_type)
-        if not resource_type:
-            return False
-
-        try:
-            credit_svc = FeatureCreditService(self.db)
-            return await credit_svc.deduct_credit(user_id, resource_type)
-        except Exception as e:
-            logger.warning(f"Feature credit deduction failed (non-fatal): {e}")
-            return False
+        return False
 
     async def deduct_aj_if_self_sustained(
         self,
@@ -323,37 +286,10 @@ class UsageService:
         counter_type: str,
         tier_limit: Optional[int],
     ) -> bool:
-        """Deduct AJ if the operation was self-sustained by an agent.
-
-        Called AFTER an action succeeds, AFTER feature credit deduction
-        returned False (no credits to deduct). If user is over tier limit
-        and no feature credit was used, deduct AJ from agent/user balance.
+        """AJ self-sustain removed (apexjoule module deleted).
+        Always returns False.
         """
-        if tier_limit is None:
-            return False
-
-        current = await self.get_current_count(user_id, counter_type)
-        if current <= tier_limit:
-            return False
-
-        # Check if a feature credit was already deducted
-        resource_type = COUNTER_TO_RESOURCE.get(counter_type)
-        if resource_type:
-            try:
-                credit_svc = FeatureCreditService(self.db)
-                available = await credit_svc.get_available_credits(user_id, resource_type)
-                if available > 0:
-                    return False  # Feature credits handled it
-            except Exception:
-                pass
-
-        try:
-            from app.services.apexjoule.self_sustain import AJSelfSustain
-            sustain = AJSelfSustain(self.db)
-            return await sustain.deduct_self_sustain(user_id, agent_id, counter_type)
-        except Exception as e:
-            logger.warning(f"AJ self-sustain deduction failed (non-fatal): {e}")
-            return False
+        return False
 
     async def _check_usage_thresholds(
         self,
@@ -426,227 +362,14 @@ class UsageService:
 # ═══════════════════════════════════════════════════════════════════════════════
 # FEATURE CREDIT SERVICE
 # ═══════════════════════════════════════════════════════════════════════════════
+# Removed: FeatureCreditService and FeatureCreditBalance model deleted
+# (apexjoule commercial modules removed). UsageService analytics counters remain.
 
-class FeatureCreditService:
-    """
-    Service for managing purchased feature credits (Spark/Flame/Inferno packs).
-
-    Feature credits are stored as per-purchase rows with remaining balances.
-    Deduction uses FIFO (oldest purchase first). Credits expire based on
-    expires_at timestamp.
-    """
-
-    def __init__(self, db: AsyncSession):
-        self.db = db
-
-    async def get_available_credits(
-        self,
-        user_id: UUID,
-        resource_type: str,
-    ) -> int:
-        """
-        Sum remaining credits for a resource across all active purchases.
-
-        Args:
-            user_id: The user.
-            resource_type: "opus_messages", "suno_generations", or "training_jobs"
-
-        Returns:
-            Total available credits for the resource.
-        """
-        column = getattr(FeatureCreditBalance, resource_type, None)
-        if column is None:
-            return 0
-
-        now = datetime.now(timezone.utc)
-        result = await self.db.execute(
-            select(func.coalesce(func.sum(column), 0)).where(
-                and_(
-                    FeatureCreditBalance.user_id == user_id,
-                    FeatureCreditBalance.is_expired == False,
-                    FeatureCreditBalance.expires_at > now,
-                    column > 0,
-                )
-            )
-        )
-
-        return result.scalar_one()
-
-    async def deduct_credit(
-        self,
-        user_id: UUID,
-        resource_type: str,
-        amount: int = 1,
-    ) -> bool:
-        """
-        Deduct credits using FIFO (oldest purchase first).
-
-        Args:
-            user_id: The user.
-            resource_type: "opus_messages", "suno_generations", or "training_jobs"
-            amount: How many to deduct (default 1).
-
-        Returns:
-            True if sufficient credits existed and were deducted.
-        """
-        column = getattr(FeatureCreditBalance, resource_type, None)
-        if column is None:
-            return False
-
-        now = datetime.now(timezone.utc)
-        remaining = amount
-
-        # Get active credit rows ordered oldest first (FIFO)
-        result = await self.db.execute(
-            select(FeatureCreditBalance).where(
-                and_(
-                    FeatureCreditBalance.user_id == user_id,
-                    FeatureCreditBalance.is_expired == False,
-                    FeatureCreditBalance.expires_at > now,
-                    column > 0,
-                )
-            ).order_by(FeatureCreditBalance.purchased_at.asc())
-        )
-
-        rows = result.scalars().all()
-
-        for row in rows:
-            current_val = getattr(row, resource_type)
-            if current_val <= 0:
-                continue
-
-            deduct = min(remaining, current_val)
-            setattr(row, resource_type, current_val - deduct)
-            remaining -= deduct
-
-            logger.debug(
-                f"Deducted {deduct} {resource_type} from purchase {row.id} "
-                f"(remaining in purchase: {current_val - deduct})"
-            )
-
-            if remaining <= 0:
-                break
-
-        if remaining > 0:
-            logger.warning(
-                f"Insufficient feature credits for user {user_id}: "
-                f"needed {amount} {resource_type}, short by {remaining}"
-            )
-            return False
-
-        await self.db.flush()
-        return True
-
-    async def add_pack_credits(
-        self,
-        user_id: UUID,
-        pack_id: str,
-        resource_type: Optional[str] = None,
-        stripe_payment_intent_id: Optional[str] = None,
-    ) -> FeatureCreditBalance:
-        """
-        Add credits from a pack purchase.
-
-        Creates a new FeatureCreditBalance row with appropriate expiry.
-
-        Args:
-            user_id: The purchasing user.
-            pack_id: "spark", "flame", or "inferno"
-            resource_type: For spark: which resource ("opus_messages", "suno_generations", "training_jobs")
-            stripe_payment_intent_id: Stripe payment reference.
-
-        Returns:
-            The created FeatureCreditBalance row.
-        """
-        pack = CREDIT_PACKS.get(pack_id)
-        if not pack:
-            raise ValueError(f"Unknown pack: {pack_id}")
-
-        # Calculate expiry: end of current month + 1 full calendar month
-        now = datetime.now(timezone.utc)
-        # Move to first of next month, then add another month
-        if now.month == 12:
-            next_month_start = now.replace(year=now.year + 1, month=2, day=1, hour=0, minute=0, second=0, microsecond=0)
-        elif now.month == 11:
-            next_month_start = now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        else:
-            next_month_start = now.replace(month=now.month + 2, day=1, hour=0, minute=0, second=0, microsecond=0)
-        expires_at = next_month_start
-
-        # Determine credit amounts
-        opus_msgs = 0
-        suno_gens = 0
-        train_jobs = 0
-
-        if pack.get("chooseable"):
-            # Spark: user picks one resource
-            if not resource_type or resource_type not in pack["options"]:
-                raise ValueError(f"Spark pack requires resource_type from: {list(pack['options'].keys())}")
-            amount = pack["options"][resource_type]
-            if resource_type == "opus_messages":
-                opus_msgs = amount
-            elif resource_type == "suno_generations":
-                suno_gens = amount
-            elif resource_type == "training_jobs":
-                train_jobs = amount
-        else:
-            # Flame/Inferno: bundle of all three
-            contents = pack.get("contents", {})
-            opus_msgs = contents.get("opus_messages", 0)
-            suno_gens = contents.get("suno_generations", 0)
-            train_jobs = contents.get("training_jobs", 0)
-
-        balance = FeatureCreditBalance(
-            user_id=user_id,
-            pack_id=pack_id,
-            resource_type=resource_type,
-            opus_messages=opus_msgs,
-            suno_generations=suno_gens,
-            training_jobs=train_jobs,
-            purchased_at=now,
-            expires_at=expires_at,
-            stripe_payment_intent_id=stripe_payment_intent_id,
-        )
-
-        self.db.add(balance)
-        await self.db.flush()
-
-        logger.info(
-            f"Added feature credits for user {user_id}: "
-            f"pack={pack_id} opus={opus_msgs} suno={suno_gens} training={train_jobs} "
-            f"expires={expires_at.isoformat()}"
-        )
-
-        return balance
-
-    async def get_credit_summary(
-        self,
-        user_id: UUID,
-    ) -> dict:
-        """
-        Get total available feature credits across all active purchases.
-
-        Returns:
-            Dict with keys: opus_messages, suno_generations, training_jobs
-        """
-        now = datetime.now(timezone.utc)
-        result = await self.db.execute(
-            select(
-                func.coalesce(func.sum(FeatureCreditBalance.opus_messages), 0),
-                func.coalesce(func.sum(FeatureCreditBalance.suno_generations), 0),
-                func.coalesce(func.sum(FeatureCreditBalance.training_jobs), 0),
-            ).where(
-                and_(
-                    FeatureCreditBalance.user_id == user_id,
-                    FeatureCreditBalance.is_expired == False,
-                    FeatureCreditBalance.expires_at > now,
-                )
-            )
-        )
-
-        row = result.one()
-        return {
-            "opus_messages": row[0],
-            "suno_generations": row[1],
-            "training_jobs": row[2],
-        }
+# class FeatureCreditService:
+#     """
+#     Service for managing purchased feature credits (Spark/Flame/Inferno packs).
+#     Feature credits are stored as per-purchase rows with remaining balances.
+#     Deduction uses FIFO (oldest purchase first). Credits expire based on
+#     expires_at timestamp.
+#     """
+#     ...

@@ -22,7 +22,6 @@ from app.database import get_db
 from app.auth.deps import get_current_user, get_current_user_optional
 from app.models.user import User
 from app.models.agora import AgoraPost, AgoraReaction, AgoraComment
-from app.models.progression import UserProgression
 from app.services.agora import sanitize_for_agora, get_agora_settings, DEFAULT_AGORA_SETTINGS
 
 logger = logging.getLogger(__name__)
@@ -72,8 +71,9 @@ def _format_author(user: User, agora_settings: Optional[dict] = None) -> dict:
         name = "Anonymous Alchemist"
     result = {"display_name": name}
     # Include quest stage for quest-active users (social proof badge)
-    if hasattr(user, "progression") and user.progression and user.progression.quest_active:
-        result["quest_stage"] = user.progression.quest_stage
+    # NOTE: progression system removed in local mode
+    # if hasattr(user, "progression") and user.progression and user.progression.quest_active:
+    #     result["quest_stage"] = user.progression.quest_stage
     return result
 
 
@@ -105,11 +105,12 @@ def _format_comment(comment: AgoraComment) -> dict:
         author_name = comment.agent_id
     elif comment.user and hasattr(comment.user, "display_name"):
         author_name = comment.user.display_name or "Alchemist"
-        if hasattr(comment.user, "progression") and comment.user.progression and comment.user.progression.quest_active:
-            quest_stage = comment.user.progression.quest_stage
+        # NOTE: progression system removed in local mode
+        # if hasattr(comment.user, "progression") and comment.user.progression and comment.user.progression.quest_active:
+        #     quest_stage = comment.user.progression.quest_stage
     author = {"display_name": author_name}
-    if quest_stage:
-        author["quest_stage"] = quest_stage
+    # if quest_stage:
+    #     author["quest_stage"] = quest_stage
     return {
         "id": str(comment.id),
         "body": comment.body,
@@ -136,7 +137,7 @@ async def get_feed(
     """Public paginated feed. Browsable without authentication."""
     query = (
         select(AgoraPost)
-        .options(selectinload(AgoraPost.user).selectinload(User.progression))
+        .options(selectinload(AgoraPost.user))
         .where(AgoraPost.visibility == "public")
         .order_by(AgoraPost.is_pinned.desc(), AgoraPost.created_at.desc())
         .limit(limit + 1)
@@ -206,8 +207,8 @@ async def get_post(
     result = await db.execute(
         select(AgoraPost)
         .options(
-            selectinload(AgoraPost.user).selectinload(User.progression),
-            selectinload(AgoraPost.comments).selectinload(AgoraComment.user).selectinload(User.progression),
+            selectinload(AgoraPost.user),
+            selectinload(AgoraPost.comments).selectinload(AgoraComment.user),
         )
         .where(AgoraPost.id == UUID(post_id), AgoraPost.visibility == "public")
     )
@@ -491,75 +492,75 @@ async def delete_post(
 
 # ── Leaderboard ──────────────────────────────────────────────────────────────
 
-@router.get("/leaderboard")
-@limiter.limit("30/minute")
-async def get_leaderboard(
-    request: Request,
-    user: Optional[User] = Depends(get_current_user_optional),
-    db: AsyncSession = Depends(get_db),
-):
-    """Top 50 quest users ranked by milestones completed. Privacy-respecting."""
-    # Query quest-active users with their settings
-    result = await db.execute(
-        select(User)
-        .join(UserProgression, User.id == UserProgression.user_id)
-        .options(selectinload(User.progression))
-        .where(UserProgression.quest_active == True)
-        .order_by(
-            func.jsonb_array_length(UserProgression.milestones_completed).desc(),
-            UserProgression.total_tasks.desc(),
-        )
-        .limit(50)
-    )
-    all_users = list(result.scalars().all())
-
-    # Filter to users with Agora enabled + public display name
-    leaderboard = []
-    rank = 0
-    for u in all_users:
-        settings = get_agora_settings(u)
-        if not settings.get("enabled", True) or not settings.get("display_name_public", True):
-            continue
-        rank += 1
-        milestones = len(u.progression.milestones_completed) if u.progression.milestones_completed else 0
-        leaderboard.append({
-            "rank": rank,
-            "display_name": u.display_name or "Alchemist",
-            "quest_stage": u.progression.quest_stage,
-            "milestones_completed": milestones,
-            "total_tasks": u.progression.total_tasks or 0,
-        })
-
-    # Find current user's rank if authenticated and quest-active
-    user_rank = None
-    if user and hasattr(user, "id"):
-        for entry in leaderboard:
-            if entry["display_name"] == (user.display_name or "Alchemist"):
-                user_rank = entry["rank"]
-                break
-        # If not in top 50, compute rank separately
-        if user_rank is None:
-            user_prog_result = await db.execute(
-                select(UserProgression).where(UserProgression.user_id == user.id)
-            )
-            user_prog = user_prog_result.scalar_one_or_none()
-            if user_prog and user_prog.quest_active:
-                my_milestones = len(user_prog.milestones_completed) if user_prog.milestones_completed else 0
-                count_result = await db.execute(
-                    select(func.count())
-                    .select_from(UserProgression)
-                    .where(
-                        UserProgression.quest_active == True,
-                        func.jsonb_array_length(UserProgression.milestones_completed) > my_milestones,
-                    )
-                )
-                ahead = count_result.scalar() or 0
-                user_rank = ahead + 1
-
-    return {
-        "leaderboard": leaderboard,
-        "user_rank": user_rank,
-    }
+# @router.get("/leaderboard")
+# @limiter.limit("30/minute")
+# async def get_leaderboard(
+#     request: Request,
+#     user: Optional[User] = Depends(get_current_user_optional),
+#     db: AsyncSession = Depends(get_db),
+# ):
+#     """Top 50 quest users ranked by milestones completed. Privacy-respecting."""
+#     # Query quest-active users with their settings
+#     result = await db.execute(
+#         select(User)
+#         .join(UserProgression, User.id == UserProgression.user_id)
+#         .options(selectinload(User.progression))
+#         .where(UserProgression.quest_active == True)
+#         .order_by(
+#             func.jsonb_array_length(UserProgression.milestones_completed).desc(),
+#             UserProgression.total_tasks.desc(),
+#         )
+#         .limit(50)
+#     )
+#     all_users = list(result.scalars().all())
+#
+#     # Filter to users with Agora enabled + public display name
+#     leaderboard = []
+#     rank = 0
+#     for u in all_users:
+#         settings = get_agora_settings(u)
+#         if not settings.get("enabled", True) or not settings.get("display_name_public", True):
+#             continue
+#         rank += 1
+#         milestones = len(u.progression.milestones_completed) if u.progression.milestones_completed else 0
+#         leaderboard.append({
+#             "rank": rank,
+#             "display_name": u.display_name or "Alchemist",
+#             "quest_stage": u.progression.quest_stage,
+#             "milestones_completed": milestones,
+#             "total_tasks": u.progression.total_tasks or 0,
+#         })
+#
+#     # Find current user's rank if authenticated and quest-active
+#     user_rank = None
+#     if user and hasattr(user, "id"):
+#         for entry in leaderboard:
+#             if entry["display_name"] == (user.display_name or "Alchemist"):
+#                 user_rank = entry["rank"]
+#                 break
+#         # If not in top 50, compute rank separately
+#         if user_rank is None:
+#             user_prog_result = await db.execute(
+#                 select(UserProgression).where(UserProgression.user_id == user.id)
+#             )
+#             user_prog = user_prog_result.scalar_one_or_none()
+#             if user_prog and user_prog.quest_active:
+#                 my_milestones = len(user_prog.milestones_completed) if user_prog.milestones_completed else 0
+#                 count_result = await db.execute(
+#                     select(func.count())
+#                     .select_from(UserProgression)
+#                     .where(
+#                         UserProgression.quest_active == True,
+#                         func.jsonb_array_length(UserProgression.milestones_completed) > my_milestones,
+#                     )
+#                 )
+#                 ahead = count_result.scalar() or 0
+#                 user_rank = ahead + 1
+#
+#     return {
+#         "leaderboard": leaderboard,
+#         "user_rank": user_rank,
+#     }
 
 
 # ── Settings ─────────────────────────────────────────────────────────────────

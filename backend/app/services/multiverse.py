@@ -21,7 +21,7 @@ from app.models.multiverse import (
     CrossVillageTransaction,
     FriendConnection,
 )
-from app.models.apexjoule import ApexJouleBalance
+# # from app.models.apexjoule import ApexJouleBalance  # DELETED - commercial module removed
 from app.models.user import User
 from app.services.village_events import VillageEventBroadcaster, EventType
 
@@ -325,46 +325,47 @@ class MultiverseService:
         toll = portal.toll_aj_a if portal.user_a_id == host_id else portal.toll_aj_b
 
         # Charge toll if applicable
-        if toll > 0:
-            # Check visitor balance
-            bal_result = await self.db.execute(
-                select(ApexJouleBalance).where(
-                    ApexJouleBalance.user_id == visitor_id,
-                    ApexJouleBalance.entity_id == None,
-                )
-            )
-            visitor_bal = bal_result.scalar_one_or_none()
-            if not visitor_bal or visitor_bal.balance < toll:
-                return {"error": f"Insufficient AJ. Need {toll}, have {visitor_bal.balance if visitor_bal else 0}"}
-
-            # Debit visitor
-            visitor_bal.balance -= toll
-            visitor_bal.total_spent += toll
-
-            # Credit host (minus platform fee)
-            fee = toll * TOLL_PLATFORM_FEE
-            net = toll - fee
-            host_bal_result = await self.db.execute(
-                select(ApexJouleBalance).where(
-                    ApexJouleBalance.user_id == host_id,
-                    ApexJouleBalance.entity_id == None,
-                )
-            )
-            host_bal = host_bal_result.scalar_one_or_none()
-            if host_bal:
-                host_bal.balance += net
-                host_bal.total_earned += net
-
-            # Log transaction
-            tx = CrossVillageTransaction(
-                from_user_id=visitor_id,
-                to_user_id=host_id,
-                amount=toll,
-                fee_amount=fee,
-                tx_type="toll",
-                portal_id=portal_id,
-            )
-            self.db.add(tx)
+        # NOTE: ApexJouleBalance model deleted — toll functionality disabled
+        # if toll > 0:
+        #     # Check visitor balance
+        #     bal_result = await self.db.execute(
+        #         select(ApexJouleBalance).where(
+        #             ApexJouleBalance.user_id == visitor_id,
+        #             ApexJouleBalance.entity_id == None,
+        #         )
+        #     )
+        #     visitor_bal = bal_result.scalar_one_or_none()
+        #     if not visitor_bal or visitor_bal.balance < toll:
+        #         return {"error": f"Insufficient AJ. Need {toll}, have {visitor_bal.balance if visitor_bal else 0}"}
+        #
+        #     # Debit visitor
+        #     visitor_bal.balance -= toll
+        #     visitor_bal.total_spent += toll
+        #
+        #     # Credit host (minus platform fee)
+        #     fee = toll * TOLL_PLATFORM_FEE
+        #     net = toll - fee
+        #     host_bal_result = await self.db.execute(
+        #         select(ApexJouleBalance).where(
+        #             ApexJouleBalance.user_id == host_id,
+        #             ApexJouleBalance.entity_id == None,
+        #         )
+        #     )
+        #     host_bal = host_bal_result.scalar_one_or_none()
+        #     if host_bal:
+        #         host_bal.balance += net
+        #         host_bal.total_earned += net
+        #
+        #     # Log transaction
+        #     tx = CrossVillageTransaction(
+        #         from_user_id=visitor_id,
+        #         to_user_id=host_id,
+        #         amount=toll,
+        #         fee_amount=fee,
+        #         tx_type="toll",
+        #         portal_id=portal_id,
+        #     )
+        #     self.db.add(tx)
 
         # Create visit record
         visit = PortalVisit(
@@ -456,45 +457,46 @@ class MultiverseService:
         recipient_id = visit.visitor_id
 
         # Debit tipper
-        bal_result = await self.db.execute(
-            select(ApexJouleBalance).where(
-                ApexJouleBalance.user_id == tipper_id,
-                ApexJouleBalance.entity_id == None,
-            )
-        )
-        tipper_bal = bal_result.scalar_one_or_none()
-        if not tipper_bal or tipper_bal.balance < amount:
-            return {"error": "Insufficient AJ balance"}
+        # NOTE: ApexJouleBalance model deleted — tipping disabled
+        # bal_result = await self.db.execute(
+        #     select(ApexJouleBalance).where(
+        #         ApexJouleBalance.user_id == tipper_id,
+        #         ApexJouleBalance.entity_id == None,
+        #     )
+        # )
+        # tipper_bal = bal_result.scalar_one_or_none()
+        # if not tipper_bal or tipper_bal.balance < amount:
+        #     return {"error": "Insufficient AJ balance"}
+        #
+        # tipper_bal.balance -= amount
+        # tipper_bal.total_spent += amount
+        #
+        # # Credit recipient
+        # rec_result = await self.db.execute(
+        #     select(ApexJouleBalance).where(
+        #         ApexJouleBalance.user_id == recipient_id,
+        #         ApexJouleBalance.entity_id == None,
+        #     )
+        # )
+        # rec_bal = rec_result.scalar_one_or_none()
+        # if rec_bal:
+        #     rec_bal.balance += amount
+        #     rec_bal.total_earned += amount
+        #
+        # # Log
+        # tx = CrossVillageTransaction(
+        #     from_user_id=tipper_id,
+        #     to_user_id=recipient_id,
+        #     amount=amount,
+        #     fee_amount=Decimal("0"),
+        #     tx_type="tip",
+        #     portal_id=visit.portal_id,
+        #     visit_id=visit_id,
+        # )
+        # self.db.add(tx)
+        # await self.db.flush()
 
-        tipper_bal.balance -= amount
-        tipper_bal.total_spent += amount
-
-        # Credit recipient
-        rec_result = await self.db.execute(
-            select(ApexJouleBalance).where(
-                ApexJouleBalance.user_id == recipient_id,
-                ApexJouleBalance.entity_id == None,
-            )
-        )
-        rec_bal = rec_result.scalar_one_or_none()
-        if rec_bal:
-            rec_bal.balance += amount
-            rec_bal.total_earned += amount
-
-        # Log
-        tx = CrossVillageTransaction(
-            from_user_id=tipper_id,
-            to_user_id=recipient_id,
-            amount=amount,
-            fee_amount=Decimal("0"),
-            tx_type="tip",
-            portal_id=visit.portal_id,
-            visit_id=visit_id,
-        )
-        self.db.add(tx)
-        await self.db.flush()
-
-        return {"amount": float(amount), "recipient_id": str(recipient_id)}
+        return {"error": "Tipping disabled (ApexJoule module removed)", "amount": float(amount), "recipient_id": str(recipient_id)}
 
     async def gift_aj(
         self,
@@ -529,47 +531,45 @@ class MultiverseService:
             return {"error": f"Daily gift cap reached. Remaining: {remaining} AJ"}
 
         # Debit sender
-        bal_result = await self.db.execute(
-            select(ApexJouleBalance).where(
-                ApexJouleBalance.user_id == sender_id,
-                ApexJouleBalance.entity_id == None,
-            )
-        )
-        sender_bal = bal_result.scalar_one_or_none()
-        if not sender_bal or sender_bal.balance < amount:
-            return {"error": "Insufficient AJ balance"}
+        # NOTE: ApexJouleBalance model deleted — gifting disabled
+        # bal_result = await self.db.execute(
+        #     select(ApexJouleBalance).where(
+        #         ApexJouleBalance.user_id == sender_id,
+        #         ApexJouleBalance.entity_id == None,
+        #     )
+        # )
+        # sender_bal = bal_result.scalar_one_or_none()
+        # if not sender_bal or sender_bal.balance < amount:
+        #     return {"error": "Insufficient AJ balance"}
+        #
+        # sender_bal.balance -= amount
+        # sender_bal.total_spent += amount
+        #
+        # # Credit recipient
+        # rec_result = await self.db.execute(
+        #     select(ApexJouleBalance).where(
+        #         ApexJouleBalance.user_id == recipient_id,
+        #         ApexJouleBalance.entity_id == None,
+        #     )
+        # )
+        # rec_bal = rec_result.scalar_one_or_none()
+        # if rec_bal:
+        #     rec_bal.balance += amount
+        #     rec_bal.total_earned += amount
+        #
+        # # Log
+        # tx = CrossVillageTransaction(
+        #     from_user_id=sender_id,
+        #     to_user_id=recipient_id,
+        #     amount=amount,
+        #     fee_amount=Decimal("0"),
+        #     tx_type="gift",
+        #     portal_id=portal.id,
+        # )
+        # self.db.add(tx)
+        # await self.db.flush()
 
-        sender_bal.balance -= amount
-        sender_bal.total_spent += amount
-
-        # Credit recipient
-        rec_result = await self.db.execute(
-            select(ApexJouleBalance).where(
-                ApexJouleBalance.user_id == recipient_id,
-                ApexJouleBalance.entity_id == None,
-            )
-        )
-        rec_bal = rec_result.scalar_one_or_none()
-        if rec_bal:
-            rec_bal.balance += amount
-            rec_bal.total_earned += amount
-
-        # Log
-        tx = CrossVillageTransaction(
-            from_user_id=sender_id,
-            to_user_id=recipient_id,
-            amount=amount,
-            fee_amount=Decimal("0"),
-            tx_type="gift",
-            portal_id=portal.id,
-        )
-        self.db.add(tx)
-        await self.db.flush()
-
-        return {
-            "amount": float(amount),
-            "daily_remaining": float(DAILY_GIFT_CAP_AJ - daily_gifted - amount),
-        }
+        return {"error": "Gifting disabled (ApexJoule module removed)", "amount": float(amount), "daily_remaining": 0}
 
     # ──────────────────────────────────────────────
     # Friends

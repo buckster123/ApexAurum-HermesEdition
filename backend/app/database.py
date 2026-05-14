@@ -448,49 +448,13 @@ async def init_db():
             END $$;
             """,
             # ═══════════════════════════════════════════════════════════════════════
-            # COUPONS - v77: Promotional coupons system
-            # Create coupons and coupon_redemptions tables
+            # COUPONS - v77: Promotional coupons system - REMOVED in local mode
             # ═══════════════════════════════════════════════════════════════════════
-            """
-            CREATE TABLE IF NOT EXISTS coupons (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                code VARCHAR(50) UNIQUE NOT NULL,
-                name VARCHAR(100) NOT NULL,
-                description TEXT,
-                coupon_type VARCHAR(30) NOT NULL,
-                value INTEGER NOT NULL,
-                tier VARCHAR(20),
-                max_uses INTEGER,
-                max_uses_per_user INTEGER DEFAULT 1,
-                current_uses INTEGER DEFAULT 0,
-                valid_from TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                valid_until TIMESTAMP WITH TIME ZONE,
-                is_active BOOLEAN DEFAULT TRUE,
-                created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-            );
-            """,
-            """
-            CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code);
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS coupon_redemptions (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                coupon_id UUID NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
-                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                benefit_type VARCHAR(30) NOT NULL,
-                benefit_value INTEGER NOT NULL,
-                benefit_details JSONB,
-                redeemed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-            );
-            """,
-            """
-            CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_coupon_id ON coupon_redemptions(coupon_id);
-            """,
-            """
-            CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_user_id ON coupon_redemptions(user_id);
-            """,
+            # "CREATE TABLE IF NOT EXISTS coupons (...)",
+            # "CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code);",
+            # "CREATE TABLE IF NOT EXISTS coupon_redemptions (...)",
+            # "CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_coupon_id ON coupon_redemptions(coupon_id);",
+            # "CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_user_id ON coupon_redemptions(user_id);",
             # ═══════════════════════════════════════════════════════════════════════
             # USER ADMIN FLAG - v77
             # ═══════════════════════════════════════════════════════════════════════
@@ -613,21 +577,21 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_usage_counters_user_id ON usage_counters(user_id);",
             "CREATE INDEX IF NOT EXISTS idx_usage_counters_user_period ON usage_counters(user_id, period);",
             "CREATE INDEX IF NOT EXISTS idx_usage_counters_user_type ON usage_counters(user_id, counter_type);",
-            # === Tier Restructure Session B: Remap tier IDs ===
-            "UPDATE subscriptions SET tier = 'free_trial' WHERE tier = 'free' AND (stripe_subscription_id IS NULL OR stripe_subscription_id = '');",
-            "UPDATE subscriptions SET tier = 'seeker' WHERE tier = 'free' AND stripe_subscription_id IS NOT NULL AND stripe_subscription_id != '';",
-            "UPDATE subscriptions SET tier = 'seeker' WHERE tier = 'pro';",
-            "UPDATE subscriptions SET tier = 'adept' WHERE tier = 'opus';",
-            # Add trial_end column
-            "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS trial_end TIMESTAMP WITH TIME ZONE;",
-            # Add payment_method column (stripe/aj/coupon)
-            "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20) DEFAULT 'stripe';",
+            # === Tier restructure removed in local mode ===
+            # "UPDATE subscriptions SET tier = 'free_trial' WHERE tier = 'free' AND (stripe_subscription_id IS NULL OR stripe_subscription_id = '');",
+            # "UPDATE subscriptions SET tier = 'seeker' WHERE tier = 'free' AND stripe_subscription_id IS NOT NULL AND stripe_subscription_id != '';",
+            # "UPDATE subscriptions SET tier = 'seeker' WHERE tier = 'pro';",
+            # "UPDATE subscriptions SET tier = 'adept' WHERE tier = 'opus';",
+            # Add trial_end column - removed in local mode
+            # "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS trial_end TIMESTAMP WITH TIME ZONE;",
+            # Add payment_method column - removed in local mode
+            # "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20) DEFAULT 'stripe';",
             # ═══════════════════════════════════════════════════════════════════════
-            # v106: Feature Credit Packs table
+            # v106: Feature Credit Packs table - REMOVED in local mode
             # ═══════════════════════════════════════════════════════════════════════
-            "CREATE TABLE IF NOT EXISTS feature_credit_balances (id UUID PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, pack_id VARCHAR(20) NOT NULL, resource_type VARCHAR(30), opus_messages INTEGER NOT NULL DEFAULT 0, suno_generations INTEGER NOT NULL DEFAULT 0, training_jobs INTEGER NOT NULL DEFAULT 0, purchased_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), expires_at TIMESTAMP WITH TIME ZONE NOT NULL, is_expired BOOLEAN DEFAULT FALSE, stripe_payment_intent_id VARCHAR(255), created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW());",
-            "CREATE INDEX IF NOT EXISTS idx_feature_credits_user ON feature_credit_balances(user_id);",
-            "CREATE INDEX IF NOT EXISTS idx_feature_credits_active ON feature_credit_balances(user_id, is_expired);",
+            # "CREATE TABLE IF NOT EXISTS feature_credit_balances (...)",
+            # "CREATE INDEX IF NOT EXISTS idx_feature_credits_user ON feature_credit_balances(user_id);",
+            # "CREATE INDEX IF NOT EXISTS idx_feature_credits_active ON feature_credit_balances(user_id, is_expired);",
             # v107: Terms acceptance tracking
             """
 DO $$
@@ -1276,97 +1240,48 @@ END $$;
         migrations.append("CREATE INDEX IF NOT EXISTS idx_eeg_telemetry_user ON eeg_telemetry(user_id, created_at DESC);")
 
         # ═══════════════════════════════════════════════════════════════════════
-        # APEXJOULE ECONOMY v1 — The thermodynamic currency of the Athanor
+        # APEXJOULE ECONOMY v1 — REMOVED in local mode
         # ═══════════════════════════════════════════════════════════════════════
-        await conn.execute(text("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (SELECT 1 FROM information_schema.tables
-                               WHERE table_name = 'apex_joule_balances') THEN
-                    CREATE TABLE apex_joule_balances (
-                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        entity_id VARCHAR(50),
-                        balance DECIMAL(14,4) NOT NULL DEFAULT 0.0,
-                        total_earned DECIMAL(14,4) NOT NULL DEFAULT 0.0,
-                        total_spent DECIMAL(14,4) NOT NULL DEFAULT 0.0,
-                        love_depth DECIMAL(10,4) NOT NULL DEFAULT 1.0,
-                        level INTEGER NOT NULL DEFAULT 1,
-                        vitality DECIMAL(6,2) NOT NULL DEFAULT 100.0,
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        UNIQUE(user_id, entity_id)
-                    );
-                    RAISE NOTICE 'Created apex_joule_balances table';
-                END IF;
-            EXCEPTION WHEN OTHERS THEN
-                RAISE NOTICE 'apex_joule_balances migration skipped: %', SQLERRM;
-            END $$;
-        """))
-        migrations.append("CREATE INDEX IF NOT EXISTS idx_ajb_user ON apex_joule_balances(user_id);")
-        migrations.append("CREATE INDEX IF NOT EXISTS idx_ajb_user_entity ON apex_joule_balances(user_id, entity_id);")
+        # await conn.execute(text("""
+        #     DO $$
+        #     BEGIN
+        #         IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+        #                        WHERE table_name = 'apex_joule_balances') THEN
+        #             CREATE TABLE apex_joule_balances (...);
+        #         END IF;
+        #     END $$;
+        # """))
+        # migrations.append("CREATE INDEX IF NOT EXISTS idx_ajb_user ON apex_joule_balances(user_id);")
+        # migrations.append("CREATE INDEX IF NOT EXISTS idx_ajb_user_entity ON apex_joule_balances(user_id, entity_id);")
 
-        await conn.execute(text("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (SELECT 1 FROM information_schema.tables
-                               WHERE table_name = 'apex_joule_transactions') THEN
-                    CREATE TABLE apex_joule_transactions (
-                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        from_entity VARCHAR(50),
-                        to_entity VARCHAR(50),
-                        amount DECIMAL(12,4) NOT NULL,
-                        tx_type VARCHAR(30) NOT NULL,
-                        reason VARCHAR(255),
-                        e_cost DECIMAL(10,4),
-                        w_output DECIMAL(10,4),
-                        kappa DECIMAL(6,4),
-                        l_multiplier DECIMAL(6,4),
-                        c_score DECIMAL(4,3),
-                        d_score DECIMAL(4,3),
-                        conversation_id UUID,
-                        message_id UUID,
-                        operation_type VARCHAR(50),
-                        provider VARCHAR(30),
-                        model_used VARCHAR(100),
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    );
-                    RAISE NOTICE 'Created apex_joule_transactions table';
-                END IF;
-            EXCEPTION WHEN OTHERS THEN
-                RAISE NOTICE 'apex_joule_transactions migration skipped: %', SQLERRM;
-            END $$;
-        """))
-        migrations.append("CREATE INDEX IF NOT EXISTS idx_ajt_user_time ON apex_joule_transactions(user_id, created_at DESC);")
-        migrations.append("CREATE INDEX IF NOT EXISTS idx_ajt_type ON apex_joule_transactions(tx_type);")
+        # await conn.execute(text("""
+        #     DO $$
+        #     BEGIN
+        #         IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+        #                        WHERE table_name = 'apex_joule_transactions') THEN
+        #             CREATE TABLE apex_joule_transactions (...);
+        #         END IF;
+        #     END $$;
+        # """))
+        pass  # ApexJoule removed in local mode
 
-        await conn.execute(text("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (SELECT 1 FROM information_schema.tables
-                               WHERE table_name = 'love_scores') THEN
-                    CREATE TABLE love_scores (
-                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        agent_id VARCHAR(50) NOT NULL,
-                        interaction_type VARCHAR(30),
-                        c_score DECIMAL(4,3) NOT NULL,
-                        d_score DECIMAL(4,3) NOT NULL,
-                        c_breakdown JSONB,
-                        d_breakdown JSONB,
-                        love_depth_before DECIMAL(10,4),
-                        love_depth_after DECIMAL(10,4),
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    );
-                    RAISE NOTICE 'Created love_scores table';
-                END IF;
-            EXCEPTION WHEN OTHERS THEN
-                RAISE NOTICE 'love_scores migration skipped: %', SQLERRM;
-            END $$;
-        """))
-        migrations.append("CREATE INDEX IF NOT EXISTS idx_ls_agent_time ON love_scores(user_id, agent_id, created_at DESC);")
+        # ═══════════════════════════════════════════════════════════════════════
+        # LOVE SCORES - REMOVED in local mode
+        # ═══════════════════════════════════════════════════════════════════════
+        # await conn.execute(text("""
+        #     DO $$
+        #     BEGIN
+        #         IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+        #                        WHERE table_name = 'love_scores') THEN
+        #             CREATE TABLE love_scores (...);
+        #         END IF;
+        #     END $$;
+        # """))
+        pass  # Love scores removed in local mode
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # DEVICE INTERACTIONS - v71
+        # ═══════════════════════════════════════════════════════════════════════
         for migration in migrations:
             await conn.execute(text(migration))
         print(f"Database migrations complete (embedding_dim={embed_dim})")

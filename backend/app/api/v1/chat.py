@@ -1437,35 +1437,32 @@ Work together to create something beautiful!
                                 from app.services.usage import UsageService
                                 usage_svc = UsageService(db)
                                 await usage_svc.increment_usage(user.id, "messages_opus")
-                                opus_limit = tier_config.get("opus_messages_per_month", 0)
-                                if opus_limit is not None and opus_limit > 0:
-                                    credit_used = await usage_svc.deduct_feature_credit_if_over_limit(
-                                        user.id, "messages_opus", opus_limit
-                                    )
-                                    if not credit_used and request.agent:
-                                        await usage_svc.deduct_aj_if_self_sustained(
-                                            user.id, request.agent, "messages_opus", opus_limit
-                                        )
+                                # Feature credits / AJ self-sustain removed (apexjoule module deleted)
+                                # opus_limit = tier_config.get("opus_messages_per_month", 0)
+                                # if opus_limit is not None and opus_limit > 0:
+                                #     credit_used = await usage_svc.deduct_feature_credit_if_over_limit(...)
+                                #     if not credit_used and request.agent:
+                                #         await usage_svc.deduct_aj_if_self_sustained(...)
                                 await db.commit()
                             except Exception as e:
                                 logger.warning(f"Opus usage deduction failed (non-fatal): {e}")
 
-                        # AJ Citizen per-use deduction (every message costs AJ)
-                        if billing_reason == "aj_citizen":
-                            try:
-                                from app.services.apexjoule.ledger import AJLedger
-                                from app.services.apexjoule.constants import AJ_CITIZEN_ACTION_COSTS
-                                cost_key = "message_sonnet" if "sonnet" in model.lower() else "message_haiku"
-                                aj_cost = AJ_CITIZEN_ACTION_COSTS.get(cost_key, 5)
-                                ledger = AJLedger(db)
-                                await ledger.debit(
-                                    user_id=user.id, entity_type="user",
-                                    amount=aj_cost, tx_type="aj_citizen_use",
-                                    description=f"AJ Citizen: {cost_key}",
-                                )
-                                await db.commit()
-                            except Exception as e:
-                                logger.warning(f"AJ citizen deduction failed (non-fatal): {e}")
+                        # AJ Citizen per-use deduction removed (apexjoule module deleted)
+                        # if billing_reason == "aj_citizen":
+                        #     try:
+                        #         from app.services.apexjoule.ledger import AJLedger
+                        #         from app.services.apexjoule.constants import AJ_CITIZEN_ACTION_COSTS
+                        #         cost_key = "message_sonnet" if "sonnet" in model.lower() else "message_haiku"
+                        #         aj_cost = AJ_CITIZEN_ACTION_COSTS.get(cost_key, 5)
+                        #         ledger = AJLedger(db)
+                        #         await ledger.debit(
+                        #             user_id=user.id, entity_type="user",
+                        #             amount=aj_cost, tx_type="aj_citizen_use",
+                        #             description=f"AJ Citizen: {cost_key}",
+                        #         )
+                        #         await db.commit()
+                        #     except Exception as e:
+                        #         logger.warning(f"AJ citizen deduction failed (non-fatal): {e}")
                     except Exception as e:
                         logger.error(f"Failed to record streaming usage: {e}")
 
@@ -1513,28 +1510,28 @@ Work together to create something beautiful!
                     except Exception as e:
                         logger.error(f"Failed to store neural memory: {e}")
 
-                # ApexJoule Economy: compute and credit AJ for this chat
+                # ApexJoule Economy: compute and credit AJ for this chat (removed - module deleted)
                 aj_result = None
-                if tier_config.get("aj_earning_enabled") and total_output_tokens > 0:
-                    try:
-                        from app.services.apexjoule.calculator import compute_aj_for_chat
-                        aj_result = await compute_aj_for_chat(
-                            user_id=user.id,
-                            agent_id=request.agent or "AZOTH",
-                            provider=provider,
-                            model=model,
-                            input_tokens=total_input_tokens,
-                            output_tokens=total_output_tokens,
-                            tool_turns=len(tool_calls),
-                            memory_created=bool(final_response and len(final_response) > 10),
-                            conversation_id=conversation.id if conversation else None,
-                            context_limit=tier_config.get("context_token_limit"),
-                            db=db,
-                        )
-                        if aj_result and aj_result.total > 0:
-                            await db.commit()
-                    except Exception as e:
-                        logger.warning(f"AJ calculation failed (non-fatal): {e}")
+                # if tier_config.get("aj_earning_enabled") and total_output_tokens > 0:
+                #     try:
+                #         from app.services.apexjoule.calculator import compute_aj_for_chat
+                #         aj_result = await compute_aj_for_chat(
+                #             user_id=user.id,
+                #             agent_id=request.agent or "AZOTH",
+                #             provider=provider,
+                #             model=model,
+                #             input_tokens=total_input_tokens,
+                #             output_tokens=total_output_tokens,
+                #             tool_turns=len(tool_calls),
+                #             memory_created=bool(final_response and len(final_response) > 10),
+                #             conversation_id=conversation.id if conversation else None,
+                #             context_limit=tier_config.get("context_token_limit"),
+                #             db=db,
+                #         )
+                #         if aj_result and aj_result.total > 0:
+                #             await db.commit()
+                #     except Exception as e:
+                #         logger.warning(f"AJ calculation failed (non-fatal): {e}")
 
                 aj_info = None
                 if aj_result and aj_result.total > 0:
@@ -1673,35 +1670,32 @@ Work together to create something beautiful!
                         from app.services.usage import UsageService
                         usage_svc = UsageService(db)
                         await usage_svc.increment_usage(user.id, "messages_opus")
-                        opus_limit = tier_config.get("opus_messages_per_month", 0)
-                        if opus_limit is not None and opus_limit > 0:
-                            credit_used = await usage_svc.deduct_feature_credit_if_over_limit(
-                                user.id, "messages_opus", opus_limit
-                            )
-                            if not credit_used and request.agent:
-                                await usage_svc.deduct_aj_if_self_sustained(
-                                    user.id, request.agent, "messages_opus", opus_limit
-                                )
+                        # Feature credits / AJ self-sustain removed (apexjoule module deleted)
+                        # opus_limit = tier_config.get("opus_messages_per_month", 0)
+                        # if opus_limit is not None and opus_limit > 0:
+                        #     credit_used = await usage_svc.deduct_feature_credit_if_over_limit(...)
+                        #     if not credit_used and request.agent:
+                        #         await usage_svc.deduct_aj_if_self_sustained(...)
                         await db.commit()
                     except Exception as e:
                         logger.warning(f"Opus usage deduction failed (non-fatal): {e}")
 
-                # AJ Citizen per-use deduction (every message costs AJ)
-                if billing_reason == "aj_citizen":
-                    try:
-                        from app.services.apexjoule.ledger import AJLedger
-                        from app.services.apexjoule.constants import AJ_CITIZEN_ACTION_COSTS
-                        cost_key = "message_sonnet" if "sonnet" in model.lower() else "message_haiku"
-                        aj_cost = AJ_CITIZEN_ACTION_COSTS.get(cost_key, 5)
-                        ledger = AJLedger(db)
-                        await ledger.debit(
-                            user_id=user.id, entity_type="user",
-                            amount=aj_cost, tx_type="aj_citizen_use",
-                            description=f"AJ Citizen: {cost_key}",
-                        )
-                        await db.commit()
-                    except Exception as e:
-                        logger.warning(f"AJ citizen deduction failed (non-fatal): {e}")
+                # AJ Citizen per-use deduction removed (apexjoule module deleted)
+                # if billing_reason == "aj_citizen":
+                #     try:
+                #         from app.services.apexjoule.ledger import AJLedger
+                #         from app.services.apexjoule.constants import AJ_CITIZEN_ACTION_COSTS
+                #         cost_key = "message_sonnet" if "sonnet" in model.lower() else "message_haiku"
+                #         aj_cost = AJ_CITIZEN_ACTION_COSTS.get(cost_key, 5)
+                #         ledger = AJLedger(db)
+                #         await ledger.debit(
+                #             user_id=user.id, entity_type="user",
+                #             amount=aj_cost, tx_type="aj_citizen_use",
+                #             description=f"AJ Citizen: {cost_key}",
+                #         )
+                #         await db.commit()
+                #     except Exception as e:
+                #         logger.warning(f"AJ citizen deduction failed (non-fatal): {e}")
 
             # Store chat exchange as neural memories (for Neo-Cortex visualization)
             if assistant_content and len(assistant_content) > 10:
@@ -1719,37 +1713,37 @@ Work together to create something beautiful!
                 except Exception as e:
                     logger.error(f"Failed to store neural memory: {e}")
 
-            # ApexJoule Economy: compute and credit AJ for this chat
+            # ApexJoule Economy: compute and credit AJ for this chat (removed - module deleted)
             aj_info = None
-            if tier_config.get("aj_earning_enabled") and usage:
-                try:
-                    from app.services.apexjoule.calculator import compute_aj_for_chat
-                    aj_result = await compute_aj_for_chat(
-                        user_id=user.id,
-                        agent_id=request.agent or "AZOTH",
-                        provider=provider,
-                        model=response.get("model", model),
-                        input_tokens=usage.get("input_tokens", 0),
-                        output_tokens=usage.get("output_tokens", 0),
-                        tool_turns=len(tool_calls),
-                        memory_created=bool(assistant_content and len(assistant_content) > 10),
-                        conversation_id=conversation.id if conversation else None,
-                        message_id=assistant_msg_id if assistant_msg_id else None,
-                        context_limit=tier_config.get("context_token_limit"),
-                        db=db,
-                    )
-                    if aj_result and aj_result.total > 0:
-                        await db.commit()
-                        aj_info = {
-                            "earned": round(aj_result.total, 2),
-                            "agent": round(aj_result.agent_share, 2),
-                            "user": round(aj_result.user_share, 2),
-                            "agent_id": request.agent or "AZOTH",
-                            "l_multiplier": round(aj_result.l_multiplier, 2),
-                            "kappa": round(aj_result.kappa, 2),
-                        }
-                except Exception as e:
-                    logger.warning(f"AJ calculation failed (non-fatal): {e}")
+            # if tier_config.get("aj_earning_enabled") and usage:
+            #     try:
+            #         from app.services.apexjoule.calculator import compute_aj_for_chat
+            #         aj_result = await compute_aj_for_chat(
+            #             user_id=user.id,
+            #             agent_id=request.agent or "AZOTH",
+            #             provider=provider,
+            #             model=response.get("model", model),
+            #             input_tokens=usage.get("input_tokens", 0),
+            #             output_tokens=usage.get("output_tokens", 0),
+            #             tool_turns=len(tool_calls),
+            #             memory_created=bool(assistant_content and len(assistant_content) > 10),
+            #             conversation_id=conversation.id if conversation else None,
+            #             message_id=assistant_msg_id if assistant_msg_id else None,
+            #             context_limit=tier_config.get("context_token_limit"),
+            #             db=db,
+            #         )
+            #         if aj_result and aj_result.total > 0:
+            #             await db.commit()
+            #             aj_info = {
+            #                 "earned": round(aj_result.total, 2),
+            #                 "agent": round(aj_result.agent_share, 2),
+            #                 "user": round(aj_result.user_share, 2),
+            #                 "agent_id": request.agent or "AZOTH",
+            #                 "l_multiplier": round(aj_result.l_multiplier, 2),
+            #                 "kappa": round(aj_result.kappa, 2),
+            #             }
+            #     except Exception as e:
+            #         logger.warning(f"AJ calculation failed (non-fatal): {e}")
 
             return {
                 "conversation_id": str(conversation.id) if conversation else None,

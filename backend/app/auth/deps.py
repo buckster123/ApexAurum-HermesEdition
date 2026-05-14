@@ -3,19 +3,44 @@ Authentication Dependencies
 """
 
 from typing import Optional
-from uuid import UUID
+from uuid import uuid4, UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database import get_db
 from app.models.user import User
 from app.auth.jwt import verify_token
 
+settings = get_settings()
+
 # Bearer token security scheme
 security = HTTPBearer()
+
+
+async def _get_or_create_default_user(db: AsyncSession) -> User:
+    """Get or create the default local user."""
+    result = await db.execute(
+        select(User).where(User.email == settings.local_default_user_email)
+    )
+    user = result.scalar_one_or_none()
+    if user:
+        return user
+
+    from app.auth.password import hash_password
+    user = User(
+        id=uuid4(),
+        email=settings.local_default_user_email,
+        password_hash=hash_password(settings.local_default_user_password),
+        display_name="Local User",
+        is_admin=True,
+    )
+    db.add(user)
+    await db.flush()
+    return user
 
 
 async def get_current_user(
@@ -25,8 +50,11 @@ async def get_current_user(
     """
     Dependency to get the current authenticated user.
 
-    Raises HTTPException if authentication fails.
+    In LOCAL_MODE, bypasses auth and returns the default user.
     """
+    if settings.local_mode:
+        return await _get_or_create_default_user(db)
+
     token = credentials.credentials
 
     # Verify token
@@ -75,6 +103,9 @@ async def get_current_user_optional(
 
     Useful for endpoints that work both with and without auth.
     """
+    if settings.local_mode:
+        return await _get_or_create_default_user(db)
+
     if credentials is None:
         return None
 

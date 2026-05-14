@@ -340,19 +340,8 @@ export const useChatStore = defineStore('chat', () => {
               }
               currentToolExecution.value = null
             } else if (data.type === 'end') {
-              // AJ earn feedback
-              if (data.aj) {
-                try {
-                  const { useApexJouleStore } = await import('@/stores/apexjoule')
-                  const ajStore = useApexJouleStore()
-                  ajStore.recordEarn(data.aj)
-                  // Store AJ data on message for inline badge
-                  const msg = messages.value.find(m => m.id === assistantMsgId)
-                  if (msg) msg.aj = data.aj
-                } catch (e) {
-                  console.warn('[Chat] AJ store dispatch failed:', e)
-                }
-              }
+              // AJ earn feedback disabled in local mode
+              // if (data.aj) { ... }
             } else if (data.type === 'error') {
               throw new Error(data.message || 'Stream error')
             }

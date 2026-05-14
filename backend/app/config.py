@@ -13,10 +13,15 @@ class Settings(BaseSettings):
     """Application settings loaded from environment."""
 
     # App
-    app_name: str = "ApexAurum Cloud"
+    app_name: str = "ApexAurum Local"
     debug: bool = False
+    local_mode: bool = False
     secret_key: str = "change-me-in-production"
     allowed_origins: str = "http://localhost:3000,https://frontend-production-5402.up.railway.app"
+
+    # Local default user (auto-created in local mode)
+    local_default_user_email: str = "local@apexaurum.local"
+    local_default_user_password: str = "apex"
 
     # Database (Railway provides postgresql://, we convert to asyncpg)
     database_url: str = "postgresql://apex:apex@localhost:5432/apex"
@@ -76,18 +81,18 @@ class Settings(BaseSettings):
     stripe_price_pack_flame: Optional[str] = None
     stripe_price_pack_inferno: Optional[str] = None
 
-    # Solana Pay
-    solana_rpc_url: str = "https://api.mainnet-beta.solana.com"
-    solana_recipient_address: Optional[str] = None  # Platform wallet pubkey
-    solana_usdc_mint: str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"  # Mainnet USDC
+    # Stripe (optional, disabled in local mode)
+    stripe_secret_key: Optional[str] = None
+    stripe_publishable_key: Optional[str] = None
+    stripe_webhook_secret: Optional[str] = None
 
-    # Email (stub - logs instead of sending)
+    # Email (optional)
     smtp_host: Optional[str] = None
     smtp_port: int = 587
     smtp_user: Optional[str] = None
     smtp_password: Optional[str] = None
-    smtp_from_address: str = "noreply@apexaurum.cloud"
-    smtp_from_name: str = "ApexAurum Cloud"
+    smtp_from_email: str = "noreply@apexaurum.local"
+    smtp_from_name: str = "ApexAurum Local"
 
     # Embedding config (for vector search)
     # Providers: "local" (FastEmbed), "openai", or "voyage"
@@ -111,7 +116,7 @@ class Settings(BaseSettings):
     tool_execution_timeout: int = 120  # seconds
 
     # Mount path is /data on Railway volume - use directly to avoid permission issues
-    vault_path: str = "/data"
+    vault_path: str = "./data"
     max_file_size_bytes: int = 104_857_600  # 100MB
     default_quota_bytes: int = 5_368_709_120  # 5GB per user
 

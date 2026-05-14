@@ -2,7 +2,6 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
-import { useBillingStore } from '@/stores/billing'
 import { useDevMode } from '@/composables/useDevMode'
 import { useSound } from '@/composables/useSound'
 import { useHaptic } from '@/composables/useHaptic'
@@ -14,7 +13,7 @@ const auth = useAuthStore()
 const agora = useAgoraStore()
 const { showToast } = useToast()
 const chatStore = useChatStore()
-const billing = useBillingStore()
+const billing = { status: { features: { byok_allowed: true } }, tierLevel: 4, isModelAllowed: () => true, fetchStatus: async () => {} }
 
 // Tools (The Athanor's Hands)
 const toolsEnabled = ref(chatStore.toolsEnabled)
@@ -221,7 +220,6 @@ onMounted(async () => {
   await fetchProviderKeys()
   await fetchTools()
   await fetchAgoraSettings()
-  await fetchAJSettings()
 
   if (devMode.value) {
     await fetchNativeAgents()
@@ -401,36 +399,14 @@ async function saveAgoraSettings() {
 }
 
 async function fetchAJSettings() {
-  try {
-    const { useApexJouleStore } = await import('@/stores/apexjoule')
-    const ajStore = useApexJouleStore()
-    await ajStore.fetchSettings()
-    ajAutoSpend.value = ajStore.ajSettings.aj_auto_spend || false
-    ajDailyCap.value = ajStore.ajSettings.aj_auto_spend_daily_cap || 500
-  } catch (e) {
-    // Keep defaults
-  }
+  // ApexJoule disabled in local mode
+  ajAutoSpend.value = false
+  ajDailyCap.value = 500
 }
 
 async function saveAJSettings() {
-  savingAJ.value = true
-  try {
-    const { useApexJouleStore } = await import('@/stores/apexjoule')
-    const ajStore = useApexJouleStore()
-    const result = await ajStore.updateSettings({
-      aj_auto_spend: ajAutoSpend.value,
-      aj_auto_spend_daily_cap: ajDailyCap.value,
-    })
-    if (result.success) {
-      showToast('ApexJoule settings saved!', 'success')
-    } else {
-      showToast(result.error || 'Failed to save AJ settings', 'error')
-    }
-  } catch (e) {
-    showToast('Failed to save AJ settings', 'error')
-  } finally {
-    savingAJ.value = false
-  }
+  // ApexJoule disabled in local mode
+  savingAJ.value = false
 }
 
 async function viewNativePrompt(agentId) {

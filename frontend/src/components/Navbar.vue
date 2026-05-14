@@ -3,7 +3,6 @@ import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import BugReportModal from '@/components/BugReportModal.vue'
-import AJWalletBadge from '@/components/AJWalletBadge.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -129,24 +128,7 @@ function closeMobileMenu() {
         >
           Trophies
         </router-link>
-        <router-link
-          to="/economy"
-          class="text-gray-400 hover:text-gold transition-colors"
-          active-class="text-gold"
-        >
-          Economy
-        </router-link>
-        <router-link
-          to="/billing"
-          class="text-gray-400 hover:text-white transition-colors"
-          active-class="text-gold"
-        >
-          Billing
-        </router-link>
       </div>
-
-      <!-- AJ Wallet Badge (right bookend) -->
-      <AJWalletBadge v-if="auth.isAuthenticated" class="hidden md:flex mr-3 shrink-0" />
 
       <!-- Desktop User Menu -->
       <div class="hidden md:flex items-center gap-4">
@@ -311,23 +293,6 @@ function closeMobileMenu() {
         >
           Achievements
         </router-link>
-        <router-link
-          to="/economy"
-          @click="closeMobileMenu"
-          class="px-4 py-3 rounded-lg text-gray-300 hover:bg-white/5 hover:text-gold transition-colors"
-        >
-          &#9670; Economy
-        </router-link>
-        <router-link
-          to="/billing"
-          @click="closeMobileMenu"
-          class="px-4 py-3 rounded-lg text-gray-300 hover:bg-white/5 hover:text-gold transition-colors"
-        >
-          💳 Billing
-        </router-link>
-
-        <!-- AJ Wallet Badge (mobile) -->
-        <AJWalletBadge v-if="auth.isAuthenticated" class="mx-4 mt-1" :compact="true" />
 
         <hr class="border-apex-border my-2" />
 

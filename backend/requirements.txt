@@ -33,9 +33,6 @@ openai>=1.12.0  # For multi-provider LLM support (OpenAI-compatible APIs)
 numpy>=1.26.0
 fastembed>=0.2.0  # Local embeddings via ONNX (lightweight, no PyTorch needed)
 
-# Payments
-stripe>=7.0.0  # Billing and subscriptions
-
 # Optional: sentence-transformers (large, needs lots of RAM)
 # sentence-transformers>=2.2.0
 

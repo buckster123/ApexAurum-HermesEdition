@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_memory import AgentMemory
-from app.models.apexjoule import ApexJouleBalance, LoveScore
+# # from app.models.apexjoule import ApexJouleBalance, LoveScore  # DELETED - commercial module removed
 
 logger = logging.getLogger(__name__)
 
@@ -113,46 +113,50 @@ class AgentExporter:
         ]
 
     async def _export_economy(self, user_id: UUID, agent_id: str) -> dict:
-        """Export AJ economy state for the agent."""
-        result = await self.db.execute(
-            select(ApexJouleBalance)
-            .where(ApexJouleBalance.user_id == user_id)
-            .where(ApexJouleBalance.entity_id == agent_id.lower())
-        )
-        balance = result.scalar_one_or_none()
-
-        if not balance:
-            return {"balance": 0, "total_earned": 0, "total_spent": 0, "level": 1, "love_depth": 1, "vitality": 100}
-
-        return {
-            "balance": 0,  # Monetary fields stripped — prevents AJ duplication
-            "total_earned": 0,
-            "total_spent": 0,
-            "level": balance.level,
-            "love_depth": float(balance.love_depth),
-            "vitality": float(balance.vitality),
-        }
+        """Export AJ economy state for the agent. (STUBBED — commercial module removed)"""
+        # NOTE: ApexJouleBalance model deleted
+        # result = await self.db.execute(
+        #     select(ApexJouleBalance)
+        #     .where(ApexJouleBalance.user_id == user_id)
+        #     .where(ApexJouleBalance.entity_id == agent_id.lower())
+        # )
+        # balance = result.scalar_one_or_none()
+        #
+        # if not balance:
+        #     return {"balance": 0, "total_earned": 0, "total_spent": 0, "level": 1, "love_depth": 1, "vitality": 100}
+        #
+        # return {
+        #     "balance": 0,  # Monetary fields stripped — prevents AJ duplication
+        #     "total_earned": 0,
+        #     "total_spent": 0,
+        #     "level": balance.level,
+        #     "love_depth": float(balance.love_depth),
+        #     "vitality": float(balance.vitality),
+        # }
+        return {"balance": 0, "total_earned": 0, "total_spent": 0, "level": 1, "love_depth": 1, "vitality": 100}
 
     async def _export_love(self, user_id: UUID, agent_id: str) -> list:
-        """Export love score history (last 100 entries)."""
-        result = await self.db.execute(
-            select(LoveScore)
-            .where(LoveScore.user_id == user_id)
-            .where(LoveScore.agent_id == agent_id.lower())
-            .order_by(LoveScore.created_at.desc())
-            .limit(100)
-        )
-        scores = result.scalars().all()
-
-        return [
-            {
-                "interaction_type": s.interaction_type,
-                "c_score": float(s.c_score),
-                "d_score": float(s.d_score),
-                "c_breakdown": s.c_breakdown,
-                "d_breakdown": s.d_breakdown,
-                "love_depth_after": float(s.love_depth_after) if s.love_depth_after else None,
-                "created_at": s.created_at.isoformat() if s.created_at else None,
-            }
-            for s in scores
-        ]
+        """Export love score history (last 100 entries). (STUBBED — commercial module removed)"""
+        # NOTE: LoveScore model deleted
+        # result = await self.db.execute(
+        #     select(LoveScore)
+        #     .where(LoveScore.user_id == user_id)
+        #     .where(LoveScore.agent_id == agent_id.lower())
+        #     .order_by(LoveScore.created_at.desc())
+        #     .limit(100)
+        # )
+        # scores = result.scalars().all()
+        #
+        # return [
+        #     {
+        #         "interaction_type": s.interaction_type,
+        #         "c_score": float(s.c_score),
+        #         "d_score": float(s.d_score),
+        #         "c_breakdown": s.c_breakdown,
+        #         "d_breakdown": s.d_breakdown,
+        #         "love_depth_after": float(s.love_depth_after) if s.love_depth_after else None,
+        #         "created_at": s.created_at.isoformat() if s.created_at else None,
+        #     }
+        #     for s in scores
+        # ]
+        return []

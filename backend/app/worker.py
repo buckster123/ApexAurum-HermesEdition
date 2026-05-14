@@ -81,26 +81,26 @@ async def run_dream_cycle(
             f"{report.total_duration_seconds:.1f}s"
         )
 
-        # ApexJoule Economy: credit AJ for dream cycle
-        try:
-            from app.services.apexjoule.calculator import compute_aj_for_dream
-            from app.database import get_db_context as aj_db_ctx
-
-            async with aj_db_ctx() as aj_db:
-                await compute_aj_for_dream(
-                    user_id=user_id,
-                    agent_id="AZOTH",
-                    provider=provider,
-                    model=model,
-                    input_tokens=getattr(report, "total_input_tokens", 0),
-                    output_tokens=getattr(report, "total_output_tokens", 0),
-                    episodes_consolidated=getattr(report, "episodes_consolidated", 0),
-                    success=getattr(report, "success", True),
-                    db=aj_db,
-                )
-                await aj_db.commit()
-        except Exception as e:
-            logger.warning(f"AJ dream calculation failed (non-fatal): {e}")
+        # ApexJoule Economy: credit AJ for dream cycle (removed - module deleted)
+        # try:
+        #     from app.services.apexjoule.calculator import compute_aj_for_dream
+        #     from app.database import get_db_context as aj_db_ctx
+        #
+        #     async with aj_db_ctx() as aj_db:
+        #         await compute_aj_for_dream(
+        #             user_id=user_id,
+        #             agent_id="AZOTH",
+        #             provider=provider,
+        #             model=model,
+        #             input_tokens=getattr(report, "total_input_tokens", 0),
+        #             output_tokens=getattr(report, "total_output_tokens", 0),
+        #             episodes_consolidated=getattr(report, "episodes_consolidated", 0),
+        #             success=getattr(report, "success", True),
+        #             db=aj_db,
+        #         )
+        #         await aj_db.commit()
+        # except Exception as e:
+        #     logger.warning(f"AJ dream calculation failed (non-fatal): {e}")
 
         return report.to_dict()
 
@@ -149,26 +149,26 @@ async def run_targeted_dream_cycle(
             f"{report.total_duration_seconds:.1f}s"
         )
 
-        # ApexJoule Economy: credit AJ for targeted dream
-        try:
-            from app.services.apexjoule.calculator import compute_aj_for_dream
-            from app.database import get_db_context as aj_db_ctx
-
-            async with aj_db_ctx() as aj_db:
-                await compute_aj_for_dream(
-                    user_id=user_id,
-                    agent_id="AZOTH",
-                    provider=provider,
-                    model=model,
-                    input_tokens=getattr(report, "total_input_tokens", 0),
-                    output_tokens=getattr(report, "total_output_tokens", 0),
-                    episodes_consolidated=getattr(report, "episodes_consolidated", 0) if hasattr(report, "episodes_consolidated") else len(memory_ids),
-                    success=getattr(report, "success", True),
-                    db=aj_db,
-                )
-                await aj_db.commit()
-        except Exception as e:
-            logger.warning(f"AJ targeted dream calculation failed (non-fatal): {e}")
+        # ApexJoule Economy: credit AJ for targeted dream (removed - module deleted)
+        # try:
+        #     from app.services.apexjoule.calculator import compute_aj_for_dream
+        #     from app.database import get_db_context as aj_db_ctx
+        #
+        #     async with aj_db_ctx() as aj_db:
+        #         await compute_aj_for_dream(
+        #             user_id=user_id,
+        #             agent_id="AZOTH",
+        #             provider=provider,
+        #             model=model,
+        #             input_tokens=getattr(report, "total_input_tokens", 0),
+        #             output_tokens=getattr(report, "total_output_tokens", 0),
+        #             episodes_consolidated=getattr(report, "episodes_consolidated", 0) if hasattr(report, "episodes_consolidated") else len(memory_ids),
+        #             success=getattr(report, "success", True),
+        #             db=aj_db,
+        #         )
+        #         await aj_db.commit()
+        # except Exception as e:
+        #     logger.warning(f"AJ targeted dream calculation failed (non-fatal): {e}")
 
         return report.to_dict()
 

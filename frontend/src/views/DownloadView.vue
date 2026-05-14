@@ -27,19 +27,14 @@ onMounted(async () => {
   }
   loading.value = false
 
-  // Generate QR code using the qrcode package (v1.5.4 in package.json)
-  if (downloadUrl.value) {
-    try {
-      const QRCode = await import('qrcode')
-      qrDataUrl.value = await QRCode.toDataURL(downloadUrl.value, {
-        width: 200,
-        margin: 2,
-        color: { dark: '#FFD700', light: '#0a0a0a' }
-      })
-    } catch (e) {
-      // QR generation failed — hide that section gracefully
-    }
-  }
+  // Generate QR code - disabled in local mode (qrcode package removed)
+  // if (downloadUrl.value) {
+  //   try {
+  //     const QRCode = await import('qrcode')
+  //     qrDataUrl.value = await QRCode.toDataURL(downloadUrl.value, { ... })
+  //   } catch (e) { ... }
+  // }
+  qrDataUrl.value = ''  // QR disabled in local mode
 })
 
 const features = [

@@ -9,6 +9,7 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session_factory
+from app.auth.deps import get_current_user
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

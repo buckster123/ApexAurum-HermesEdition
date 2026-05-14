@@ -1,8 +1,11 @@
 """
-Progression Service - Quest Engine Core
+Progression Service - Quest Engine Core (STUBBED)
 
 Milestone definitions, feature gating, and progression tracking
 for the Athaverse quest tier system.
+
+NOTE: UserProgression model deleted. ProgressionService is stubbed
+to return safe defaults. Quest mode is disabled.
 """
 
 import logging
@@ -10,11 +13,9 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import TIER_LIMITS, TIER_HIERARCHY
-from app.models.progression import UserProgression
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class MilestoneDef:
         self.stage = stage
         self.check_fn = check_fn
 
-    def check(self, prog: UserProgression, task_event: dict) -> bool:
+    def check(self, prog, task_event: dict) -> bool:
         """Check if this milestone is met given current progression and task event."""
         return self.check_fn(prog, task_event)
 
@@ -313,21 +314,15 @@ def check_feature_access(user, feature: str) -> bool:
     """
     Check if user can access a feature.
 
-    Classic tier users: check tier level (existing behavior).
-    Quest tier users: check progression milestones.
+    Quest tier system disabled. Classic tier check only.
     """
-    if not hasattr(user, 'progression') or not user.progression or not user.progression.quest_active:
-        # Classic path — existing tier check via TIER_HIERARCHY
-        sub_tier = getattr(user, 'subscription', None)
-        user_tier = sub_tier.tier if sub_tier else "free_trial"
-        feature_def = FEATURE_REGISTRY.get(feature)
-        if not feature_def:
-            return True  # Unknown feature = allow
-        required_tier = feature_def["tier"]
-        return TIER_HIERARCHY.get(user_tier, 0) >= TIER_HIERARCHY.get(required_tier, 0)
-
-    # Quest path — check if feature is unlocked via milestones
-    return feature in (user.progression.features_unlocked or [])
+    sub_tier = getattr(user, 'subscription', None)
+    user_tier = sub_tier.tier if sub_tier else "free_trial"
+    feature_def = FEATURE_REGISTRY.get(feature)
+    if not feature_def:
+        return True  # Unknown feature = allow
+    required_tier = feature_def["tier"]
+    return TIER_HIERARCHY.get(user_tier, 0) >= TIER_HIERARCHY.get(required_tier, 0)
 
 
 def get_locked_feature_info(feature: str) -> dict:
@@ -347,31 +342,30 @@ def get_locked_feature_info(feature: str) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PROGRESSION SERVICE
+# PROGRESSION SERVICE (STUBBED)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+class _ProgStub:
+    """Lightweight stand-in for deleted UserProgression model."""
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
 class ProgressionService:
-    """Service for quest progression operations."""
+    """Service for quest progression operations. (STUBBED — no DB persistence)"""
 
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_or_create(self, user_id: UUID, quest_active: bool = False) -> UserProgression:
-        """Get or create progression record for a user."""
-        result = await self.db.execute(
-            select(UserProgression).where(UserProgression.user_id == user_id)
-        )
-        prog = result.scalar_one_or_none()
-
-        if prog:
-            return prog
-
-        prog = UserProgression(
+    async def get_or_create(self, user_id: UUID, quest_active: bool = False) -> _ProgStub:
+        """Get or create progression record for a user. (stubbed)"""
+        return _ProgStub(
             id=uuid4(),
             user_id=user_id,
-            quest_active=quest_active,
+            quest_active=False,
             quest_stage="seeker",
-            quest_started_at=datetime.now(timezone.utc) if quest_active else None,
+            quest_started_at=None,
             milestones_completed=[],
             features_unlocked=[],
             agent_stats={},
@@ -379,188 +373,53 @@ class ProgressionService:
             achievements=[],
             total_tasks=0,
         )
-        self.db.add(prog)
-        return prog
 
-    async def get_progression(self, user_id: UUID) -> Optional[UserProgression]:
-        """Get progression for a user (None if not exists)."""
-        result = await self.db.execute(
-            select(UserProgression).where(UserProgression.user_id == user_id)
-        )
-        return result.scalar_one_or_none()
+    async def get_progression(self, user_id: UUID) -> Optional[_ProgStub]:
+        """Get progression for a user. (stubbed — always returns None)"""
+        return None
 
     async def check_milestones(self, user_id: UUID, task_event: dict) -> dict:
-        """
-        Check if a task completion triggers any new milestones.
+        """Check if a task completion triggers any new milestones. (stubbed)"""
+        return {"new_milestones": [], "new_features": [], "stage_complete": False}
 
-        Returns dict with new_milestones, new_features, stage_complete.
-        """
-        prog = await self.get_progression(user_id)
-        if not prog or not prog.quest_active:
-            return {"new_milestones": [], "new_features": [], "stage_complete": False}
-
-        stage_milestones = MILESTONE_DEFINITIONS.get(prog.quest_stage, [])
-        newly_completed = []
-        newly_unlocked = []
-
-        for milestone in stage_milestones:
-            if milestone.id in (prog.milestones_completed or []):
-                continue
-            if milestone.check(prog, task_event):
-                # Use list copy + append to trigger JSONB change detection
-                completed = list(prog.milestones_completed or [])
-                completed.append(milestone.id)
-                prog.milestones_completed = completed
-
-                unlocked = list(prog.features_unlocked or [])
-                unlocked.append(milestone.feature_unlocked)
-                prog.features_unlocked = unlocked
-
-                newly_completed.append({
-                    "id": milestone.id,
-                    "name": milestone.name,
-                    "description": milestone.description,
-                    "feature_unlocked": milestone.feature_unlocked,
-                })
-                newly_unlocked.append(milestone.feature_unlocked)
-
-                logger.info(f"Milestone completed: {milestone.id} for user {user_id}")
-
-                # ApexJoule Economy: credit quest bounty
-                try:
-                    from app.services.apexjoule.constants import QUEST_BOUNTIES, QUEST_AGENT_SPLIT, QUEST_USER_SPLIT
-                    from app.services.apexjoule.ledger import AJLedger
-
-                    bounty = QUEST_BOUNTIES.get(milestone.id, 0)
-                    if bounty > 0:
-                        aj_ledger = AJLedger(self.db)
-                        await aj_ledger.credit(
-                            user_id=user_id,
-                            agent_id="AZOTH",
-                            agent_share=bounty * QUEST_AGENT_SPLIT,
-                            user_share=bounty * QUEST_USER_SPLIT,
-                            operation_type="quest_completion",
-                            tx_type="quest",
-                            reason=f"quest:{milestone.id}",
-                        )
-                except Exception as e:
-                    logger.warning(f"AJ quest bounty failed (non-fatal): {e}")
-
-        # Check stage completion
-        stage_complete = False
-        if all(m.id in (prog.milestones_completed or []) for m in stage_milestones):
-            old_stage = prog.quest_stage
-            prog.quest_stage = _next_stage(prog.quest_stage)
-            stage_complete = old_stage != prog.quest_stage
-            if stage_complete:
-                logger.info(f"Stage complete: {old_stage} -> {prog.quest_stage} for user {user_id}")
-
-        prog.updated_at = datetime.now(timezone.utc)
-
-        return {
-            "new_milestones": newly_completed,
-            "new_features": newly_unlocked,
-            "stage_complete": stage_complete,
-            "new_stage": prog.quest_stage if stage_complete else None,
-        }
-
-    async def sync_stats(self, user_id: UUID, stats: dict) -> UserProgression:
-        """
-        Sync E5 localStorage stats from frontend to server.
-
-        Accepts the full stats blob from useVillageGamification.
-        """
-        prog = await self.get_or_create(user_id)
-
-        if "agents" in stats:
-            prog.agent_stats = stats["agents"]
-        if "zones" in stats:
-            prog.zone_stats = stats["zones"]
-        if "achievements" in stats:
-            prog.achievements = stats["achievements"]
-        if "totalTasks" in stats:
-            prog.total_tasks = stats["totalTasks"]
-
-        prog.updated_at = datetime.now(timezone.utc)
-        return prog
+    async def sync_stats(self, user_id: UUID, stats: dict) -> _ProgStub:
+        """Sync E5 localStorage stats from frontend to server. (stubbed)"""
+        return _ProgStub(
+            id=uuid4(),
+            user_id=user_id,
+            quest_active=False,
+            agent_stats=stats.get("agents", {}),
+            zone_stats=stats.get("zones", {}),
+            achievements=stats.get("achievements", []),
+            total_tasks=stats.get("totalTasks", 0),
+        )
 
     async def get_progress_response(self, user_id: UUID) -> dict:
-        """Build the full quest progress response for the frontend."""
-        prog = await self.get_progression(user_id)
-
-        if not prog:
-            return {
-                "quest_active": False,
-                "quest_stage": None,
-                "milestones": [],
-                "features_unlocked": [],
-                "next_milestone": None,
-                "stage_progress": 0,
-                "stage_total": 0,
-                "agent_stats": {},
-                "zone_stats": {},
-                "achievements": [],
-                "total_tasks": 0,
-            }
-
-        stage_milestones = MILESTONE_DEFINITIONS.get(prog.quest_stage, [])
-        completed_ids = set(prog.milestones_completed or [])
-
-        milestones = []
-        next_milestone = None
-        for m in stage_milestones:
-            is_completed = m.id in completed_ids
-            milestone_data = {
-                "id": m.id,
-                "name": m.name,
-                "description": m.description,
-                "feature_unlocked": m.feature_unlocked,
-                "completed": is_completed,
-            }
-            milestones.append(milestone_data)
-
-            if not is_completed and next_milestone is None:
-                next_milestone = milestone_data
-
-        stage_progress = sum(1 for m in stage_milestones if m.id in completed_ids)
-
+        """Build the full quest progress response for the frontend. (stubbed)"""
         return {
-            "quest_active": prog.quest_active,
-            "quest_stage": prog.quest_stage,
-            "milestones": milestones,
-            "features_unlocked": prog.features_unlocked or [],
-            "next_milestone": next_milestone,
-            "stage_progress": stage_progress,
-            "stage_total": len(stage_milestones),
-            "agent_stats": prog.agent_stats or {},
-            "zone_stats": prog.zone_stats or {},
-            "achievements": prog.achievements or [],
-            "total_tasks": prog.total_tasks,
+            "quest_active": False,
+            "quest_stage": None,
+            "milestones": [],
+            "features_unlocked": [],
+            "next_milestone": None,
+            "stage_progress": 0,
+            "stage_total": 0,
+            "agent_stats": {},
+            "zone_stats": {},
+            "achievements": [],
+            "total_tasks": 0,
         }
 
-    async def activate_quest(self, user_id: UUID) -> UserProgression:
-        """Activate quest mode for a user (called when subscribing to quest tier)."""
-        prog = await self.get_or_create(user_id, quest_active=True)
-        prog.quest_active = True
-        prog.quest_started_at = datetime.now(timezone.utc)
-        prog.updated_at = datetime.now(timezone.utc)
-        return prog
+    async def activate_quest(self, user_id: UUID) -> _ProgStub:
+        """Activate quest mode for a user. (stubbed — no-op)"""
+        return _ProgStub(
+            id=uuid4(),
+            user_id=user_id,
+            quest_active=False,
+            quest_stage="seeker",
+            quest_started_at=None,
+        )
 
-    async def deactivate_quest(self, user_id: UUID, unlock_all: bool = False) -> Optional[UserProgression]:
-        """
-        Deactivate quest mode (upgrade to classic tier).
-
-        If unlock_all=True, marks all features as unlocked (classic tier = everything).
-        Preserves progression data for reference.
-        """
-        prog = await self.get_progression(user_id)
-        if not prog:
-            return None
-
-        prog.quest_active = False
-        if unlock_all:
-            all_features = list(FEATURE_REGISTRY.keys())
-            prog.features_unlocked = all_features
-
-        prog.updated_at = datetime.now(timezone.utc)
-        return prog
+    async def deactivate_quest(self, user_id: UUID, unlock_all: bool = False) -> Optional[_ProgStub]:
+        """Deactivate quest mode. (stubbed — no-op)"""
+        return None
