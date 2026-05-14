@@ -22,6 +22,22 @@ export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(getValidToken('accessToken'))
   const refreshToken = ref(getValidToken('refreshToken'))
 
+  // Local mode bypass: auto-authenticate without login
+  const LOCAL_MODE = import.meta.env.VITE_LOCAL_MODE === 'true'
+  if (LOCAL_MODE) {
+    accessToken.value = 'local-mode-token'
+    refreshToken.value = 'local-mode-refresh'
+    localStorage.setItem('accessToken', 'local-mode-token')
+    localStorage.setItem('refreshToken', 'local-mode-refresh')
+    user.value = {
+      id: 'local-user',
+      email: 'local@apexaurum.local',
+      display_name: 'Local User',
+      tier: 'adept',
+      is_admin: true,
+    }
+  }
+
   // Getters
   const isAuthenticated = computed(() => !!accessToken.value)
 

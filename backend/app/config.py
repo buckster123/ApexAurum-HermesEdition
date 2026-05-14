@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     debug: bool = False
     local_mode: bool = False
     secret_key: str = "change-me-in-production"
-    allowed_origins: str = "http://localhost:3000,https://frontend-production-5402.up.railway.app"
+    allowed_origins: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174,https://frontend-production-5402.up.railway.app"
 
     # Local default user (auto-created in local mode)
     local_default_user_email: str = "local@apexaurum.local"

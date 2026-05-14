@@ -33,3 +33,6 @@ railway_logs/
 
 # Archive (internal docs, plans, logs - kept locally)
 archive/
+
+# Claude Code artifacts
+.claude/

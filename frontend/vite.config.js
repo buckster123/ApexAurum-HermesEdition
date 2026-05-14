@@ -10,17 +10,11 @@ export default defineConfig({
     }
   },
   server: {
-    port: 3000,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true
-      },
-      '/ws': {
-        target: 'ws://localhost:8000',
-        ws: true
-      }
+    port: 5174,
+    host: true,
+    watch: {
+      // Ignore backend directory to avoid ENOSPC (too many files)
+      ignored: ['**/backend/**', '**/node_modules/**', '**/.git/**']
     }
   }
 })
-// cache bust Tue Jan 27 04:12:51 AM CET 2026
