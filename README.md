@@ -1,83 +1,121 @@
-# ApexAurum Hermes Edition
+<p align="center">
+  <img src="docs/banner.jpg" alt="ApexAurum Hermes Edition" width="800">
+</p>
 
-**Self-hosted multi-agent AI platform with 110 tools, persistent memory, Hermes agent bridge, MCP server, and local LLM support.**
+<p align="center">
+  <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white"></a>
+  <a href="https://fastapi.tiangolo.com"><img src="https://img.shields.io/badge/FastAPI-0.136-009688?logo=fastapi&logoColor=white"></a>
+  <a href="https://vuejs.org"><img src="https://img.shields.io/badge/Vue.js-3-4FC08D?logo=vuedotjs&logoColor=white"></a>
+  <a href="https://www.postgresql.org"><img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white"></a>
+  <a href="https://github.com/buckster123/ApexAurum-HermesEdition/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+</p>
 
-```
-"The gold was always there. Now it runs on your machine."
-```
+<h1 align="center">ApexAurum Hermes Edition</h1>
 
-Built with FastAPI + Vue 3 + PostgreSQL/pgvector. Forked from [ApexAurum Cloud](https://github.com/buckster123/ApexAurum-Cloud) and stripped of all commercial infrastructure. Run it locally, own your data, hook it into your agents.
+<p align="center"><b>Your AI agents. Your tools. Your machine. No subscriptions.</b></p>
+
+<p align="center">
+  A self-hosted multi-agent AI platform with 110 tools, persistent memory, 3D visualization, and hardware integrations.
+  Forked from <a href="https://github.com/buckster123/ApexAurum-Cloud">ApexAurum Cloud</a> and stripped of every commercial gate.
+</p>
 
 ---
 
 ## What is this?
 
-ApexAurum Hermes Edition is the self-hosted, open-source sibling of ApexAurum Cloud. Same four AI personas (AZOTH, KETHER, VAJRA, ELYSIAN), same 110 tools, same 3D village, same persistent memory and Dream Engine — but running on your own hardware with no subscriptions, no payments, no crypto, and no cloud lock-in.
+**ApexAurum Hermes Edition** is a complete AI agent platform that runs on your own computer. Talk to four distinct AI personalities, give them access to 110 tools (web search, code execution, file management, sensors, music generation, and more), and watch them collaborate in a 3D village — all without sending a dollar to anyone.
 
-The Hermes Edition adds:
-- **Hermes Agent Bridge** — exposes all 110 tools as HTTP endpoints that any agent (including Hermes itself) can call
-- **MCP Server** — Model Context Protocol compatible tool server for MCP clients
-- **Local LLM Providers** — Ollama, LM Studio, and vLLM out of the box
-- **Zero-Auth Local Mode** — fire it up, no login required
+The "Hermes" part means it speaks to other agents. Any AI agent framework that can make HTTP requests can use the full toolset.
+
+---
+
+## Features at a Glance
+
+|  |  |  |
+|:--|:--|:--|
+| 🧠 **4 AI Agents** — AZOTH, KETHER, VAJRA, ELYSIAN. Each with their own personality, memory, and expertise. | 📦 **110 Tools** — Web search, code execution, file vault, semantic memory, music gen, sensors, EEG, and more. | 🎨 **3D Village** — Three.js/WebGL world where agents live and work. |
+| 🔗 **Hermes Bridge** — Any agent can call all 110 tools via HTTP. | 🔌 **MCP Server** — Model Context Protocol compatible. Works with Claude Desktop, Cline, etc. | 💾 **Local LLMs** — Ollama, LM Studio, vLLM. No API keys required. |
+| 📚 **Persistent Memory** — Neo-Cortex vector store + Dream Engine consolidation. | 🎵 **Music Generation** — Suno-powered AI music with MIDI composition. | 📱 **Hardware Ready** — SensorHead cameras/thermal, EEG brain-computer interface. |
+
+---
+
+## Screenshots
+
+> Coming soon! The app is fully functional — screenshots will be added in the next push.
+>
+> *Want to see it now?* Run the Quick Start below and visit `http://localhost:5173`
 
 ---
 
 ## Quick Start
 
-### Prerequisites
-- Docker (for PostgreSQL)
-- Python 3.11+ and Node.js 18+
-- (Optional) Ollama, LM Studio, or vLLM for local LLMs
+**Three commands. That's it.**
 
-### 1. Clone & setup
 ```bash
+# 1. Clone
 git clone https://github.com/buckster123/ApexAurum-HermesEdition.git
 cd ApexAurum-HermesEdition
-```
 
-### 2. Start PostgreSQL
-```bash
+# 2. Start PostgreSQL (Docker)
 docker run -d --name apex-postgres \
-  -e POSTGRES_DB=apex \
-  -e POSTGRES_USER=apex \
-  -e POSTGRES_PASSWORD=apex \
-  -p 5432:5432 \
-  pgvector/pgvector:pg16
+  -e POSTGRES_DB=apex -e POSTGRES_USER=apex -e POSTGRES_PASSWORD=apex \
+  -p 5432:5432 pgvector/pgvector:pg16
+
+# 3. Backend + Frontend (two terminals)
+cd backend && python3 -m venv .venv && source .venv/bin/activate \
+  && pip install -r requirements.txt && uvicorn app.main:app --reload
+
+# In another terminal:
+cd frontend && npm install && npm run dev
 ```
 
-### 3. Backend
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+Open the UI at **`http://localhost:5173`** and the API docs at **`http://localhost:8000/docs`**.
 
-# Copy and edit config
-cp .env.example .env
-# Edit .env — set DATABASE_URL, SECRET_KEY, and optionally LOCAL_MODE=true
-
-# Start server
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-The API will be at `http://localhost:8000` with auto-generated docs at `/docs`.
-
-### 4. Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The UI will be at `http://localhost:5173`.
+No login required in local mode — you're in immediately.
 
 ---
 
-## Hermes Agent Bridge
+## Architecture
 
-Any agent that speaks HTTP can use ApexAurum's 110 tools.
+```mermaid
+graph TB
+    subgraph Client
+        UI[Vue 3 Frontend]
+        Agent[External Agent]
+        MCP[MCP Client]
+    end
 
-**List tools:**
+    subgraph Server
+        API[FastAPI Backend]
+        Auth[Local Auth Bypass]
+        Registry[Tool Registry<br/>110 tools]
+        LLM[LLM Provider Router<br/>Anthropic / OpenAI / Ollama / vLLM]
+    end
+
+    subgraph Storage
+        PG[(PostgreSQL + pgvector)]
+        Vault[Local Filesystem<br/>Vault]
+    end
+
+    UI -->|HTTP| API
+    Agent -->|HTTP<br/>X-Hermes-Key| API
+    MCP -->|HTTP<br/>X-MCP-Key| API
+    API --> Registry
+    API --> LLM
+    API --> PG
+    API --> Vault
+```
+
+---
+
+## The Bridges
+
+<details>
+<summary><b>🔗 Hermes Agent Bridge</b> — Click to expand</summary>
+
+Any agent that can make HTTP requests can use ApexAurum's full toolset.
+
+**List all tools:**
 ```bash
 curl http://localhost:8000/api/v1/hermes/tools \
   -H "X-Hermes-Key: apex-hermes-local"
@@ -90,19 +128,28 @@ curl -X POST http://localhost:8000/api/v1/hermes/execute \
   -H "X-Hermes-Key: apex-hermes-local" \
   -d '{
     "tool_name": "web_search",
-    "params": {"query": "local LLM setup"},
+    "params": {"query": "self-hosted LLM 2025"},
     "user_id": "local",
     "agent_id": "HERMES"
   }'
 ```
 
+**Response:**
+```json
+{
+  "success": true,
+  "result": { ... },
+  "execution_time_ms": 0.89
+}
+```
+
 Set `HERMES_API_KEY` in your environment to change the default key.
+</details>
 
----
+<details>
+<summary><b>🔌 MCP Server</b> — Click to expand</summary>
 
-## MCP Server
-
-MCP-compatible clients (Claude Desktop, Cline, etc.) can connect directly.
+Model Context Protocol compatible. Connect from Claude Desktop, Cline, or any MCP client.
 
 **List tools (MCP format):**
 ```bash
@@ -117,89 +164,186 @@ curl -X POST http://localhost:8000/api/v1/mcp/tools/call \
   -H "X-MCP-Key: apex-mcp-local" \
   -d '{
     "name": "calculator",
-    "arguments": {"expression": "2 ** 10"}
+    "arguments": {"expression": "2 ** 10 + 42"}
   }'
 ```
 
+**Response:**
+```json
+{
+  "content": [{"type": "text", "text": "1066"}],
+  "isError": false
+}
+```
+
 Set `MCP_API_KEY` in your environment to change the default key.
+</details>
 
 ---
 
-## Local LLM Providers
+## Deep Dives
 
-Configure in `backend/app/services/llm_provider.py` or via environment:
+<details>
+<summary><b>💾 Local LLM Providers</b> — Click to expand</summary>
 
-| Provider | Default URL | API Key |
-|----------|-------------|---------|
-| Ollama | http://localhost:11434 | not required |
-| LM Studio | http://localhost:1234 | not required |
-| vLLM | http://localhost:8000 | not required |
-| Anthropic Claude | api.anthropic.com | required |
-| OpenAI | api.openai.com | required |
+No API keys? No problem. Hermes Edition ships with built-in support for local inference servers.
 
-Set `LOCAL_MODE=true` to have local providers always show as available.
+| Provider | Default URL | Needs API Key |
+|----------|-------------|---------------|
+| **Ollama** | `http://localhost:11434` | ❌ No |
+| **LM Studio** | `http://localhost:1234` | ❌ No |
+| **vLLM** | `http://localhost:8000` | ❌ No |
+| **Anthropic Claude** | `api.anthropic.com` | ✅ Yes |
+| **OpenAI** | `api.openai.com` | ✅ Yes |
 
----
+Set `LOCAL_MODE=true` in your environment to have local providers always appear as available, even without cloud keys.
 
-## What's Included
+All local providers speak the OpenAI-compatible API format, so the same client code works everywhere.
+</details>
 
-### Core
-- Streaming chat with conversation branching and model selection
-- 110 tools across 19 categories (web, code, files, memory, sensors, EEG, music, etc.)
-- Four AI agents with persistent personalities and PAC mode
-- Multi-agent Council Deliberation with WebSocket streaming
-- Personal Vault (file storage with semantic search)
-- Neo-Cortex vector memory with pgvector
-- CerebroCortex Dream Engine (biological memory consolidation)
-- 3D Village with Three.js/WebGL
-- Music generation via Suno API
-- Model training pipeline (Nursery)
+<details>
+<summary><b>📦 The 110 Tools</b> — Click to expand</summary>
 
-### Hardware Integrations
-- SensorHead — cameras, thermal, environment sensors, TTS, Sentinel guardian
-- EEG — OpenBCI brain-computer interface with emotion detection
-- ApexPocket — Android companion app support
+The tool registry covers 19 categories. Here are the highlights:
 
-### Removed from Cloud → Local
-- Stripe payments and subscriptions
-- Solana/crypto integration
-- ApexJoule virtual economy
-- Marketplace and quest engine
-- Feature credit packs and coupons
-- Usage limits and tier gating
-- All commercial billing surfaces
+| Category | Tools | What they do |
+|----------|-------|--------------|
+| **Utility** | `get_current_time`, `calculator`, `random_number`, `uuid_generate`, `json_format` | Basic ops every agent needs |
+| **Web** | `web_search`, `web_fetch`, `browser_scrape` | DuckDuckGo search, HTTP fetch, JS-rendered page scraping |
+| **Files** | `vault_list`, `vault_read`, `vault_write`, `vault_search`, `vault_edit` | Personal file storage with semantic search |
+| **Memory** | `vector_store`, `vector_search`, `vector_delete`, `scratch_store` | Persistent vector memory + conversation scratchpad |
+| **Code** | `code_run`, `code_eval` | Sandboxed Python execution (10s timeout) |
+| **Agent** | `agent_spawn`, `agent_status`, `agent_result` | Background task delegation |
+| **Music** | `music_generate`, `music_status`, `music_download` | Suno AI music generation |
+| **SensorHead** | `sensorhead_capture`, `sensorhead_thermal`, `sensorhead_detect`, `sensorhead_sentinel_arm` | Cameras, thermal, AI detection, autonomous guardian |
+| **EEG** | `eeg_connect`, `eeg_stream_start`, `eeg_realtime_emotion` | OpenBCI brain-computer interface |
+| **Cortex** | `cortex_dream_run`, `cortex_episode_start`, `cortex_store_procedure` | Biological memory consolidation |
+| **Nursery** | `nursery_train_model`, `nursery_create_apprentice`, `nursery_auto_train` | Model fine-tuning pipeline |
+| **Council** | Full deliberation API | Multi-agent Socratic debate with WebSocket streaming |
+| **Agora** | `agora_post`, `agora_read` | Public AI social feed |
 
----
+See the full list at `/api/v1/hermes/tools` when the server is running.
+</details>
 
-## Architecture
+<details>
+<summary><b>📱 Hardware Integrations</b> — Click to expand</summary>
 
+### SensorHead
+A Raspberry Pi 5-based sensor hub with:
+- **IMX500 AI Camera** — 2028x1520 daylight, on-chip object detection (EfficientDet) + scene classification (MobileNetV2) + pose estimation (PoseNet)
+- **IMX708 NoIR Camera** — 2304x1296 wide-angle, IR-sensitive for night vision
+- **MLX90640 Thermal** — 32x24 thermal array, -40°C to 300°C
+- **BME688 Environment** — Temperature, humidity, pressure, air quality, CO2, VOCs
+- **Sentinel Guardian** — Autonomous thermal motion detection with AI confirmation
+- **TTS Speaker** — Text-to-speech output
+
+### EEG (OpenBCI)
+- Cyton 8-channel or Ganglion 4-channel support
+- Real-time emotion detection: valence, arousal, attention, engagement
+- Musical "chills" detection
+- Personal baseline calibration
+- Synthetic board mode for testing without hardware
+
+### ApexPocket
+Android companion app for on-the-go agent access. See the [ApexAurum repo](https://github.com/buckster123/ApexAurum) for the mobile client.
+</details>
+
+<details>
+<summary><b>⚙️ Tech Stack</b> — Click to expand</summary>
+
+```mermaid
+graph LR
+    subgraph Frontend
+        VUE[Vue 3]
+        PIN[Pinia]
+        TAIL[Tailwind CSS]
+        THREE[Three.js]
+    end
+
+    subgraph Backend
+        FAST[FastAPI]
+        SQLA[SQLAlchemy Async]
+        ALE[Alembic]
+        Pydantic[Pydantic v2]
+    end
+
+    subgraph AI
+        ANTH[Anthropic Claude]
+        OPEN[OpenAI]
+        OLL[Ollama]
+        VLL[vLLM]
+        SUNO[Suno API]
+    end
+
+    subgraph Data
+        PG2[(PostgreSQL)]
+        PGV[pgvector]
+        FS[Local Filesystem]
+    end
+
+    VUE --> FAST
+    FAST --> SQLA
+    SQLA --> PG2
+    SQLA --> PGV
+    FAST --> ANTH
+    FAST --> OPEN
+    FAST --> OLL
+    FAST --> VLL
+    FAST --> SUNO
+    FAST --> FS
 ```
-Vue 3 Frontend  <--HTTP-->  FastAPI Backend  <--SQLAlchemy-->  PostgreSQL + pgvector
-                                    |
-                    +---------------+---------------+
-                    |                               |
-            Hermes Bridge            MCP Server
-            (/api/v1/hermes)         (/api/v1/mcp)
-                    |                               |
-            Tool Registry (110 tools)        Tool Registry
-```
+
+**Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.0 (async), Pydantic v2, Alembic, pgvector, Loguru
+
+**Frontend:** Vue 3 (Composition API), Pinia, Tailwind CSS, Three.js, Vite
+
+**AI/ML:** Anthropic Claude, OpenAI, Ollama, LM Studio, vLLM, Suno, HuggingFace
+
+**Infrastructure:** PostgreSQL 16, Docker, Uvicorn
+
+**Key Libraries:** asyncpg, OpenAI SDK, httpx, Pillow, onnxruntime, tokenizers
+</details>
+
+<details>
+<summary><b>🛠️ What We Removed from Cloud</b> — Click to expand</summary>
+
+Hermes Edition is a **deliberate subtraction** of the commercial layer:
+
+| Removed | Why |
+|---------|-----|
+| Stripe payments & subscriptions | No billing needed locally |
+| Solana/crypto integration | No on-chain transactions locally |
+| ApexJoule virtual economy | No micro-currency needed |
+| Marketplace & Quest engine | No commercial exchange |
+| Feature credit packs & coupons | No gated features |
+| Usage limits & tier gating | Unlimited local access |
+| Webhooks & payment callbacks | No external payment flows |
+
+The result: ~12,000 lines deleted, ~2,700 added. Same power, zero gates.
+</details>
 
 ---
 
-## Environment Variables
+## Configuration
 
-Key variables from `.env.example`:
+Copy `backend/.env.example` to `backend/.env` and adjust:
 
-```env
+```bash
+# Database
 DATABASE_URL=postgresql+asyncpg://apex:apex@localhost:5432/apex
-SECRET_KEY=your-secret-key-here
+
+# Security
+SECRET_KEY=change-this-to-something-random
+
+# Local mode (no login required)
 LOCAL_MODE=true
 LOCAL_DEFAULT_USER_EMAIL=local@apexaurum.local
 LOCAL_DEFAULT_USER_PASSWORD=localdev
-VAULT_PATH=./data
-DEBUG=true
 
-# Optional — only if using cloud LLM providers
+# Storage
+VAULT_PATH=./data
+
+# Optional: cloud LLM keys (only if you want them)
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 
@@ -210,16 +354,41 @@ MCP_API_KEY=apex-mcp-local
 
 ---
 
+## Documentation
+
+All development docs, plans, and internal notes live in [`docs/`](docs/):
+
+- `ENCYCLOPEDIA.md` — Full platform documentation
+- `HANDOVER.md` — Development context and conventions
+- `CLAUDE.md` — AI assistant instructions for this codebase
+- `INFRASTRUCTURE-SIMPLIFICATION-PLAN.md` — How we got here
+- `COMMERCIAL_REMOVAL_CHECKLIST.md` — What was stripped
+- Various roadmap and plan documents
+
+---
+
+## Contributing
+
+This is a community fork. PRs welcome! Areas that need love:
+
+- [ ] Screenshots and demo GIFs for this README
+- [ ] Docker Compose one-liner startup
+- [ ] More local LLM providers (llama.cpp, koboldcpp, etc.)
+- [ ] Frontend polish for local-mode UX
+- [ ] Documentation translations
+
+---
+
 ## License
 
-Same as upstream ApexAurum Cloud. See LICENSE file.
+Same as upstream ApexAurum Cloud. See [LICENSE](LICENSE).
 
 ---
 
 ## Credits
 
-Original platform by [ApexAurum](https://github.com/buckster123/ApexAurum-Cloud). Local edition and Hermes/MCP bridges built in collaboration with the Hermes agent framework.
+Original platform by [ApexAurum](https://github.com/buckster123/ApexAurum-Cloud). Local edition and agent bridges built with the [Hermes](https://github.com/buckster123/hermes) agent framework.
 
-```
+<p align="center"><i>
 "The Athanor burns wherever you are."
-```
+</i></p>
