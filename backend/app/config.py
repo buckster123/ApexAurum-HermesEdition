@@ -15,7 +15,14 @@ class Settings(BaseSettings):
     # App
     app_name: str = "ApexAurum Local"
     debug: bool = False
-    local_mode: bool = False
+    # Local mode auto-detect: default True for Hermes Edition.
+    # Cloud deploys should explicitly set LOCAL_MODE=false
+    local_mode: bool = True
+
+    @property
+    def is_local_mode(self) -> bool:
+        """Return True when running in local/self-hosted mode."""
+        return self.local_mode
     secret_key: str = "change-me-in-production"
     allowed_origins: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174,https://frontend-production-5402.up.railway.app"
 

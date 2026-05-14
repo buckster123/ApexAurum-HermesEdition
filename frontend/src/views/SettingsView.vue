@@ -305,10 +305,8 @@ function toggleProvider(providerId) {
 }
 
 function canConfigureProvider(providerId) {
-  // Opus+ can configure all providers, Adept can configure OSS providers
-  if (billing.tierLevel >= 3) return true
-  if (billing.tierLevel >= 2 && providerId !== 'anthropic') return true
-  return false
+  // Local edition: all providers configurable, no tier gates
+  return true
 }
 
 async function fetchNativeAgents() {
@@ -715,10 +713,10 @@ function getAgentSymbol(agentId) {
       {{ tierRestrictionMessage }}
     </div>
 
-    <!-- Dev Mode: Tab Navigation (scrollable on mobile) -->
-    <div v-if="devMode" class="flex gap-2 mb-6 border-b border-apex-border overflow-x-auto scrollbar-hide pb-px -mb-px">
+    <!-- Local Mode: Always-visible tabs (profile + api) -->
+    <div class="flex gap-2 mb-6 border-b border-apex-border overflow-x-auto scrollbar-hide pb-px -mb-px">
       <button
-        v-for="tab in devTabs"
+        v-for="tab in ['profile', 'api']"
         :key="tab"
         @click="switchTab(tab)"
         class="px-4 py-3 text-sm font-medium transition-colors capitalize whitespace-nowrap flex-shrink-0"
@@ -728,10 +726,24 @@ function getAgentSymbol(agentId) {
       >
         {{ tab }}
       </button>
+      <!-- Dev-only tabs -->
+      <template v-if="devMode">
+        <button
+          v-for="tab in ['agents', 'import', 'advanced']"
+          :key="tab"
+          @click="switchTab(tab)"
+          class="px-4 py-3 text-sm font-medium transition-colors capitalize whitespace-nowrap flex-shrink-0"
+          :class="activeTab === tab
+            ? 'text-gold border-b-2 border-gold'
+            : 'text-gray-400 hover:text-white'"
+        >
+          {{ tab }}
+        </button>
+      </template>
     </div>
 
-    <!-- PROFILE TAB (shown in both modes) -->
-    <template v-if="activeTab === 'profile' || !devMode">
+    <!-- PROFILE TAB -->
+    <template v-if="activeTab === 'profile'">
       <!-- Profile Section -->
       <div class="card mb-6">
         <h2 class="text-xl font-bold mb-4">Profile</h2>
@@ -1630,7 +1642,7 @@ function getAgentSymbol(agentId) {
     </template>
 
     <!-- API TAB - Multi-Provider Key Management -->
-    <template v-if="devMode && activeTab === 'api'">
+    <template v-if="activeTab === 'api'">
       <div class="card">
         <div class="flex items-center justify-between mb-6">
           <h2 class="text-xl font-bold">API Keys</h2>
@@ -1638,7 +1650,7 @@ function getAgentSymbol(agentId) {
         </div>
 
         <p class="text-sm text-gray-400 mb-6">
-          Use your own API keys for direct provider billing. Platform keys are used by default when available.
+          Add your own API keys to use any provider directly. No platform fees — you pay the provider only for what you use.
         </p>
 
         <!-- Provider Grid -->
@@ -1662,11 +1674,11 @@ function getAgentSymbol(agentId) {
                 <div class="flex items-center gap-3">
                   <span class="text-lg font-bold" :class="{
                     'text-gold': providerId === 'anthropic',
-                    'text-blue-400': providerId === 'deepseek',
-                    'text-orange-400': providerId === 'groq',
-                    'text-purple-400': providerId === 'together',
-                    'text-cyan-400': providerId === 'qwen',
+                    'text-emerald-400': providerId === 'openrouter',
                     'text-indigo-400': providerId === 'moonshot',
+                    'text-orange-400': providerId === 'ollama',
+                    'text-pink-400': providerId === 'lmstudio',
+                    'text-cyan-400': providerId === 'vllm',
                   }">{{ info.provider_name }}</span>
                 </div>
                 <div class="flex items-center gap-2">
@@ -1683,8 +1695,8 @@ function getAgentSymbol(agentId) {
                   <span v-else class="text-xs px-2 py-0.5 rounded bg-gray-500/20 text-gray-500">
                     Not Set
                   </span>
-                  <!-- Lock for insufficient tier -->
-                  <span v-if="!canConfigureProvider(providerId)" class="text-gray-500" title="Upgrade tier to configure">
+                  <!-- Lock for insufficient tier (hidden in local mode) -->
+                  <span v-if="false" class="text-gray-500" title="Upgrade tier to configure">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
@@ -1739,10 +1751,10 @@ function getAgentSymbol(agentId) {
               </div>
             </div>
 
-            <!-- Tier gate message -->
-            <div v-if="activeProvider === providerId && !canConfigureProvider(providerId)" class="px-4 pb-4 border-t border-apex-border" @click.stop>
+            <!-- Tier gate message (hidden in local mode) -->
+            <div v-if="false" class="px-4 pb-4 border-t border-apex-border" @click.stop>
               <p class="pt-3 text-sm text-amber-400">
-                {{ providerId === 'anthropic' ? 'Upgrade to Opus to configure Anthropic keys.' : 'Upgrade to Adept to configure open-source providers.' }}
+                Upgrade to unlock this provider.
               </p>
             </div>
           </div>
@@ -1758,7 +1770,7 @@ function getAgentSymbol(agentId) {
     </template>
 
     <!-- Response Preferences (shown to all users) -->
-    <div v-if="activeTab === 'profile' || !devMode" class="card mb-6">
+    <div v-if="activeTab === 'profile'" class="card mb-6">
       <h2 class="text-xl font-bold mb-4">Response Preferences</h2>
       <div class="space-y-4">
         <div>
@@ -1791,7 +1803,7 @@ function getAgentSymbol(agentId) {
     </div>
 
     <!-- Get the App -->
-    <div v-if="activeTab === 'profile' || !devMode" class="card mt-6 border-gold/20">
+    <div v-if="activeTab === 'profile'" class="card mt-6 border-gold/20">
       <div class="flex items-center justify-between">
         <div>
           <h3 class="text-sm font-medium text-white">ApexPocket for Android</h3>
@@ -1807,7 +1819,7 @@ function getAgentSymbol(agentId) {
     </div>
 
     <!-- Danger Zone (shown in both modes) -->
-    <div v-if="activeTab === 'profile' || !devMode" class="card mt-6 border-red-500/30">
+    <div v-if="activeTab === 'profile'" class="card mt-6 border-red-500/30">
       <h2 class="text-xl font-bold text-red-400 mb-4">Danger Zone</h2>
       <p class="text-sm text-gray-400 mb-4">
         These actions are irreversible. Please be careful.

@@ -34,20 +34,14 @@ router = APIRouter()
 # Provider key format hints for UI
 PROVIDER_KEY_HINTS = {
     "anthropic": "sk-ant-...",
-    "deepseek": "sk-...",
-    "groq": "gsk_...",
-    "together": "...",
-    "qwen": "sk-...",
+    "openrouter": "sk-or-...",
     "moonshot": "sk-...",
 }
 
 # Console URLs for each provider
 PROVIDER_CONSOLE_URLS = {
     "anthropic": "https://console.anthropic.com/settings/keys",
-    "deepseek": "https://platform.deepseek.com/api_keys",
-    "groq": "https://console.groq.com/keys",
-    "together": "https://api.together.ai/settings/api-keys",
-    "qwen": "https://dashscope.console.aliyun.com",
+    "openrouter": "https://openrouter.ai/keys",
     "moonshot": "https://platform.moonshot.cn/console/api-keys",
 }
 
@@ -340,25 +334,26 @@ async def set_api_key(
             detail="API key is too short."
         )
 
-    # Check BYOK tier access
-    sub_result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
-    subscription = sub_result.scalar_one_or_none()
-    tier = subscription.tier if subscription else "free_trial"
-    tier_config = TIER_LIMITS.get(tier, TIER_LIMITS["free_trial"])
+    # Check BYOK tier access (skipped in local mode)
+    if not settings.local_mode:
+        sub_result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
+        subscription = sub_result.scalar_one_or_none()
+        tier = subscription.tier if subscription else "free_trial"
+        tier_config = TIER_LIMITS.get(tier, TIER_LIMITS["free_trial"])
 
-    if not tier_config.get("byok_allowed", False):
-        raise HTTPException(
-            status_code=403,
-            detail="BYOK (Bring Your Own Key) requires Adept tier ($30/mo) or higher."
-        )
+        if not tier_config.get("byok_allowed", False):
+            raise HTTPException(
+                status_code=403,
+                detail="BYOK (Bring Your Own Key) requires Adept tier ($30/mo) or higher."
+            )
 
-    byok_providers = tier_config.get("byok_providers")
-    if byok_providers and provider_id not in byok_providers:
-        allowed_str = ", ".join(p.title() for p in byok_providers)
-        raise HTTPException(
-            status_code=403,
-            detail=f"Your Adept plan allows BYOK for: {allowed_str}. Upgrade to Opus ($100/mo) for all providers."
-        )
+        byok_providers = tier_config.get("byok_providers")
+        if byok_providers and provider_id not in byok_providers:
+            allowed_str = ", ".join(p.title() for p in byok_providers)
+            raise HTTPException(
+                status_code=403,
+                detail=f"Your Adept plan allows BYOK for: {allowed_str}. Upgrade to Opus ($100/mo) for all providers."
+            )
 
     # Validate with provider-specific test call
     if provider_id == "anthropic":

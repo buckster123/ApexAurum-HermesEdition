@@ -41,46 +41,18 @@ PROVIDERS = {
         "default_model": "claude-sonnet-4-5-20250929",
         "supports_tools": True,
     },
-    "deepseek": {
-        "name": "DeepSeek",
-        "base_url": "https://api.deepseek.com",
-        "key_env": "DEEPSEEK_API_KEY",
-        "default_model": "deepseek-chat",
-        "supports_tools": True,  # deepseek-chat only, not reasoner
-    },
-    "groq": {
-        "name": "Groq",
-        "base_url": "https://api.groq.com/openai/v1",
-        "key_env": "GROQ_API_KEY",
-        "default_model": "llama-3.3-70b-versatile",
-        "supports_tools": True,
-    },
-    "together": {
-        "name": "Together AI",
-        "base_url": "https://api.together.xyz/v1",
-        "key_env": "TOGETHER_API_KEY",
-        "default_model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-        "supports_tools": True,
-    },
-    "qwen": {
-        "name": "Qwen",
-        "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-        "key_env": "DASHSCOPE_API_KEY",
-        "default_model": "qwen-plus",
+    "openrouter": {
+        "name": "OpenRouter",
+        "base_url": "https://openrouter.ai/api/v1",
+        "key_env": "OPENROUTER_API_KEY",
+        "default_model": "anthropic/claude-sonnet-4",
         "supports_tools": True,
     },
     "moonshot": {
-        "name": "Moonshot",
+        "name": "Moonshot (Kimi)",
         "base_url": "https://api.moonshot.ai/v1",
         "key_env": "MOONSHOT_API_KEY",
         "default_model": "kimi-k2.5",
-        "supports_tools": True,
-    },
-    "openai": {
-        "name": "OpenAI",
-        "base_url": "https://api.openai.com/v1",
-        "key_env": "OPENAI_API_KEY",
-        "default_model": "gpt-4o-mini",
         "supports_tools": True,
     },
     "ollama": {
@@ -150,111 +122,48 @@ PROVIDER_MODELS = {
             "description": "Fastest 4.5 model - quick responses, efficient",
         },
     },
-    "deepseek": {
-        "deepseek-chat": {
+    "openrouter": {
+        "anthropic/claude-sonnet-4": {
+            "name": "Claude Sonnet 4 (OpenRouter)",
+            "tier": "sonnet",
+            "max_tokens": 16384,
+            "context_window": 200000,
+            "description": "Anthropic Sonnet via OpenRouter - reliable tool use",
+        },
+        "anthropic/claude-opus-4": {
+            "name": "Claude Opus 4 (OpenRouter)",
+            "tier": "opus",
+            "max_tokens": 128000,
+            "context_window": 200000,
+            "description": "Anthropic Opus via OpenRouter - deep reasoning",
+        },
+        "google/gemini-2.5-pro-preview-03-25": {
+            "name": "Gemini 2.5 Pro",
+            "tier": "large",
+            "max_tokens": 65536,
+            "context_window": 1000000,
+            "description": "Google Gemini 2.5 Pro - 1M context window",
+        },
+        "deepseek/deepseek-chat-v3-0324": {
             "name": "DeepSeek V3",
             "tier": "standard",
             "max_tokens": 8192,
             "context_window": 128000,
-            "description": "671B MoE flagship - strong general-purpose model",
+            "description": "DeepSeek V3 via OpenRouter - strong general-purpose",
         },
-        "deepseek-reasoner": {
-            "name": "DeepSeek R1",
-            "tier": "reasoning",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "Chain-of-thought reasoning model (no tool support)",
-            "supports_tools": False,
+        "meta-llama/llama-4-scout": {
+            "name": "Llama 4 Scout",
+            "tier": "large",
+            "max_tokens": 16384,
+            "context_window": 256000,
+            "description": "Meta Llama 4 Scout - open-source flagship",
         },
-    },
-    "groq": {
-        "llama-3.3-70b-versatile": {
-            "name": "Llama 3.3 70B",
+        "nvidia/llama-3.1-nemotron-70b-instruct": {
+            "name": "Nemotron 70B",
             "tier": "large",
             "max_tokens": 8192,
             "context_window": 128000,
-            "description": "Fast versatile workhorse - great all-rounder on Groq",
-        },
-        "llama-3.1-8b-instant": {
-            "name": "Llama 3.1 8B",
-            "tier": "small",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "Ultra-fast small model - 560 tokens/sec on Groq",
-        },
-        "deepseek-r1-distill-llama-70b": {
-            "name": "DeepSeek R1 Distill 70B",
-            "tier": "reasoning",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "Reasoning distilled into Llama 70B - fast on Groq",
-        },
-        "qwen-qwq-32b": {
-            "name": "Qwen QwQ 32B",
-            "tier": "reasoning",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "Reasoning model with excellent tool use",
-        },
-    },
-    "together": {
-        "meta-llama/Llama-3.3-70B-Instruct-Turbo": {
-            "name": "Llama 3.3 70B Turbo",
-            "tier": "large",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "Fast Llama flagship - turbo inference on Together",
-        },
-        "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo": {
-            "name": "Llama 3.1 405B Turbo",
-            "tier": "large",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "Largest open-source model - 405B parameters",
-        },
-        "deepseek-ai/DeepSeek-V3.1": {
-            "name": "DeepSeek V3.1",
-            "tier": "standard",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "Top open-source base model - rivals frontier models",
-        },
-        "deepseek-ai/DeepSeek-R1": {
-            "name": "DeepSeek R1",
-            "tier": "reasoning",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "671B MoE reasoning - chain-of-thought on Together",
-        },
-    },
-    "qwen": {
-        "qwen3-max": {
-            "name": "Qwen3 Max",
-            "tier": "large",
-            "max_tokens": 8192,
-            "context_window": 262000,
-            "description": "Latest Qwen flagship - 262K context window",
-        },
-        "qwen-plus": {
-            "name": "Qwen Plus",
-            "tier": "standard",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "Balanced performance and cost",
-        },
-        "qwen-turbo": {
-            "name": "Qwen Turbo",
-            "tier": "fast",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "Fastest Qwen option - low latency",
-        },
-        "qwq-plus": {
-            "name": "QwQ Plus",
-            "tier": "reasoning",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "Reasoning-focused model with chain-of-thought",
+            "description": "NVIDIA Nemotron 70B - excellent reasoning",
         },
     },
     "moonshot": {
@@ -275,38 +184,27 @@ PROVIDER_MODELS = {
             "extra_body": {"thinking": {"type": "disabled"}},
         },
     },
-    "openai": {
-        "gpt-4o-2024-08-06": {
-            "name": "GPT-4o (Aug)",
-            "tier": "large",
-            "max_tokens": 16384,
+    "vllm": {
+        "meta-llama/Llama-3.1-8B-Instruct": {
+            "name": "Llama 3.1 8B (vLLM)",
+            "tier": "local",
+            "max_tokens": 8192,
             "context_window": 128000,
-            "description": "Aug 2024 GPT-4o - creative + 16K output (128K ctx)",
-            "supports_tools": True,
+            "description": "vLLM-served Llama 3.1 8B - fast local inference",
         },
-        "gpt-4o-mini": {
-            "name": "GPT-4o Mini",
-            "tier": "fast",
-            "max_tokens": 16384,
+        "meta-llama/Llama-3.3-70B-Instruct": {
+            "name": "Llama 3.3 70B (vLLM)",
+            "tier": "local",
+            "max_tokens": 8192,
             "context_window": 128000,
-            "description": "Efficient all-rounder - low cost, tools + vision (128K ctx)",
-            "supports_tools": True,
+            "description": "vLLM-served Llama 3.3 70B - large local model",
         },
-        "gpt-5": {
-            "name": "GPT-5",
-            "tier": "large",
-            "max_tokens": 16384,
-            "context_window": 400000,
-            "description": "Next-gen reasoning - coding, agents, tools (400K ctx)",
-            "supports_tools": True,
-        },
-        "gpt-5-mini": {
-            "name": "GPT-5 Mini",
-            "tier": "fast",
-            "max_tokens": 16384,
-            "context_window": 400000,
-            "description": "Fast GPT-5 variant - efficient reasoning + tools (400K ctx)",
-            "supports_tools": True,
+        "Qwen/Qwen2.5-72B-Instruct": {
+            "name": "Qwen 2.5 72B (vLLM)",
+            "tier": "local",
+            "max_tokens": 8192,
+            "context_window": 128000,
+            "description": "vLLM-served Qwen 2.5 72B - strong reasoning",
         },
     },
     "ollama": {
@@ -346,29 +244,6 @@ PROVIDER_MODELS = {
             "max_tokens": 8192,
             "context_window": 128000,
             "description": "Any model loaded in LM Studio",
-        },
-    },
-    "vllm": {
-        "meta-llama/Llama-3.1-8B-Instruct": {
-            "name": "Llama 3.1 8B (vLLM)",
-            "tier": "local",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "vLLM-served Llama 3.1 8B - fast local inference",
-        },
-        "meta-llama/Llama-3.3-70B-Instruct": {
-            "name": "Llama 3.3 70B (vLLM)",
-            "tier": "local",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "vLLM-served Llama 3.3 70B - large local model",
-        },
-        "Qwen/Qwen2.5-72B-Instruct": {
-            "name": "Qwen 2.5 72B (vLLM)",
-            "tier": "local",
-            "max_tokens": 8192,
-            "context_window": 128000,
-            "description": "vLLM-served Qwen 2.5 72B - strong reasoning",
         },
     },
 }
@@ -1038,18 +913,23 @@ def get_available_providers() -> list[dict]:
     """
     Get list of available providers with their status.
 
-    Returns providers that have API keys configured.
+    In local mode, all providers are shown so the user can add keys via UI.
+    In cloud mode, returns providers that have API keys configured.
     Local providers (ollama, lmstudio, vllm) are always marked available.
     """
+    from app.config import get_settings
+    settings = get_settings()
     providers = []
     local_providers = {"ollama", "lmstudio", "vllm"}
     for provider_id, config in PROVIDERS.items():
         api_key = os.getenv(config["key_env"])
         is_local = provider_id in local_providers
+        # In local mode, show all providers; in cloud mode, only those with keys
+        available = settings.local_mode or bool(api_key) or is_local
         providers.append({
             "id": provider_id,
             "name": config["name"],
-            "available": bool(api_key) or is_local,
+            "available": available,
             "default_model": config["default_model"],
         })
     return providers
